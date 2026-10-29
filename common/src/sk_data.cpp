@@ -39,13 +39,13 @@ void SkData::begin(Side side) {
   const Side unit_side = effective_side(side);
   const size_t count = kGaugeCount < kMaxGauges ? kGaugeCount : kMaxGauges;
 
+  // Every state change counts, the disconnect included: the "connected"
+  // state and the replayed deltas reach the loop through separate polls, in
+  // no fixed order, but a disconnect is seen long before the WebSocket
+  // library's own reconnect (10 s later).
   sensesp::sensesp_app->get_ws_client()->connect_to(
       new sensesp::LambdaConsumer<sensesp::SKWSConnectionState>(
-          [this](sensesp::SKWSConnectionState state) {
-            if (state == sensesp::SKWSConnectionState::kSKWSConnected) {
-              conn_epoch_++;
-            }
-          }));
+          [this](sensesp::SKWSConnectionState) { conn_epoch_++; }));
 
   // Drop values that have gone stale, so `seen` never outlives them, and
   // values a null disowned that no other source has confirmed since.
@@ -59,6 +59,11 @@ void SkData::begin(Side side) {
           now - slot.invalid_ms >= kInvalidGraceMs) {
         slot.invalid_pending = false;
         slot.seen = false;
+      }
+      // Close a window no later sample closed (a path that went quiet), so
+      // its signed compare never meets the 24.8-day wrap.
+      if (slot.replaying && (int32_t)(now - slot.replay_until_ms) >= 0) {
+        slot.replaying = false;
       }
     }
   });
@@ -124,9 +129,8 @@ void SkData::store(GaugeValue* slot, float value, float value2) {
   // nothing counts while the link is down. A new connection is one SensESP
   // built (its client generation changes when it tears the old client down)
   // or one the WebSocket library re-established on the same client
-  // (conn_epoch_, counted from the "connected" state, which SensESP sets
-  // before it subscribes). The first sample per path on a new connection
-  // opens the replay window.
+  // (conn_epoch_ moved: any connection state change). The first sample per
+  // path on a new connection opens the replay window.
   auto ws = sensesp::sensesp_app->get_ws_client();
   if (!ws->is_connected()) {
     return;

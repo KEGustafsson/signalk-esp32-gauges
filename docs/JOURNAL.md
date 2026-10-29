@@ -127,9 +127,13 @@ Signal K spec and n2k-signalk). What changed:
   connection after every boot the server's cached replay was taken as live;
   the WebSocket library's own reconnects kept the generation too; and the
   window compare went negative after 24.8 days of one connection, dropping
-  everything. Now: a connection epoch counted from SensESP's "connected"
-  state (set before it subscribes), a per-slot "not yet seen" flag, and a
-  `replaying` flag so the time compare only runs inside the window.
+  everything. Now: a connection epoch bumped on every connection state
+  change (the disconnect reaches the loop long before the library's own
+  reconnect; "connected" and the replayed deltas are polled in no fixed
+  order), a per-slot "not yet seen" flag, and a `replaying` flag that the
+  1 s sweep also clears, so the time compare only runs inside the window.
+  A verification pass found the first version of this fix relied on that
+  ordering and left a quiet path's window open; both corrected.
 - **Null grace**: a lone `null` after a recent value is now remembered and
   blanks the gauge ~2-3 s later unless a valid value follows.
 - **Web UI login (must-fix)**: with no saved HTTP settings (every fresh
