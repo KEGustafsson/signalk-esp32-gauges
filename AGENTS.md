@@ -57,6 +57,8 @@ If a task would require breaking one of these, stop and flag it.
   `include/secrets.h`: WiFi, Signal K server, OTA password, unit addresses.
 - **`scripts/ota_auth.py`** -- injects the OTA password and address from
   secrets.h at upload time. Never write `--auth=` into a platformio.ini.
+  `scripts/ota_quiet.py` (post:) drops the builder's espota `--debug`, which
+  would print the password into the upload log.
 - **`tools/preview/`** -- renders every page on the host from `common/src/ui`.
 
 ## Commands

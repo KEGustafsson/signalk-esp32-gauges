@@ -124,7 +124,8 @@ second, when connected.
    `scripts/ota_auth.py` (adapted from
    [drive-remote-controller](https://github.com/KEGustafsson/drive-remote-controller))
    takes the OTA password and the unit's address from `include/secrets.h`, so
-   neither is written into `platformio.ini`.
+   neither is written into `platformio.ini`; `scripts/ota_quiet.py` keeps
+   espota from echoing the password into the upload log.
 
 SensESP's setup access point (named after the unit's hostname) follows
 `secrets.h`: with `SECRET_AP_PASSWORD` set it uses that password; with the

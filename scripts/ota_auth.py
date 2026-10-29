@@ -121,7 +121,8 @@ def main():
                 "          over USB so the gauge knows it." % secrets
             )
             return
-        # Never printed: this output goes to build logs.
+        # Never printed: this output goes to build logs. ota_quiet.py (post:)
+        # also drops the builder's espota --debug, which would log it.
         env.Append(UPLOAD_FLAGS=["--auth=%s" % password])  # noqa: F821
 
     # --- the address of the gauge this env flashes ---------------------------

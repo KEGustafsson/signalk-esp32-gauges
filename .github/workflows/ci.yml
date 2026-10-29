@@ -177,7 +177,11 @@ jobs:
             exit 1
           fi
           for key in SECRET_OTA_PASSWORD SECRET_ADMIN_PASSWORD SECRET_AP_PASSWORD; do
-            if ! grep -qE "^#define $key \"\"" include/secrets.example.h; then
+            # Named once, as exactly one empty literal: "" "x" would
+            # concatenate to "x", and a second #define would override it.
+            if [ "$(grep -cw "$key" include/secrets.example.h)" -ne 1 ] ||
+                ! grep -qE "^#define[[:space:]]+$key[[:space:]]+\"\"[[:space:]]*(//.*)?$" \
+                include/secrets.example.h; then
               echo "::error::include/secrets.example.h must keep $key empty"
               exit 1
             fi
