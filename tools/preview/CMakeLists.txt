@@ -5,14 +5,14 @@ project(gauge_preview C CXX)
 set(CMAKE_CXX_STANDARD 17)
 
 include(FetchContent)
+# Download only: LVGL is compiled below with the firmware's lv_conf.h, so its
+# own CMakeLists.txt is skipped by pointing SOURCE_SUBDIR at nothing.
 FetchContent_Declare(lvgl
   GIT_REPOSITORY https://github.com/lvgl/lvgl.git
   GIT_TAG v9.3.0
-  GIT_SHALLOW TRUE)
-FetchContent_GetProperties(lvgl)
-if(NOT lvgl_POPULATED)
-  FetchContent_Populate(lvgl)
-endif()
+  GIT_SHALLOW TRUE
+  SOURCE_SUBDIR no-cmake)
+FetchContent_MakeAvailable(lvgl)
 
 set(REPO ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(COMMON ${REPO}/common/src)

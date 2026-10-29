@@ -1,0 +1,159 @@
+name: CI
+
+# Everything in this repository that can be checked without the hardware.
+#
+# Nothing here proves a gauge WORKS on the boat -- that needs the first
+# power-up checklists in each board folder's README. What it does prove is that
+# all four unit firmwares still compile against their configured dependencies
+# (SensESP tracks its main branch, so upstream changes surface here first),
+# that the shared gauge UI still renders every page at both panel sizes, and
+# that the committed tree carries no usable OTA credential.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same ref. Never cancel main:
+# its runs are the record of what was actually verified on the trunk.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # One job per physical unit. The port and starboard builds differ only in
+  # -D flags, but each flag set names its own secrets.example.h entry, so all
+  # four are built. fail-fast is off so a break shows for every unit it hits.
+  # ---------------------------------------------------------------------------
+  firmware-build:
+    name: Build ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: waveshare-esp32-p4-wifi6-touch-lcd-4c
+            env: p4_stbd
+          - project: waveshare-esp32-p4-wifi6-touch-lcd-4c
+            env: p4_port
+          - project: waveshare-esp32-s3-touch-lcd-2.1
+            env: s3_stbd
+          - project: waveshare-esp32-s3-touch-lcd-2.1
+            env: s3_port
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # No `cache: pip`: there is no requirements file, PlatformIO is installed
+      # ad hoc below. The cache that matters is ~/.platformio.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      # Keyed on platformio.ini, which names the platform and library sources.
+      # Per-env keys keep the four jobs from racing to write one entry.
+      - name: Cache PlatformIO
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
+          restore-keys: pio-${{ matrix.env }}-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      # include/secrets.h is untracked, so the firmware builds from
+      # secrets.example.h here, as on any clean checkout.
+      - name: Build
+        run: pio run -e ${{ matrix.env }}
+
+      # Separate from the build so a compile failure reports as one. A firmware
+      # creeping toward its OTA slot size should show up here, not at an upload
+      # failure on the boat.
+      - name: Report flash/RAM usage
+        run: pio run -e ${{ matrix.env }} -t size
+
+  # ---------------------------------------------------------------------------
+  # The shared gauge UI on the host: tools/preview compiles common/src/ui with
+  # LVGL 9.3 and the firmware's own lv_conf.h, then renders every page at 480
+  # and 720 px. A crash, an assert or a missing page fails the job; the images
+  # are kept as an artifact so a visual change can be looked at in review.
+  # ---------------------------------------------------------------------------
+  gauge-preview:
+    name: Gauge preview (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Configure
+        run: cmake -S tools/preview -B build/preview -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build/preview -j
+
+      - name: Render every page at both panel sizes
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          build/preview/preview 480
+          build/preview/preview 720
+
+      - name: Contact sheets
+        run: |
+          pip install pillow
+          python tools/preview/contact_sheet.py out/480 out/preview-480.png
+          python tools/preview/contact_sheet.py out/720 out/preview-720.png
+
+      - name: Upload renders
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gauge-preview
+          path: out/preview-*.png
+
+  # ---------------------------------------------------------------------------
+  # The scripts and the credential rules. ota_auth.py only runs at upload time,
+  # so a syntax error in it would otherwise first show up on the boat.
+  # ---------------------------------------------------------------------------
+  scripts:
+    name: Scripts and credentials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Byte-compile the scripts
+        run: python -m compileall -q scripts tools/preview
+
+      # secrets.h must never be committed, and the committed example must not
+      # carry a usable OTA password: a build without secrets.h falls back to
+      # it, and would otherwise accept OTA uploads with a published password.
+      - name: No committed credentials
+        run: |
+          set -euo pipefail
+          if [ -n "$(git ls-files include/secrets.h)" ]; then
+            echo "::error::include/secrets.h is committed; it must stay gitignored"
+            exit 1
+          fi
+          if ! grep -qE '^#define SECRET_OTA_PASSWORD ""' include/secrets.example.h; then
+            echo "::error::include/secrets.example.h must keep SECRET_OTA_PASSWORD empty"
+            exit 1
+          fi
+          if grep -rqE --include=platformio.ini -e '--auth=' .; then
+            echo "::error::an OTA password is written into a platformio.ini; scripts/ota_auth.py injects it from secrets.h"
+            exit 1
+          fi
+          echo "no committed credentials"

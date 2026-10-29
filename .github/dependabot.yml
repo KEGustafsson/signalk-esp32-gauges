@@ -1,0 +1,19 @@
+# Keeps the GitHub Actions pinned in the workflows current: one grouped pull
+# request per week at most. The workflows pin actions by commit SHA, so an
+# unreviewed one cannot slip in regardless; review each like any other change.
+#
+# WHAT DEPENDABOT CANNOT SEE HERE: the firmware's dependencies. Both
+# platformio.ini files take SensESP from its git main branch, the display
+# libraries from git tags and the platform from a release zip. Dependabot has
+# no PlatformIO ecosystem, so CI's firmware builds are what notice an upstream
+# change.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      all-actions:
+        patterns: ["*"]
