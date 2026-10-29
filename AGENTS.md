@@ -70,7 +70,8 @@ mkdir -p out && build/preview/preview 480 && build/preview/preview 720
 
 Building one env per board is enough to prove the code compiles: the port and
 starboard envs differ only in `-D` flags, and the `_usb` envs only in the
-upload method. CI (`.github/workflows/ci.yml`) builds all four units, renders
+upload method. CI (`.github/workflows/ci.yml`) builds the starboard unit of
+each board (`p4_stbd`, `s3_stbd`), renders
 the preview at both sizes, and checks the scripts and credential rules on every
 push to `main` and every pull request. Run the relevant check locally anyway:
 CI is the backstop, not the first place to find out.

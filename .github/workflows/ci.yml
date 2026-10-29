@@ -4,7 +4,7 @@ name: CI
 #
 # Nothing here proves a gauge WORKS on the boat -- that needs the first
 # power-up checklists in each board folder's README. What it does prove is that
-# all four unit firmwares still compile against their configured dependencies
+# both boards' firmware still compiles against its configured dependencies
 # (SensESP tracks its main branch, so upstream changes surface here first),
 # that the shared gauge UI still renders every page at both panel sizes, and
 # that the committed tree carries no usable OTA credential.
@@ -26,9 +26,10 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # One job per physical unit. The port and starboard builds differ only in
-  # -D flags, but each flag set names its own secrets.example.h entry, so all
-  # four are built. fail-fast is off so a break shows for every unit it hits.
+  # One job per board, built as its starboard unit. The port envs differ only
+  # in -D flags (side, hostname, address) and the *_usb envs only in the upload
+  # method, so the starboard build proves the code compiles for both sides.
+  # fail-fast is off so a break shows for every board it hits.
   # ---------------------------------------------------------------------------
   firmware-build:
     name: Build ${{ matrix.env }}
@@ -39,12 +40,8 @@ jobs:
         include:
           - project: waveshare-esp32-p4-wifi6-touch-lcd-4c
             env: p4_stbd
-          - project: waveshare-esp32-p4-wifi6-touch-lcd-4c
-            env: p4_port
           - project: waveshare-esp32-s3-touch-lcd-2.1
             env: s3_stbd
-          - project: waveshare-esp32-s3-touch-lcd-2.1
-            env: s3_port
     defaults:
       run:
         working-directory: ${{ matrix.project }}
@@ -58,7 +55,7 @@ jobs:
           python-version: '3.12'
 
       # Keyed on platformio.ini, which names the platform and library sources.
-      # Per-env keys keep the four jobs from racing to write one entry.
+      # Per-env keys keep the jobs from racing to write one entry.
       - name: Cache PlatformIO
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

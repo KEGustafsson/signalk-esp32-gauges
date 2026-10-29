@@ -20,5 +20,5 @@ been flashed yet.
 CodeRabbit's first review led to: an empty OTA password in the committed
 example, `$`/whitespace handling in `ota_auth.py`, restart on display-init
 failure, reboot on LVGL asserts, a bounded idle delay in the loop, and
-preview-tool robustness. CI added (`.github/workflows/ci.yml`): all four unit
-builds, the host preview, and the credential checks.
+preview-tool robustness. CI added (`.github/workflows/ci.yml`): one build per board
+(`p4_stbd`, `s3_stbd` -- the port envs differ only in `-D` flags), the host preview, and the credential checks.

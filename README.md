@@ -128,8 +128,8 @@ UI.
 ## Status
 
 The firmware compiles for both boards, but it has not yet been run on the
-hardware. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) builds all
-four units, renders every gauge page on the host, and checks that no credential
+hardware. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) builds both
+boards (as their starboard units), renders every gauge page on the host, and checks that no credential
 is committed, on every push and pull request. Working rules for contributors
 (and AI agents) are in [AGENTS.md](AGENTS.md). Things to check on first power-up are listed in each board folder's
 README.
