@@ -23,18 +23,44 @@ static void flush_cb(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
     memcpy(&fb[y * W + a->x1], px + (size_t)(y - a->y1) * w * 2, w * 2);
   lv_display_flush_ready(d);
 }
-static void save(const char* path) {
+static bool save(const char* path) {
   FILE* f = fopen(path, "wb");
-  fprintf(f, "P6 %d %d 255\n", W, H);
-  for (int i = 0; i < W * H; i++) {
+  if (f == nullptr) {
+    perror(path);
+    return false;
+  }
+  bool ok = fprintf(f, "P6 %d %d 255\n", W, H) > 0;
+  for (int i = 0; ok && i < W * H; i++) {
     uint16_t c = fb[i];
     unsigned char rgb[3] = {(unsigned char)(((c >> 11) & 0x1F) * 255 / 31),
                             (unsigned char)(((c >> 5) & 0x3F) * 255 / 63),
                             (unsigned char)((c & 0x1F) * 255 / 31)};
-    fwrite(rgb, 1, 3, f);
+    ok = fwrite(rgb, 1, 3, f) == 3;
   }
-  fclose(f);
+  ok = (fclose(f) == 0) && ok;
+  if (!ok) {
+    perror(path);
+  }
+  return ok;
 }
+
+// Sample values in displayed units, by gauge id; gauges not listed here
+// show the middle of their range.
+static float sample_for(const skgauges::GaugeDef& def) {
+  static const struct {
+    const char* id;
+    float value;
+  } kSamples[] = {
+      {"port_rpm", 1650},   {"stbd_rpm", 2240},    {"speed", 12.4f},
+      {"heading", 291},     {"port_coolant", 82},  {"stbd_coolant", 79},
+      {"port_oil", 96},     {"stbd_oil", 104},     {"attitude", -1.8f},
+  };
+  for (const auto& s : kSamples) {
+    if (strcmp(s.id, def.id) == 0) return s.value;
+  }
+  return (def.min + def.max) / 2.0f;
+}
+
 int main(int argc, char** argv) {
   W = H = argc > 1 ? atoi(argv[1]) : 480;
   fb.assign(W * H, 0);
@@ -49,13 +75,11 @@ int main(int argc, char** argv) {
   lv_obj_set_style_bg_color(scr, lv_color_hex(0), 0);
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
   skgauges::ui::Geometry g{W / 2, H / 2, W / 2};
-  // Sample values in displayed units.
-  float samples[] = {1650, 2240, 12.4f, 291, 82, 79, 96, 104, -1.8f};
   for (size_t i = 0; i < skgauges::kGaugeCount; i++) {
     const auto& def = skgauges::kGauges[i];
     auto page = skgauges::ui::create_page(scr, def, g);
     skgauges::GaugeValue v;
-    v.value = samples[i];
+    v.value = sample_for(def);
     v.value2 = -0.7f;
     v.seen = true;
     for (int k = 0; k < 60; k++) {
@@ -65,7 +89,10 @@ int main(int argc, char** argv) {
     }
     char path[64];
     snprintf(path, sizeof(path), "out/%d_%zu_%s.ppm", W, i, def.id);
-    save(path);
+    if (!save(path)) {
+      fprintf(stderr, "could not write %s (does out/ exist?)\n", path);
+      return 1;
+    }
     printf("saved %s\n", path);
   }
   return 0;

@@ -1,7 +1,7 @@
 /**
  * LVGL 9.3 configuration for the waveshare-esp32-p4-wifi6-touch-lcd-4c gauge firmware.
  * Generated from lvgl/lv_conf_template.h (v9.3.0); these options are set
- * explicitly (the rest are upstream defaults): LV_COLOR_DEPTH, LV_USE_STDLIB_MALLOC, LV_USE_STDLIB_STRING, LV_USE_STDLIB_SPRINTF, LV_USE_OS, LV_DEF_REFR_PERIOD, LV_GRADIENT_MAX_STOPS, LV_USE_FLOAT, LV_USE_LOG, LV_LOG_LEVEL, LV_LOG_PRINTF, LV_USE_ASSERT_MALLOC, LV_FONT_DEFAULT, LV_FONT_MONTSERRAT_12..48 (even sizes)
+ * explicitly (the rest are upstream defaults): LV_COLOR_DEPTH, LV_USE_STDLIB_MALLOC, LV_USE_STDLIB_STRING, LV_USE_STDLIB_SPRINTF, LV_USE_OS, LV_DEF_REFR_PERIOD, LV_GRADIENT_MAX_STOPS, LV_USE_FLOAT, LV_USE_LOG, LV_LOG_LEVEL, LV_LOG_PRINTF, LV_USE_ASSERT_MALLOC, LV_ASSERT_HANDLER (reboot on ESP), LV_FONT_DEFAULT, LV_FONT_MONTSERRAT_12..48 (even sizes)
  */
 /**
  * @file lv_conf.h
@@ -424,8 +424,14 @@
 #define LV_USE_ASSERT_OBJ           0   /**< Check the object's type and existence (e.g. not deleted). (Slow) */
 
 /** Add a custom handler when assert happens e.g. to restart MCU. */
+#if defined(ESP_PLATFORM)
+/* An unattended gauge reboots rather than freezing on a stale reading. */
+#define LV_ASSERT_HANDLER_INCLUDE <esp_system.h>
+#define LV_ASSERT_HANDLER esp_restart();
+#else  /* Host builds (tools/preview) */
 #define LV_ASSERT_HANDLER_INCLUDE <stdint.h>
 #define LV_ASSERT_HANDLER while(1);     /**< Halt by default */
+#endif
 
 /*-------------
  * Debug

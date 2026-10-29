@@ -69,7 +69,10 @@ void gauge_app_begin(const GaugeAppConfig& config) {
 
 void gauge_app_loop() {
   sensesp::event_loop()->tick();
-  lv_timer_handler();
+  const uint32_t wait_ms = lv_timer_handler();
+  // Sleep until the next LVGL timer is due, but at most 5 ms so SensESP's
+  // event loop keeps ticking often.
+  delay(wait_ms == 0 ? 1 : (wait_ms < 5 ? wait_ms : 5));
 }
 
 }  // namespace skgauges

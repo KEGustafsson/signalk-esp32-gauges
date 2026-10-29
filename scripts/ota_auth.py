@@ -102,8 +102,19 @@ def main():
                 "          here rather than failing halfway through espota." % secrets
             )
             return
-        # Never printed: this output goes to build logs.
-        env.Append(UPLOAD_FLAGS=["--auth=%s" % match.group(1)])  # noqa: F821
+        password = match.group(1)
+        # The flag goes through SCons variable expansion and a shell command
+        # line: whitespace would split it and a backslash would not survive
+        # unchanged. Refuse those rather than send espota a different secret.
+        if re.search(r"[\s\\]", password):
+            _fail(
+                "SECRET_OTA_PASSWORD in %s must not contain spaces or\n"
+                "          backslashes." % secrets
+            )
+            return
+        # Never printed: this output goes to build logs. "$$" is a literal
+        # "$" after SCons expands $UPLOAD_FLAGS.
+        env.Append(UPLOAD_FLAGS=["--auth=%s" % password.replace("$", "$$")])  # noqa: F821
 
     # --- the address of the gauge this env flashes ---------------------------
     if given_port:

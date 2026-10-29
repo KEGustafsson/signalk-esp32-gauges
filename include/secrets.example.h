@@ -16,7 +16,10 @@
 // WiFi until you create secrets.h or configure WiFi through the SensESP setup
 // portal (access point named after the unit's hostname).
 
-#define SECRET_OTA_PASSWORD "set-a-strong-ota-password"
+// Set a strong password here to enable OTA updates. It stays empty in this
+// committed example, so a build without a secrets.h never accepts OTA
+// uploads (scripts/ota_auth.py also refuses to upload without one).
+#define SECRET_OTA_PASSWORD ""
 
 // The address of each gauge. scripts/ota_auth.py uploads to it; the suffix is
 // the PlatformIO environment name in upper case: env:p4_stbd -> ..._P4_STBD.

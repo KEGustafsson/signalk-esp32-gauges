@@ -26,9 +26,11 @@ void setup() {
   sensesp::SetupLogging(ESP_LOG_INFO);
 
   board = new Board();
-  board->init();
-  if (!board->begin()) {
-    ESP_LOGE("main", "Display board init failed");
+  if (!board->init() || !board->begin()) {
+    // Nothing useful can run without the display; try again from scratch.
+    ESP_LOGE("main", "Display board init failed, restarting");
+    delay(1000);
+    esp_restart();
   }
   skgauges::lvgl_port_init(board, LVGL_BUFFER_LINES);
 
