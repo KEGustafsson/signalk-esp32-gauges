@@ -45,6 +45,8 @@ jobs:
     defaults:
       run:
         working-directory: ${{ matrix.project }}
+    env:
+      PLATFORMIO_BUILD_CACHE_DIR: ${{ github.workspace }}/.pio-build-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -62,6 +64,19 @@ jobs:
           path: ~/.platformio
           key: pio-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
           restore-keys: pio-${{ matrix.env }}-${{ runner.os }}-
+
+      # Compiled objects (Arduino core, LVGL, SensESP, the gauge code), reused
+      # through PlatformIO's build cache. Its entries are keyed by the content
+      # of each compile, so a changed source -- including a new SensESP commit
+      # on its main branch -- just recompiles that file. A GitHub cache entry
+      # cannot be overwritten, so every run saves under its own key and the
+      # next run restores the newest one by prefix.
+      - name: Cache compiled objects
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.pio-build-cache
+          key: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: pio-objs-${{ matrix.env }}-${{ runner.os }}-
 
       - name: Install PlatformIO
         run: pip install --upgrade platformio
