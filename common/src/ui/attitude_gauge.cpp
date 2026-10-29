@@ -243,6 +243,7 @@ void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
   const float oy = g_.cy + g_.pxf(kDiscY) - pitch * g_.pxf(kPitchPxPerDeg);
   const float theta = shown_roll_ * kDegToRad;
   const float c = cosf(theta), s = sinf(theta);
+  const lv_opa_t opa = layer->opa;  // Dimmed while stale (set_stale_look)
   auto at = [&](float x_frac, float y_frac) {
     const float x = g_.pxf(x_frac), y = g_.pxf(y_frac);
     lv_point_precise_t p;
@@ -259,6 +260,7 @@ void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
   lv_draw_triangle_dsc_t tri;
   lv_draw_triangle_dsc_init(&tri);
   tri.color = lv_color_hex(kBoatSymbol);
+  tri.opa = opa;
   tri.p[0] = deck_l;
   tri.p[1] = deck_r;
   tri.p[2] = keel_r;
@@ -272,9 +274,9 @@ void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
   const lv_point_precise_t mast_foot = at(0.0f, -kFreeboard);
   const lv_point_precise_t mast_head = at(0.0f, -kFreeboard - kMastHeight);
   draw_line(layer, deck_l.x, deck_l.y, deck_r.x, deck_r.y,
-            LV_MAX(2, g_.px(0.012f)), 0xFFD9A8);
+            LV_MAX(2, g_.px(0.012f)), 0xFFD9A8, opa);
   draw_line(layer, mast_foot.x, mast_foot.y, mast_head.x, mast_head.y,
-            LV_MAX(2, g_.px(0.014f)), kBoatSymbol);
+            LV_MAX(2, g_.px(0.014f)), kBoatSymbol, opa);
 }
 
 void AttitudeGaugePage::draw_dynamic(lv_layer_t* layer) const {
@@ -292,6 +294,7 @@ void AttitudeGaugePage::draw_dynamic(lv_layer_t* layer) const {
   tri.p[1] = polar(g_, angle - half_deg, g_.pxf(kPointerBase));
   tri.p[2] = polar(g_, angle + half_deg, g_.pxf(kPointerBase));
   tri.color = lv_color_hex(color::kNeedle);
+  tri.opa = layer->opa;
   lv_draw_triangle(layer, &tri);
 }
 

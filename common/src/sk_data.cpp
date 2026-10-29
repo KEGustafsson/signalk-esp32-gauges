@@ -13,6 +13,15 @@ namespace skgauges {
 
 namespace {
 
+// After a (re)connect, signalk-server replays the last value it holds for
+// each path -- one per $source, however old -- in a burst, and SensESP drops
+// the delta timestamps. Everything a path receives within this window after
+// its first sample on a new connection is treated as replay and ignored.
+constexpr uint32_t kReplayWindowMs = 1000;
+// A null/non-numeric delta blanks the gauge unless another source delivered
+// a real value within this time (several sources can publish one path).
+constexpr uint32_t kInvalidGraceMs = 2000;
+
 float wrap360(float deg) {
   deg = fmodf(deg, 360.0f);
   return deg < 0.0f ? deg + 360.0f : deg;
@@ -26,16 +35,6 @@ SkData& sk_data() {
 
 void SkData::begin(Side unit_side) {
   const size_t count = kGaugeCount < kMaxGauges ? kGaugeCount : kMaxGauges;
-
-  // signalk-server answers a subscription by replaying the last value it holds
-  // for each path, however old -- and SensESP drops the delta timestamp. So
-  // the first sample of every path after each (re)connect is ignored: every
-  // connection state change starts a new generation, and store() only accepts
-  // a slot's second sample within a generation. A live source loses one
-  // sample; a dead one stays dashes instead of showing its last reading.
-  sensesp::sensesp_app->get_ws_client()->connect_to(
-      new sensesp::LambdaConsumer<sensesp::SKWSConnectionState>(
-          [this](sensesp::SKWSConnectionState) { conn_gen_++; }));
 
   // Drop values that have gone stale, so `seen` never outlives them.
   sensesp::event_loop()->onRepeat(1000, [this]() {
@@ -57,7 +56,7 @@ void SkData::begin(Side unit_side) {
     String title = String(def.title) + " (" + def.id + ")";
     const float scale = def.scale;
     const float offset = def.offset;
-    auto on_invalid = [slot]() { slot->seen = false; };
+    auto on_invalid = [this, slot]() { invalid(slot); };
 
     if (def.kind == GaugeKind::kAttitude) {
       auto listener = std::make_shared<AttitudeListener>(
@@ -96,17 +95,36 @@ void SkData::store(GaugeValue* slot, float value, float value2) {
   // JSON cannot carry NaN/Inf, but a huge exponent parses to a finite float
   // that overflows once scaled -- so check the converted values.
   if (!isfinite(value) || (!isnan(value2) && !isfinite(value2))) {
-    slot->seen = false;
+    invalid(slot);
     return;
   }
-  if (slot->conn_gen != conn_gen_) {
-    slot->conn_gen = conn_gen_;  // Possibly the server's cached replay
+  // Replay guard. The client generation changes synchronously on the loop
+  // when SensESP starts a new connection, and is_connected() is false until
+  // it is up, so leftovers of an old connection never count as fresh.
+  auto ws = sensesp::sensesp_app->get_ws_client();
+  if (!ws->is_connected()) {
+    return;
+  }
+  const uint32_t now = millis();
+  const uint32_t gen = ws->client_generation();
+  if (slot->conn_gen != gen) {
+    slot->conn_gen = gen;
+    slot->replay_until_ms = now + kReplayWindowMs;
+    return;
+  }
+  if ((int32_t)(now - slot->replay_until_ms) < 0) {
     return;
   }
   slot->value = value;
   slot->value2 = value2;
-  slot->updated_ms = millis();
+  slot->updated_ms = now;
   slot->seen = true;
+}
+
+void SkData::invalid(GaugeValue* slot) {
+  if (millis() - slot->updated_ms >= kInvalidGraceMs) {
+    slot->seen = false;
+  }
 }
 
 String SkData::sk_path(size_t index) const {

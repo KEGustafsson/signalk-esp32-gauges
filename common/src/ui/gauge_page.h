@@ -32,7 +32,11 @@ class GaugePage {
   lv_obj_t* create_overlay(lv_event_cb_t draw_cb);
 
   // Dims `obj` while its data is stale, so a parked compass card or level
-  // horizon cannot be mistaken for a live reading.
+  // boat symbol cannot be mistaken for a live reading. LVGL applies a style
+  // opacity only to descriptors it initialises itself, so the overlay's draw
+  // callback must copy `layer->opa` (set from this style while the object
+  // draws) into every descriptor it should dim. Changing the style
+  // invalidates `obj`, so the dimming shows at once.
   static void set_stale_look(lv_obj_t* obj, bool stale);
 
   const GaugeDef& def_;

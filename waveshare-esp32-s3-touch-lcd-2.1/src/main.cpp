@@ -12,6 +12,7 @@
 
 #include <esp_display_panel.hpp>
 
+#include "board_start.h"
 #include "sensesp_base_app.h"
 #include "signalk_gauges.h"
 
@@ -25,13 +26,7 @@ void setup() {
   Serial.begin(115200);
   sensesp::SetupLogging(ESP_LOG_INFO);
 
-  board = new Board();
-  if (!board->init() || !board->begin()) {
-    // Nothing useful can run without the display; try again from scratch.
-    ESP_LOGE("main", "Display board init failed, restarting");
-    delay(1000);
-    esp_restart();
-  }
+  board = skgauges::start_board(0);  // CST820: one address
   skgauges::lvgl_port_init(board, LVGL_BUFFER_LINES);
 
   skgauges::gauge_app_begin({

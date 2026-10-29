@@ -36,10 +36,10 @@ class SkData {
 
  private:
   void store(GaugeValue* slot, float value, float value2);
+  void invalid(GaugeValue* slot);
 
   GaugeValue values_[kMaxGauges];
   std::function<String()> paths_[kMaxGauges];
-  uint32_t conn_gen_ = 1;
 };
 
 SkData& sk_data();

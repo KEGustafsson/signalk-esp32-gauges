@@ -1,6 +1,7 @@
 #include "gauge_app.h"
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <lvgl.h>
 
@@ -9,6 +10,8 @@
 
 #include "gauge_secrets.h"
 #include "gauge_ui.h"
+#include "sensesp/system/resettable.h"
+#include "sensesp/ui/config_item.h"
 #include "sensesp_app_builder.h"
 #include "sk_data.h"
 #include "status_led.h"
@@ -50,21 +53,92 @@ std::vector<sensesp::ClientSSIDConfig> wifi_clients(const char* address) {
 // transfer, so the watchdog is off while one runs. Registered after
 // SensESP's own OTA setup (its onDelay(0)), so these callbacks are the ones
 // ArduinoOTA keeps.
+bool loop_watchdog_on = false;
+
+void loop_watchdog(bool on) {
+  if (on == loop_watchdog_on) return;  // ArduinoOTA may report one error twice
+  loop_watchdog_on = on;
+  if (on) {
+    enableLoopWDT();
+  } else {
+    disableLoopWDT();
+  }
+}
+
+// A factory reset (web UI, or the S3's BOOT key held 5 s) formats the whole
+// filesystem on the loop task, which takes longer than the watchdog allows.
+// Highest priority, so it runs before SensESP's own resets.
+class WatchdogOffForReset : public sensesp::Resettable {
+ public:
+  WatchdogOffForReset() : sensesp::Resettable(1000) {}
+  void reset() override { loop_watchdog(false); }
+};
+
 void start_loop_watchdog() {
-  enableLoopWDT();
+  loop_watchdog(true);
+  new WatchdogOffForReset();  // Registers itself; lives for the program
   if (SECRET_OTA_PASSWORD[0] == '\0') {
     return;
   }
   sensesp::event_loop()->onDelay(1, []() {
     ArduinoOTA.onStart([]() {
-      disableLoopWDT();
+      loop_watchdog(false);
       ESP_LOGW("gauge", "OTA upload started");
+      // The upload blocks the loop: replace the gauge with a notice rather
+      // than leave its last numbers on screen looking live.
+      ui_show_notice("Updating firmware...");
     });
     ArduinoOTA.onError([](ota_error_t error) {
-      ESP_LOGE("gauge", "OTA upload failed (%u)", error);
-      enableLoopWDT();
+      ESP_LOGE("gauge", "OTA upload failed (%u), restarting", error);
+      // The gauge page is gone; a restart is the simplest way back.
+      delay(1000);
+      esp_restart();
     });
   });
+}
+
+// SensESP builds the web UI's authenticator only from its saved settings,
+// when the HTTP server is constructed: set_admin_user() alone never takes
+// effect. So the wanted login (or "no login") is compared with what is saved,
+// and if it differs it is saved and the unit restarts once to apply it.
+void apply_web_ui_login() {
+  auto item = sensesp::ConfigItemBase::get_config_item("/system/httpserver");
+  if (!item) {
+    ESP_LOGE("gauge", "No HTTP server settings; web UI login not applied");
+    return;
+  }
+  JsonDocument wanted_doc;
+  JsonObject wanted = wanted_doc.to<JsonObject>();
+  if (SECRET_ADMIN_PASSWORD[0] != '\0') {
+    item->to_json(wanted);  // set_admin_user() put the login in memory
+  } else {
+    wanted["auth_required"] = false;
+    wanted["username"] = "";
+    wanted["ha1"] = "";
+  }
+  item->load();  // What the authenticator was built from at boot
+  JsonDocument saved_doc;
+  JsonObject saved = saved_doc.to<JsonObject>();
+  item->to_json(saved);
+  String wanted_json, saved_json;
+  serializeJson(wanted, wanted_json);
+  serializeJson(saved, saved_json);
+  if (wanted_json == saved_json) {
+    return;
+  }
+  item->from_json(wanted);
+  item->save();
+  ESP_LOGW("gauge", "Web UI login changed; restarting to apply it");
+  delay(500);
+  esp_restart();
+}
+
+// True if a WiFi network the unit can actually join is configured (SensESP
+// skips entries without a password).
+bool wifi_configured() {
+  return (SECRET_WIFI_SSID[0] != '\0' && SECRET_WIFI_PASSWORD[0] != '\0') ||
+         (SECRET_WIFI_SSID_2[0] != '\0' && SECRET_WIFI_PASSWORD_2[0] != '\0') ||
+         (SECRET_WIFI_SSID_3[0] != '\0' && SECRET_WIFI_PASSWORD_3[0] != '\0');
 }
 
 }  // namespace
@@ -87,20 +161,24 @@ void gauge_app_begin(const GaugeAppConfig& config) {
     builder.enable_ota(SECRET_OTA_PASSWORD);
   }
   // SensESP's setup access point. With a password from secrets.h it uses
-  // that; with the boat's WiFi configured and no AP password it is off (as in
-  // drive-remote-controller); with nothing configured it keeps SensESP's
-  // default so a fresh unit can still be set up.
+  // that; with a joinable boat WiFi configured and no AP password it is off
+  // (as in drive-remote-controller; recovery is then a USB flash); with
+  // nothing configured it keeps SensESP's default so a fresh unit can still
+  // be set up.
   if (SECRET_AP_PASSWORD[0] != '\0') {
     builder.set_wifi_access_point(config.hostname, SECRET_AP_PASSWORD);
-  } else if (SECRET_WIFI_SSID[0] != '\0') {
+  } else if (wifi_configured()) {
     builder.set_wifi_access_point("", "");
   }
-  // Without this the web UI (which can repoint the gauge at another Signal K
-  // server) is open to anyone on the network.
+  // Without a login the web UI (which can repoint the gauge at another
+  // Signal K server) is open to anyone on the boat's network. Requests that
+  // arrive over the setup access point are not asked to log in (SensESP's
+  // captive portal); there SECRET_AP_PASSWORD is the protection.
   if (SECRET_ADMIN_PASSWORD[0] != '\0') {
     builder.set_admin_user(SECRET_ADMIN_USER, SECRET_ADMIN_PASSWORD);
   }
   sensesp::sensesp_app = builder.get_app();
+  apply_web_ui_login();
 
   sk_data().begin(config.side);
   start_loop_watchdog();

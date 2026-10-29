@@ -7,7 +7,8 @@
 // 0.0f. For a gauge that is a lie -- a source publishing `null` ("no valid
 // data", e.g. an engine gateway that lost its NMEA 2000 source) would park
 // the needle on a confident 0 rpm. These listeners DROP any delta whose value
-// is not a JSON number and report it, so the gauge shows dashes at once
+// is not a JSON number and report it, so the gauge shows dashes (at once,
+// unless another source of the same path is still delivering numbers)
 // instead of a number nobody vouches for.
 // (Same approach as KEGustafsson/drive-remote-controller's
 // include/strict_sk_listeners.h.)

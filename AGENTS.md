@@ -33,9 +33,10 @@ are about never showing a wrong number with confidence.
 3. **Recover, don't freeze.** An unattended gauge must reboot rather than hang
    on a stale picture: display init failure restarts, the LVGL assert handler
    restarts on ESP targets.
-4. **Never commit a credential.** `include/secrets.h` is gitignored; the
-   committed `secrets.example.h` keeps `SECRET_OTA_PASSWORD` empty so a build
-   without secrets.h never accepts OTA. CI checks both.
+4. **Never commit a credential.** `secrets.h` is gitignored anywhere in the
+   tree; the committed `secrets.example.h` keeps `SECRET_OTA_PASSWORD`,
+   `SECRET_ADMIN_PASSWORD` and `SECRET_AP_PASSWORD` empty so a build without
+   secrets.h never accepts a published password. CI checks all of it.
 
 If a task would require breaking one of these, stop and flag it.
 

@@ -10,9 +10,9 @@
 
 #include <Arduino.h>
 
-#include <esp_attr.h>
 #include <esp_display_panel.hpp>
 
+#include "board_start.h"
 #include "sensesp_base_app.h"
 #include "signalk_gauges.h"
 
@@ -20,15 +20,9 @@ using esp_panel::board::Board;
 
 namespace {
 Board* board = nullptr;
-
 // The GT911-compatible touch chip answers at 0x5D on most boards and at 0x14
-// on some (Waveshare's BSP probes both). Board::begin() fails if touch does
-// not answer, so after a failed start the next boot tries the other address.
-// RTC_NOINIT memory survives esp_restart(); the marker value guards against
-// power-on garbage.
-constexpr uint32_t kUseBackupTouchAddress = 0x14A5;
+// on some (Waveshare's BSP probes both); start_board() tries both.
 constexpr uint8_t kGt911BackupAddress = 0x14;
-RTC_NOINIT_ATTR uint32_t touch_address_choice;
 }  // namespace
 
 void setup() {
@@ -38,22 +32,7 @@ void setup() {
   Serial.setTxTimeoutMs(0);
   sensesp::SetupLogging(ESP_LOG_INFO);
 
-  board = new Board();
-  bool ok = board->init();
-  if (ok && touch_address_choice == kUseBackupTouchAddress) {
-    static_cast<esp_panel::drivers::BusI2C*>(board->getTouch()->getBus())
-        ->configI2C_Address(kGt911BackupAddress);
-  }
-  if (!ok || !board->begin()) {
-    // Nothing useful can run without the display; try again from scratch,
-    // with the other touch address.
-    touch_address_choice = touch_address_choice == kUseBackupTouchAddress
-                               ? 0
-                               : kUseBackupTouchAddress;
-    ESP_LOGE("main", "Display board init failed, restarting");
-    delay(1000);
-    esp_restart();
-  }
+  board = skgauges::start_board(kGt911BackupAddress);
   skgauges::lvgl_port_init(board, LVGL_BUFFER_LINES);
 
   skgauges::gauge_app_begin({

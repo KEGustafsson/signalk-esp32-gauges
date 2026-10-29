@@ -84,7 +84,8 @@ class TextImage {
   TextImage& operator=(const TextImage&) = delete;
 
   // Draw centred on (cx, cy), rotated by rotation_deg (clockwise).
-  void draw(lv_layer_t* layer, float cx, float cy, float rotation_deg) const;
+  void draw(lv_layer_t* layer, float cx, float cy, float rotation_deg,
+            lv_opa_t opa = LV_OPA_COVER) const;
   bool valid() const { return buf_ != nullptr; }
   // Half the diagonal: no rotation draws outside this radius of the centre.
   float radius() const;

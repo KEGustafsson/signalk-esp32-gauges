@@ -100,7 +100,8 @@ jobs:
   # ---------------------------------------------------------------------------
   # The shared gauge UI on the host: tools/preview compiles common/src/ui with
   # LVGL 9.3 and the firmware's own lv_conf.h, then renders every page at 480
-  # and 720 px. A crash, an LVGL assert or a failed write fails the job; the images
+  # and 720 px. A crash, an LVGL assert (which spins, hence the timeouts) or a
+  # failed write fails the job; the images
   # are kept as an artifact so a visual change can be looked at in review.
   # ---------------------------------------------------------------------------
   gauge-preview:
@@ -126,14 +127,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          build/preview/preview 480
-          build/preview/preview 720
+          # An LVGL assert halts (spins) on the host: cap it.
+          timeout 120 build/preview/preview 480
+          timeout 120 build/preview/preview 720
 
       - name: Contact sheets
         run: |
           pip install pillow
           python tools/preview/contact_sheet.py out/480 out/preview-480.png
           python tools/preview/contact_sheet.py out/720 out/preview-720.png
+          python tools/preview/contact_sheet.py out/stale480 out/preview-stale-480.png
 
       - name: Upload renders
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -169,7 +172,7 @@ jobs:
       - name: No committed credentials
         run: |
           set -euo pipefail
-          if git ls-files | grep -qE '(^|/)secrets\.h$'; then
+          if [ -n "$(git ls-files ':(glob)**/secrets.h')" ]; then
             echo "::error::a secrets.h is committed; it must stay gitignored"
             exit 1
           fi
@@ -179,8 +182,8 @@ jobs:
               exit 1
             fi
           done
-          if git ls-files -z '*platformio.ini' \
-              | xargs -0 grep -qE -e '--auth[= ]' -e '(^|[[:space:]])-a[[:space:]]'; then
+          if git grep -qE -e '--auth[= ]' -e '(^|[[:space:]])-a[[:space:]]' \
+              -- '*platformio.ini'; then
             echo "::error::an OTA password is written into a platformio.ini; scripts/ota_auth.py injects it from secrets.h"
             exit 1
           fi

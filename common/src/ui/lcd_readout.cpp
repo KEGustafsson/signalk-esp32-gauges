@@ -204,6 +204,9 @@ void LcdReadout::draw(lv_layer_t* layer, const lv_area_t& coords) const {
   float gap = digit_w * 0.34f;
   // Shrink if the slots do not fit between the prefix and the suffix.
   const float avail = right - left;
+  if (avail <= 0.0f) {  // Prefix and suffix fill the box: nothing fits
+    return;
+  }
   const float needed = slots_ * digit_w + (slots_ - 1) * gap;
   if (needed > avail && needed > 0) {
     digit_w *= avail / needed;

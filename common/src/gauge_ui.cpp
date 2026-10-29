@@ -110,11 +110,16 @@ void show_overlay(const char* text, uint32_t duration_ms, bool info) {
 }
 
 void show_page(size_t index, bool announce) {
+  const uint32_t start = millis();
   state->current = index;
   state->page.reset();  // Frees the previous page's canvas first
   state->page = ui::create_page(lv_screen_active(),
                                 kGauges[state->pages[index]],
                                 state->geometry);
+  // Page builds run on the loop under its 5 s watchdog; log how long they
+  // take on the real hardware.
+  ESP_LOGI("gauge_ui", "Page %s built in %u ms", kGauges[state->pages[index]].id,
+           (unsigned)(millis() - start));
   if (announce) {
     char text[48];
     snprintf(text, sizeof(text), "%u / %u\n%s",
@@ -160,6 +165,9 @@ void screen_event_cb(lv_event_t* e) {
 
   if (code == LV_EVENT_GESTURE) {
     const lv_dir_t dir = lv_indev_get_gesture_dir(indev);
+    if (dir == LV_DIR_NONE) {
+      return;
+    }
     const size_t n = state->pages.size();
     lv_indev_wait_release(indev);
     if (dir == LV_DIR_LEFT) {
@@ -286,6 +294,16 @@ void ui_begin(const UiConfig& config) {
   lv_timer_create(ui_timer_cb, kUiPeriodMs, nullptr);
 }
 
+void ui_show_notice(const char* text) {
+  if (state == nullptr) {
+    return;
+  }
+  state->page.reset();
+  show_overlay(text, kInfoShowMs, false);
+  lv_timer_pause(state->overlay_timer);  // Stays until the restart
+  lv_refr_now(nullptr);
+}
+
 void ui_set_status_color(uint8_t r, uint8_t g, uint8_t b) {
   if (state == nullptr || state->status_dot == nullptr) {
     return;
@@ -294,7 +312,7 @@ void ui_set_status_color(uint8_t r, uint8_t g, uint8_t b) {
   // colour is quantised: SensESP fades its LED every 5 ms, and restyling the
   // dot on every step would keep the display from ever going idle.
   uint32_t rgb = (((uint32_t)r << 16) | ((uint32_t)g << 8) | b) & 0xE0E0E0;
-  if (r < 0x30 && g < 0x30 && b < 0x30) {
+  if ((rgb & 0xC0C0C0) == 0) {  // Every channel below 0x40
     rgb = 0x303030;
   }
   if (rgb == state->status_color) {

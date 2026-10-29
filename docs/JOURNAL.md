@@ -38,7 +38,7 @@ The ones that changed behaviour:
   at once; a periodic sweep clears stale values (no millis() wrap revival);
   finiteness is checked after unit conversion; a stale compass card or
   horizon is dimmed instead of looking like a reading; LCD overflow shows
-  `EEEE`, distinct from no-data dashes.
+  a row of `E`s, distinct from no-data dashes.
 - **Recover, don't freeze** (non-negotiable 3): loop task watchdog (off during
   OTA uploads); a display flush that never completes restarts the unit; the
   4" alternates the GT911 address (0x5D/0x14) across restarts instead of
@@ -52,7 +52,7 @@ The ones that changed behaviour:
 - **Resources**: one LVGL buffer instead of two (the flush blocks anyway);
   draw tasks culled to the render strip (compass ~4x fewer); 2.1" touch read
   on its interrupt; USB-CDC writes never block on the 4"; both 4" app slots
-  now below 16 MB.
+  now end at or below 16 MB.
 
 Verified: both boards build without warnings from this code; the preview
 renders every page; stale/overflow states rendered and inspected; incremental
@@ -68,3 +68,36 @@ it heels with `roll` (starboard down turns it clockwise) and rises with
 sea and ladder are now part of the static face, so only the boat and the heel
 pointer redraw. Rendering it exposed a latent bug: `draw_text()` queued a
 pointer to the caller's text; it now sets `text_local` so LVGL copies it.
+
+## 2026-10-29 — Multi-agent review round 2
+
+Three reviews (data path and SensESP internals, app/security, UI) of the
+round-1 fixes. What changed:
+
+- **Stale data**: Signal K replays every source's cached value on
+  subscribe, so the first second after each (re)connection is dropped
+  (`client_generation()` window) and nothing is stored while the client is
+  down. A `null` blanks a gauge only if no valid sample came within 2 s, so
+  one source losing data cannot blank a value another source still sends.
+- **The stale dimming never worked**: a style opacity reaches only the
+  descriptors LVGL initialises itself, not a draw callback's. The compass
+  card, the boat symbol and the heel pointer now copy `layer->opa` into
+  their descriptors; the preview renders every page stale as well
+  (`out/stale<size>_*`) and CI publishes a stale contact sheet.
+- **Security**: the web UI login from secrets.h was ignored (SensESP builds
+  its authenticator once, from saved config) -- it is now written to the
+  saved config with a restart when it differs. AP password must be empty or
+  WPA2-length; admin user required with a password (`static_assert`s).
+  `ota_auth.py` uses an allowlist (also safe on Windows shells).
+- **Recover**: touch start-up moved to `common/src/board_start.cpp`: last
+  good GT911 address (NVS) first, then the other, then run without touch;
+  the loop watchdog is off while a factory reset formats the filesystem and
+  during an OTA upload, which now shows a notice instead of a frozen gauge.
+- **Small**: LCD with no room draws nothing; the status dot's dark test uses
+  the quantised colour; a gesture with no direction is ignored; the
+  misleading `board_upload.maximum_size` lines are gone (the partition table
+  sets the app size).
+
+Verified: both boards build (S3 2.80 MB of a 6.25 MB slot, P4 2.91 of
+8.1 MB); live and stale renders inspected; incremental redraws are pixel-
+identical to full redraws; ASan/UBSan clean on the host.

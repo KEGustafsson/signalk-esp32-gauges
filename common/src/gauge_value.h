@@ -18,8 +18,11 @@ struct GaugeValue {
   // periodic sweep once the value is stale, so a millis() wraparound after
   // 49.7 days cannot make an old value look fresh again.
   bool seen = false;
-  // Connection generation of the last sample (see SkData::begin).
+  // Signal K client generation of the last sample, and the end of the
+  // replay window after the first sample of a new connection (see
+  // SkData::store).
   uint32_t conn_gen = 0;
+  uint32_t replay_until_ms = 0;
 
   bool fresh(uint32_t now_ms) const {
     return seen && (now_ms - updated_ms) < kStaleAfterMs;

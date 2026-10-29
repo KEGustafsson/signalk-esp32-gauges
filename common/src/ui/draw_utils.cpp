@@ -247,7 +247,7 @@ float TextImage::radius() const {
 }
 
 void TextImage::draw(lv_layer_t* layer, float cx, float cy,
-                     float rotation_deg) const {
+                     float rotation_deg, lv_opa_t opa) const {
   if (buf_ == nullptr) {
     return;
   }
@@ -260,6 +260,7 @@ void TextImage::draw(lv_layer_t* layer, float cx, float cy,
   dsc.pivot.x = w / 2;
   dsc.pivot.y = h / 2;
   dsc.antialias = 1;
+  dsc.opa = opa;
   const int32_t x = (int32_t)lroundf(cx) - w / 2;
   const int32_t y = (int32_t)lroundf(cy) - h / 2;
   lv_area_t area = {x, y, x + w - 1, y + h - 1};

@@ -1,7 +1,7 @@
 # 32 MB flash: two ~8 MB app slots for OTA, ~16 MB filesystem for SensESP.
-# Both app slots end at or below 16 MB (0x1000000): the Arduino libraries
-# map only the first 16 MB of flash for code, so an app above it could not
-# boot. The filesystem is plain data access and may sit above 16 MB.
+# Both app slots end at or below 16 MB (0x1000000), as a precaution: the
+# precompiled Arduino libraries are built for 24-bit flash mapping. The
+# filesystem is plain data access and may sit above 16 MB.
 # Name,   Type, SubType,  Offset,    Size
 nvs,      data, nvs,      0x9000,    0x5000
 otadata,  data, ota,      0xe000,    0x2000

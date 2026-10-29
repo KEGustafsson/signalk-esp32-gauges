@@ -78,7 +78,12 @@ To change ranges, zones, titles or the page order, edit the table in
   and the Signal K path the current page listens to. Tap again to close it.
 - **Long press**: backlight 100 → 60 → 30 → 10 %.
 
-The page and brightness are remembered across restarts. The small dot at the
+The page and brightness are remembered across restarts. If the touch
+controller does not start, the unit restarts and tries again (on the 4" with
+the GT911's other address), and after that runs without touch rather than
+not at all: it keeps showing the remembered page until the next power-up.
+
+The small dot at the
 bottom of the bezel is SensESP's status LED: its colour and blink pattern show
 the WiFi and Signal K state, and it shows blue, with a brief blink each
 second, when connected.
@@ -88,7 +93,9 @@ second, when connected.
 1. Install [PlatformIO](https://platformio.org/install) (VS Code extension or
    `pip install platformio`).
 2. Copy `include/secrets.example.h` to `include/secrets.h` and fill in the WiFi,
-   the Signal K server, an OTA password and a web UI admin password.
+   the Signal K server, an OTA password (letters, digits and
+   `. _ ~ + = @ : , / -` only: it goes on a shell command line) and a web UI
+   admin password.
    `secrets.h` is gitignored; it is shared by both projects and by the OTA
    upload script. The four unit addresses are already filled in. Set
    `SECRET_USE_STATIC_IP` to `1` if you want each unit to configure its address
@@ -123,7 +130,11 @@ SensESP's setup access point (named after the unit's hostname) follows
 `secrets.h`: with `SECRET_AP_PASSWORD` set it uses that password; with the
 boat's WiFi set and no AP password it is off; with nothing configured it
 comes up with SensESP's default password `thisisfine`, so a unit flashed
-without a `secrets.h` can be set up from the web UI at `192.168.4.1`.
+without a `secrets.h` can be set up from the web UI at `192.168.4.1`. With
+`SECRET_ADMIN_PASSWORD` set, the web UI asks for that login on the boat's
+network (the unit restarts once after the login changes, to apply it);
+requests over the setup access point are not asked to log in, so there the
+access point password is the protection.
 
 The units also reboot rather than freeze: the main loop runs under a 5 s
 watchdog (paused during OTA uploads), and a failed display start or a stuck

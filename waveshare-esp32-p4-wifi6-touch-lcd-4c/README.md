@@ -38,9 +38,10 @@ examples.
 - Board `esp32-p4_r3` (ESP32-P4 silicon v3.01 or newer, Waveshare's default). If your
   board has pre-v3 silicon (the boot log prints the chip revision), change it to
   `board = esp32-p4`.
-- 32 MB flash with `partitions_32MB.csv`: two ~8 MB OTA slots, both below
-  16 MB (the libraries map only the first 16 MB for code), and a ~16 MB
-  filesystem above them for SensESP.
+- 32 MB flash with `partitions_32MB.csv`: two ~8 MB OTA slots that both end
+  at or below 16 MB (kept there as a precaution: the precompiled libraries
+  are built for 24-bit flash mapping), and a ~16 MB filesystem above them for
+  SensESP.
 - Serial is the USB Serial/JTAG on the USB-C port (`ARDUINO_USB_MODE=1`,
   `ARDUINO_USB_CDC_ON_BOOT=1`), as in Waveshare's Arduino setup.
 - LVGL renders into one 720×72-pixel buffer (internal RAM, PSRAM if that is
@@ -53,8 +54,11 @@ examples.
 - The gauge appears with dashes in the LCD before WiFi connects.
 - The touch chip answers at 0x5D on most boards and 0x14 on some. If it does
   not answer, `Board::begin()` fails and the unit restarts with the other
-  address (`src/main.cpp`), so a 0x14 board starts on its second boot. A unit
-  that keeps restarting with a dark screen has a display or touch fault.
+  address (`common/src/board_start.cpp`). The address that worked is saved
+  in NVS and tried first from then on, so a 0x14 board only takes the extra
+  restart once. If neither address answers, the third start runs without
+  touch (serial log: "Touch did not start"). A unit that keeps restarting
+  with a dark screen has a display fault.
 - If the backlight stays dark (or full brightness ignores the long press),
   flip `ESP_PANEL_BOARD_BACKLIGHT_ON_LEVEL` in
   `include/esp_panel_board_custom_conf.h`; Waveshare's BSP drives this pin

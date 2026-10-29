@@ -1,4 +1,6 @@
-// Host preview: renders every gauge page to a PPM using the firmware's UI code.
+// Host preview: renders every gauge page to a PPM using the firmware's UI code,
+// once with a live sample (out/<size>_<n>_<id>.ppm) and once after the sample
+// has gone stale (out/stale<size>_<n>_<id>.ppm).
 #include <lvgl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,6 +97,18 @@ int main(int argc, char** argv) {
     snprintf(path, sizeof(path), "out/%d_%zu_%s.ppm", W, i, def.id);
     if (!save(path)) {
       fprintf(stderr, "could not write %s (does out/ exist?)\n", path);
+      return 1;
+    }
+    printf("saved %s\n", path);
+
+    // The same page once the sample is older than kStaleAfterMs.
+    for (int k = 0; k < 60; k++) {
+      page->update(v, v.updated_ms + skgauges::kStaleAfterMs);
+      lv_refr_now(d);
+    }
+    snprintf(path, sizeof(path), "out/stale%d_%zu_%s.ppm", W, i, def.id);
+    if (!save(path)) {
+      fprintf(stderr, "could not write %s\n", path);
       return 1;
     }
     printf("saved %s\n", path);

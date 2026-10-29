@@ -53,6 +53,8 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
 - After approving the access request in Signal K, the bezel dot shows blue
   (with a brief blink each second) and the needle moves.
 - Touch is read after the CST820's interrupt (GPIO16) and while a finger is
-  down; if taps are ignored, check the serial log for touch read errors.
+  down; if taps are ignored, check the serial log for touch read errors. If
+  the CST820 does not start at all, the unit restarts once and then runs
+  without touch (serial log: "Touch did not start").
 - If the picture drifts or tears badly while WiFi is busy, lower
   `LVGL_BUFFER_LINES` in `platformio.ini` to free internal RAM.

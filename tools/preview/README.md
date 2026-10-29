@@ -22,4 +22,8 @@ python3 tools/preview/contact_sheet.py out/480 out/preview-480.png
 ```
 
 The images land in `out/` as PPM files; `contact_sheet.py` (needs Pillow)
-combines them into one PNG.
+combines them into one PNG. Each page is rendered twice: live
+(`out/<size>_*.ppm`) and after its sample has gone stale
+(`out/stale<size>_*.ppm`, e.g. `contact_sheet.py out/stale480 ...`), which
+must show dashes, a parked needle, a dimmed compass card or a dimmed, level
+boat symbol.

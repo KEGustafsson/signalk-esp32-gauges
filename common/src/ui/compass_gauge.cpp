@@ -54,7 +54,7 @@ CompassGaugePage::CompassGaugePage(lv_obj_t* parent, const GaugeDef& def,
       label.image.reset(new TextImage(cardinals[b / 90], cardinal_font,
                                       b == 0 ? kNorthRed : color::kMarking));
     } else {
-      char text[8];
+      char text[12];
       snprintf(text, sizeof(text), "%d", b);
       label.radius_frac = kNumberRadius;
       label.image.reset(new TextImage(text, number_font, color::kMarking));
@@ -89,6 +89,9 @@ void CompassGaugePage::draw_face() {
 void CompassGaugePage::draw_card(lv_layer_t* layer) const {
   // Before the first sample the card rests at north (dimmed, see update()).
   const float heading = isnan(shown_heading_) ? 0.0f : shown_heading_;
+  // Dimmed while stale (set_stale_look); the lubber mark is not data and
+  // stays bright.
+  const lv_opa_t opa = layer->opa;
 
   // Graduations every 2 degrees, longer and heavier every 10.
   for (int b = 0; b < 360; b += 2) {
@@ -97,6 +100,7 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
     lv_draw_line_dsc_t line;
     lv_draw_line_dsc_init(&line);
     line.color = lv_color_hex(color::kMarking);
+    line.opa = opa;
     line.width = ten ? LV_MAX(2, g_.px(0.014f)) : LV_MAX(1, g_.px(0.006f));
     line.p1 = polar(g_, angle, g_.pxf(kCardOuter));
     line.p2 = polar(g_, angle, g_.pxf(kCardOuter - (ten ? kTick10Len
@@ -114,7 +118,7 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
     if (!in_clip(layer, p.x, p.y, p.x, p.y, label.image->radius() + 1.0f)) {
       continue;
     }
-    label.image->draw(layer, p.x, p.y, angle);
+    label.image->draw(layer, p.x, p.y, angle, opa);
   }
 
   // Centre ring.
@@ -127,6 +131,7 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
   ring.start_angle = 0;
   ring.end_angle = 360;
   ring.color = lv_color_hex(0xCFCFCF);
+  ring.opa = opa;
   lv_draw_arc(layer, &ring);
 
   // Fixed red lubber mark at 12 o'clock, over the card.
@@ -139,6 +144,7 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
   lubber.p[2] = {g_.cx + g_.pxf(kLubberHalf),
                  (lv_value_precise_t)(g_.cy - g_.pxf(kLubberBase))};
   lubber.color = lv_color_hex(kNorthRed);
+  lubber.opa = LV_OPA_COVER;
   lv_draw_triangle(layer, &lubber);
 }
 
@@ -159,6 +165,10 @@ void CompassGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
   // shows dashes: a card at its last heading must not pass for a reading.
   set_stale_look(card_obj_, !fresh);
   if (!fresh) {
+    lcd_.set_dashes();
+    return;
+  }
+  if (!isfinite(value.value)) {  // sk_data never stores one; be safe anyway
     lcd_.set_dashes();
     return;
   }

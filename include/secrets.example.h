@@ -25,7 +25,7 @@
 // committed example, so a build without a secrets.h never accepts OTA
 // uploads (scripts/ota_auth.py also refuses to upload without one). The
 // upload passes it on a shell command line, so use only letters, digits and
-// . _ ~ + = @ % ^ : , / - (scripts/ota_auth.py refuses anything else).
+// . _ ~ + = @ : , / - (scripts/ota_auth.py refuses anything else).
 #define SECRET_OTA_PASSWORD ""
 
 // The SensESP web UI. With a password set it asks for this login; empty
