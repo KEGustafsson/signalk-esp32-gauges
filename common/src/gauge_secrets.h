@@ -23,9 +23,12 @@
 #define SECRET_AP_PASSWORD ""
 #endif
 
-// WPA2 needs 8+ characters; a shorter AP password silently gives no AP.
-static_assert(sizeof(SECRET_AP_PASSWORD) == 1 || sizeof(SECRET_AP_PASSWORD) > 8,
-              "SECRET_AP_PASSWORD must be empty or at least 8 characters");
+// A WPA2 passphrase is 8-63 characters; anything else silently gives no AP.
+// (sizeof counts the terminating NUL.)
+static_assert(sizeof(SECRET_AP_PASSWORD) == 1 ||
+                  (sizeof(SECRET_AP_PASSWORD) >= 9 &&
+                   sizeof(SECRET_AP_PASSWORD) <= 64),
+              "SECRET_AP_PASSWORD must be empty or 8-63 characters");
 // SensESP ignores the login when the user name is empty.
 static_assert(sizeof(SECRET_ADMIN_PASSWORD) == 1 ||
                   sizeof(SECRET_ADMIN_USER) > 1,
