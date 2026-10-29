@@ -177,7 +177,7 @@ jobs:
       - name: No committed credentials
         run: |
           set -euo pipefail
-          if [ -n "$(git ls-files ':(glob)**/secrets.h')" ]; then
+          if [ -n "$(git ls-files ':(glob,icase)**/secrets.h*')" ]; then
             echo "::error::a secrets.h is committed; it must stay gitignored"
             exit 1
           fi
@@ -196,6 +196,12 @@ jobs:
           if git grep -qE -e '^[[:space:]]*upload_flags' -e '--auth' \
               -e 'SECRET_[A-Z_]*PASSWORD' -- '*platformio.ini'; then
             echo "::error::an OTA password (or upload_flags) is written into a platformio.ini; scripts/ota_auth.py injects it from secrets.h"
+            exit 1
+          fi
+          # A filled-in password in any other C/C++ file (a renamed copy).
+          if git grep -qE '#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*[[:space:]]+"[^"]+"' \
+              -- '*.h' '*.hpp' '*.c' '*.cpp' '*.ino' ':!include/secrets.example.h'; then
+            echo "::error::a SECRET_*PASSWORD with a value is committed"
             exit 1
           fi
           echo "no committed credentials"

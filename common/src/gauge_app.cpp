@@ -54,6 +54,7 @@ std::vector<sensesp::ClientSSIDConfig> wifi_clients(const char* address) {
 // SensESP's own OTA setup (its onDelay(0)), so these callbacks are the ones
 // ArduinoOTA keeps.
 bool loop_watchdog_on = false;
+bool ota_started = false;  // An upload got past authentication
 
 void loop_watchdog(bool on) {
   if (on == loop_watchdog_on) return;  // ArduinoOTA may report one error twice
@@ -82,6 +83,7 @@ void start_loop_watchdog() {
   }
   sensesp::event_loop()->onDelay(1, []() {
     ArduinoOTA.onStart([]() {
+      ota_started = true;
       loop_watchdog(false);
       ESP_LOGW("gauge", "OTA upload started");
       // The upload blocks the loop: replace the gauge with a notice rather
@@ -89,12 +91,38 @@ void start_loop_watchdog() {
       ui_show_notice("Updating firmware...");
     });
     ArduinoOTA.onError([](ota_error_t error) {
+      // A bad password or a refused begin fails before onStart: the gauge
+      // never stopped, so it carries on (and nobody on the network can
+      // reboot it by knocking with a wrong password).
+      if (!ota_started) {
+        ESP_LOGW("gauge", "OTA invitation refused (%u)", error);
+        return;
+      }
       ESP_LOGE("gauge", "OTA upload failed (%u), restarting", error);
       // The gauge page is gone; a restart is the simplest way back.
       delay(1000);
       esp_restart();
     });
   });
+}
+
+// The HTTP server's settings as the authenticator was built from them at
+// boot: the saved file, or SensESP's defaults (no login) when there is none
+// -- load() leaves memory untouched without a file, so reset it first.
+String saved_web_ui_login(sensesp::ConfigItemBase* item) {
+  JsonDocument defaults_doc;
+  JsonObject defaults = defaults_doc.to<JsonObject>();
+  defaults["auth_required"] = false;
+  defaults["username"] = "";
+  defaults["ha1"] = "";
+  item->from_json(defaults);
+  item->load();
+  JsonDocument saved_doc;
+  JsonObject saved = saved_doc.to<JsonObject>();
+  item->to_json(saved);
+  String json;
+  serializeJson(saved, json);
+  return json;
 }
 
 // SensESP builds the web UI's authenticator only from its saved settings,
@@ -116,18 +144,19 @@ void apply_web_ui_login() {
     wanted["username"] = "";
     wanted["ha1"] = "";
   }
-  item->load();  // What the authenticator was built from at boot
-  JsonDocument saved_doc;
-  JsonObject saved = saved_doc.to<JsonObject>();
-  item->to_json(saved);
-  String wanted_json, saved_json;
+  String wanted_json;
   serializeJson(wanted, wanted_json);
-  serializeJson(saved, saved_json);
-  if (wanted_json == saved_json) {
+  if (saved_web_ui_login(item.get()) == wanted_json) {
     return;
   }
   item->from_json(wanted);
   item->save();
+  // save() reports success even when the file write fails: read it back, so
+  // a full or broken filesystem cannot turn this into a boot loop.
+  if (saved_web_ui_login(item.get()) != wanted_json) {
+    ESP_LOGE("gauge", "Could not save the web UI login; not applied");
+    return;
+  }
   ESP_LOGW("gauge", "Web UI login changed; restarting to apply it");
   delay(500);
   esp_restart();

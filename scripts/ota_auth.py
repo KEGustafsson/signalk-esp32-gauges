@@ -59,10 +59,18 @@ SAFE_PASSWORD = re.compile(r"[A-Za-z0-9._~+=@:,/-]+")
 LOOKS_OTA = re.compile(r'"?((([0-9]{1,3}\.){3}[0-9]{1,3})|[^\\/]+\.local)"?$')
 
 
-# The shape secrets.h uses: #define NAME "value" -- anything after the closing
-# quote (such as a trailing // comment) is ignored.
+# The shape secrets.h uses: #define NAME "value", optionally followed by a
+# // comment. Anything else after the literal ("ab" "cd" concatenation, a
+# line continuation) would make the compiler see a different string, so it
+# does not match.
 def _define(name):
-    return re.compile(r'^\s*#define\s+%s\s+"([^"]*)"' % re.escape(name), re.M)
+    return re.compile(r'^\s*#define\s+%s\s+"([^"]*)"\s*(?://.*)?$' % re.escape(name),
+                      re.M)
+
+
+def _define_count(name, text):
+    """How many lines #define `name` (any form)."""
+    return len(re.findall(r'^\s*#\s*define\s+%s\b' % re.escape(name), text, re.M))
 
 
 def _fail(message):
@@ -77,7 +85,8 @@ def main():
 
     protocol = env.subst("$UPLOAD_PROTOCOL")  # noqa: F821
     given_port = env.subst("$UPLOAD_PORT")  # noqa: F821
-    if protocol != "espota" and not (not protocol and LOOKS_OTA.match(given_port)):
+    # The builder switches to espota for such a port whatever the protocol.
+    if protocol != "espota" and not LOOKS_OTA.match(given_port):
         return
 
     project_dir = env.subst("$PROJECT_DIR")  # noqa: F821
@@ -98,6 +107,12 @@ def main():
 
     # --- the password, shared by all gauges ----------------------------------
     if uploading:
+        if _define_count("SECRET_OTA_PASSWORD", text) > 1:
+            _fail(
+                "%s defines SECRET_OTA_PASSWORD more than once; the firmware and\n"
+                "          this script could disagree on which one counts." % secrets
+            )
+            return
         match = _define("SECRET_OTA_PASSWORD").search(text)
         if not match or not match.group(1):
             _fail(

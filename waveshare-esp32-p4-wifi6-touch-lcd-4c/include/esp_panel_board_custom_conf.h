@@ -268,7 +268,7 @@
     #define ESP_PANEL_BOARD_TOUCH_I2C_IO_SCL            (8)
     #define ESP_PANEL_BOARD_TOUCH_I2C_IO_SDA            (7)
     /* 0x5D. Some boards answer at the GT911 backup address 0x14 instead;
-     * src/main.cpp switches to it on the next boot if begin() fails. */
+     * common/src/board_start.cpp tries it after a failed begin(). */
     #define ESP_PANEL_BOARD_TOUCH_I2C_ADDRESS           (0)
 #define ESP_PANEL_BOARD_TOUCH_SWAP_XY           (0)
 #define ESP_PANEL_BOARD_TOUCH_MIRROR_X          (0)

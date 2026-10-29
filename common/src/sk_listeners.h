@@ -7,9 +7,9 @@
 // 0.0f. For a gauge that is a lie -- a source publishing `null` ("no valid
 // data", e.g. an engine gateway that lost its NMEA 2000 source) would park
 // the needle on a confident 0 rpm. These listeners DROP any delta whose value
-// is not a JSON number and report it, so the gauge shows dashes (at once,
-// unless another source of the same path is still delivering numbers)
-// instead of a number nobody vouches for.
+// is not a JSON number and report it, so the gauge shows dashes (within a
+// few seconds, unless another source of the same path is still delivering
+// numbers) instead of a number nobody vouches for.
 // (Same approach as KEGustafsson/drive-remote-controller's
 // include/strict_sk_listeners.h.)
 //
@@ -20,6 +20,7 @@
 // describe `sk_path`, so the path is editable per unit.
 
 #include <ArduinoJson.h>
+#include <math.h>
 
 #include <functional>
 
@@ -52,6 +53,10 @@ class SkPathConfig : public Base {
       return false;
     }
     String path = config["sk_path"].as<String>();
+    path.trim();
+    if (path.isEmpty()) {  // Would subscribe to the server's root
+      return false;
+    }
     sensesp::SKListener::take_semaphore();
     this->sk_path = path;
     sensesp::SKListener::release_semaphore();
@@ -97,8 +102,10 @@ class StrictFloatListener
   }
 };
 
-// navigation.attitude is an object {roll, pitch, yaw} in radians. Calls the
-// callback with roll and pitch when both are numbers; yaw is not used.
+// navigation.attitude is an object {roll, pitch, yaw} in radians; any axis
+// may be missing (NMEA 2000 PGN 127257 leaves out what the sender does not
+// measure). Calls the callback when roll is a number, with pitch NAN if it is
+// not; yaw is not used.
 class AttitudeListener : public SkPathConfig<sensesp::SKListener> {
  public:
   using Callback = std::function<void(float roll_rad, float pitch_rad)>;
@@ -110,12 +117,14 @@ class AttitudeListener : public SkPathConfig<sensesp::SKListener> {
 
   void parse_value(const JsonObject& json) override {
     JsonVariantConst value = json["value"];
-    if (!value["roll"].is<float>() || !value["pitch"].is<float>()) {
+    if (!value["roll"].is<float>()) {
       invalid();
       return;
     }
+    const float pitch =
+        value["pitch"].is<float>() ? value["pitch"].as<float>() : NAN;
     if (callback_) {
-      callback_(value["roll"].as<float>(), value["pitch"].as<float>());
+      callback_(value["roll"].as<float>(), pitch);
     }
   }
 

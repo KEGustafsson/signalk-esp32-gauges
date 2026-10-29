@@ -96,7 +96,7 @@ AttitudeGaugePage::AttitudeGaugePage(lv_obj_t* parent, const GaugeDef& def,
   // LCDs over the window.
   overlay_ = create_overlay(draw_cb);
   lv_obj_move_to_index(overlay_, 1);
-  set_stale_look(overlay_, true);  // Until the first attitude arrives
+  set_stale_look_layered(overlay_, true);  // Until the first attitude arrives
 }
 
 float AttitudeGaugePage::heel_to_angle(float heel_deg) const {
@@ -241,9 +241,13 @@ void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
   if (pitch < -kMaxPitchShown) pitch = -kMaxPitchShown;
   const float ox = (float)g_.cx;
   const float oy = g_.cy + g_.pxf(kDiscY) - pitch * g_.pxf(kPitchPxPerDeg);
-  const float theta = shown_roll_ * kDegToRad;
+  // Past 90 degrees the symbol says nothing more (and a garbage roll the
+  // LCD already shows as EEE must not spin it).
+  float roll = shown_roll_;
+  if (roll > 90.0f) roll = 90.0f;
+  if (roll < -90.0f) roll = -90.0f;
+  const float theta = roll * kDegToRad;
   const float c = cosf(theta), s = sinf(theta);
-  const lv_opa_t opa = layer->opa;  // Dimmed while stale (set_stale_look)
   auto at = [&](float x_frac, float y_frac) {
     const float x = g_.pxf(x_frac), y = g_.pxf(y_frac);
     lv_point_precise_t p;
@@ -260,7 +264,6 @@ void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
   lv_draw_triangle_dsc_t tri;
   lv_draw_triangle_dsc_init(&tri);
   tri.color = lv_color_hex(kBoatSymbol);
-  tri.opa = opa;
   tri.p[0] = deck_l;
   tri.p[1] = deck_r;
   tri.p[2] = keel_r;
@@ -269,14 +272,17 @@ void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
   tri.p[1] = keel_r;
   tri.p[2] = keel_l;
   lv_draw_triangle(layer, &tri);
+  // Both triangles antialias their shared edge, which would leave a faint
+  // seam of sky through the hull.
+  draw_line(layer, deck_l.x, deck_l.y, keel_r.x, keel_r.y, 2, kBoatSymbol);
 
   // Deck line and mast.
   const lv_point_precise_t mast_foot = at(0.0f, -kFreeboard);
   const lv_point_precise_t mast_head = at(0.0f, -kFreeboard - kMastHeight);
   draw_line(layer, deck_l.x, deck_l.y, deck_r.x, deck_r.y,
-            LV_MAX(2, g_.px(0.012f)), 0xFFD9A8, opa);
+            LV_MAX(2, g_.px(0.012f)), 0xFFD9A8);
   draw_line(layer, mast_foot.x, mast_foot.y, mast_head.x, mast_head.y,
-            LV_MAX(2, g_.px(0.014f)), kBoatSymbol, opa);
+            LV_MAX(2, g_.px(0.014f)), kBoatSymbol);
 }
 
 void AttitudeGaugePage::draw_dynamic(lv_layer_t* layer) const {
@@ -294,7 +300,6 @@ void AttitudeGaugePage::draw_dynamic(lv_layer_t* layer) const {
   tri.p[1] = polar(g_, angle - half_deg, g_.pxf(kPointerBase));
   tri.p[2] = polar(g_, angle + half_deg, g_.pxf(kPointerBase));
   tri.color = lv_color_hex(color::kNeedle);
-  tri.opa = layer->opa;
   lv_draw_triangle(layer, &tri);
 }
 
@@ -315,9 +320,12 @@ void AttitudeGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
   const bool fresh = value.fresh(now_ms);
   // Without live data the boat levels off, dimmed, so it cannot pass for a
   // real "level" reading; the LCDs show dashes.
-  set_stale_look(overlay_, !fresh);
+  set_stale_look_layered(overlay_, !fresh);
   const float roll = fresh ? value.value : 0.0f;
-  const float pitch = fresh ? value.value2 : 0.0f;
+  // A heel-only source sends no pitch: the boat then sits on the waterline
+  // and TRIM shows dashes.
+  const bool has_pitch = fresh && isfinite(value.value2);
+  const float pitch = has_pitch ? value.value2 : 0.0f;
 
   if (fresh) {
     heel_lcd_.set_value(fabsf(roll), def_.decimals);
@@ -326,7 +334,11 @@ void AttitudeGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
     } else {
       heel_lcd_.set_suffix(roll < 0.0f ? "\xC2\xB0 PORT" : "\xC2\xB0 STBD");
     }
-    trim_lcd_.set_value(pitch, 1);
+    if (has_pitch) {
+      trim_lcd_.set_value(pitch, 1);
+    } else {
+      trim_lcd_.set_dashes();
+    }
   } else {
     heel_lcd_.set_dashes();
     heel_lcd_.set_suffix("\xC2\xB0");

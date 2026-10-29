@@ -40,6 +40,13 @@ void GaugePage::set_stale_look(lv_obj_t* obj, bool stale) {
   }
 }
 
+void GaugePage::set_stale_look_layered(lv_obj_t* obj, bool stale) {
+  const lv_opa_t opa = stale ? LV_OPA_40 : LV_OPA_COVER;
+  if (lv_obj_get_style_opa_layered(obj, LV_PART_MAIN) != opa) {
+    lv_obj_set_style_opa_layered(obj, opa, 0);
+  }
+}
+
 bool in_clip(const lv_layer_t* layer, float x1, float y1, float x2, float y2,
              float pad) {
   const lv_area_t& clip = layer->_clip_area;

@@ -34,7 +34,8 @@
 #define SECRET_ADMIN_USER "admin"
 #define SECRET_ADMIN_PASSWORD ""
 
-// SensESP's setup access point (SSID = the unit's hostname).
+// SensESP's setup access point (SSID = the unit's hostname). Seeds a unit
+// with no saved WiFi settings only; see README.md to re-apply it later.
 //  - set (8+ characters): the access point uses this password;
 //  - empty, with a WiFi SSID and password set: the access point is off;
 //  - empty, no WiFi configured: SensESP's default ("thisisfine"), so a fresh

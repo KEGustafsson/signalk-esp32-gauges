@@ -18,6 +18,7 @@ class CompassGaugePage : public GaugePage {
                    const Geometry& geometry);
 
   void update(const GaugeValue& value, uint32_t now_ms) override;
+  void set_unit_label(const char* unit) override { lcd_.set_prefix(unit); }
 
  private:
   struct CardLabel {

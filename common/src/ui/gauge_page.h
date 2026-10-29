@@ -25,6 +25,10 @@ class GaugePage {
   // Called from the UI timer (~30 ms) with the latest value for this page.
   virtual void update(const GaugeValue& value, uint32_t now_ms) = 0;
 
+  // Replaces the table's unit label where a page shows it next to live data
+  // (see unit_for_path()).
+  virtual void set_unit_label(const char* unit) { (void)unit; }
+
  protected:
   // A transparent full-screen object whose draw callback paints the moving
   // parts (needle, compass card, horizon). Invalidate only the areas that
@@ -38,6 +42,10 @@ class GaugePage {
   // draws) into every descriptor it should dim. Changing the style
   // invalidates `obj`, so the dimming shows at once.
   static void set_stale_look(lv_obj_t* obj, bool stale);
+  // The same for an overlay whose strokes overlap (the boat symbol): LVGL
+  // renders it on a layer and blends that once, so overlaps do not show as
+  // darker seams. The layer costs a little memory, only while stale.
+  static void set_stale_look_layered(lv_obj_t* obj, bool stale);
 
   const GaugeDef& def_;
   const Geometry g_;

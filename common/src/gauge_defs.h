@@ -12,6 +12,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 namespace skgauges {
 
@@ -68,6 +69,26 @@ static constexpr size_t kMaxGauges = 16;
 inline bool shown_on(const GaugeDef& def, Side unit_side) {
   return def.side == Side::kBoth || unit_side == Side::kBoth ||
          def.side == unit_side;
+}
+
+// The side whose pages a unit actually shows and subscribes: its own, or all
+// of them if a table edit left it nothing (so it shows and feeds every page
+// rather than a blank screen).
+inline Side effective_side(Side unit_side) {
+  for (size_t i = 0; i < kGaugeCount && i < kMaxGauges; i++) {
+    if (shown_on(kGauges[i], unit_side)) return unit_side;
+  }
+  return Side::kBoth;
+}
+
+// The unit label for a page whose Signal K path may have been changed in the
+// web UI: a compass fed a magnetic heading must not say "°T".
+inline const char* unit_for_path(const GaugeDef& def, const char* sk_path) {
+  if (def.kind == GaugeKind::kCompass && sk_path != nullptr &&
+      strstr(sk_path, "Magnetic") != nullptr) {
+    return "\xC2\xB0M";
+  }
+  return def.unit;
 }
 
 // A value older than this is shown as dashes: a dial needle parks at its

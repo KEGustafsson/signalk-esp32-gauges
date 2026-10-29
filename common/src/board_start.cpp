@@ -7,7 +7,6 @@
 #include <esp_log.h>
 #include <esp_system.h>
 
-#include "board/esp_panel_board_default_config.hpp"
 
 namespace skgauges {
 
@@ -31,7 +30,9 @@ RTC_NOINIT_ATTR uint32_t rtc_attempt;
 uint8_t load_touch_address() {
   Preferences prefs;
   uint8_t address = kDefaultAddress;
-  if (prefs.begin(kPrefsNamespace, true)) {
+  // Read-write: a read-only open of a namespace that does not exist yet
+  // logs an error on every fresh unit.
+  if (prefs.begin(kPrefsNamespace, false)) {
     if (prefs.isKey(kTouchAddressKey)) {
       address = prefs.getUChar(kTouchAddressKey, kDefaultAddress);
     }
@@ -70,14 +71,19 @@ Board* start_board(uint8_t alternate_touch_address) {
   const uint32_t attempt = rtc_attempt % (touch_attempts + 1);
   const bool with_touch = attempt < touch_attempts;
 
-  Board* board;
-  if (with_touch) {
-    board = new Board();
-  } else {
+  // Count this attempt before trying it: a driver that panics or trips the
+  // watchdog must move the next boot on to the next option too.
+  rtc_attempt = attempt + 1;
+
+  // Always the default-config constructor: it builds the board's own
+  // drivers directly. Board(const BoardConfig&) goes through the driver
+  // factories, which this build leaves empty (no esp_panel_drivers_conf.h).
+  Board* board = new Board();
+  if (!with_touch) {
     ESP_LOGW(kTag, "Touch did not start; running without touch");
-    BoardConfig config = ESP_PANEL_BOARD_DEFAULT_CONFIG;
-    config.touch.reset();
-    board = new Board(config);
+    // getConfig() is const only by interface: _config is a plain member,
+    // and init() skips the touch when it holds none.
+    const_cast<BoardConfig&>(board->getConfig()).touch.reset();
   }
   bool ok = board->init();
   if (ok && with_touch && plan[attempt] != kDefaultAddress) {
@@ -86,8 +92,7 @@ Board* start_board(uint8_t alternate_touch_address) {
   }
   if (!ok || !board->begin()) {
     // Nothing useful can run without the display: try the next option from
-    // scratch.
-    rtc_attempt = attempt + 1;
+    // scratch (rtc_attempt already points at it).
     ESP_LOGE(kTag, "Display board start failed (attempt %u), restarting",
              (unsigned)attempt);
     delay(1000);

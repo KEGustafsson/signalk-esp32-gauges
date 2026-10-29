@@ -49,8 +49,8 @@ are on every unit:
 |---|---|---|---|
 | PRT / STB Engine | `propulsion.<port\|starboard>.revolutions` (Hz) | rpm | 0–3000, orange from 2500 |
 | Speed | `navigation.speedOverGround` (m/s) | kn | 0–30 |
-| Heading | `navigation.headingTrue` (rad) | °T, rotating card | 0–360 |
-| Coolant | `propulsion.<side>.coolantTemperature` (K) | °C | 0–120, red from 100 |
+| Heading | `navigation.headingTrue` (rad) | °T (°M when the path is magnetic), rotating card | 0–360 |
+| Coolant | `propulsion.<side>.temperature` (K) | °C | 0–120, red from 100 |
 | Oil | `propulsion.<side>.oilTemperature` (K) | °C | 0–120, red from 100 |
 | Sea horizon | `navigation.attitude` (`roll`, `pitch`, rad) | boat symbol on a level horizon; heel ° PORT/STBD, trim ° | heel ±40 |
 
@@ -58,11 +58,18 @@ Every path can be changed per unit in the SensESP web UI: on the
 **Configuration** page, in the card for that gauge (for example
 "PRT Engine (port_rpm)"), then restart the unit.
 
+Coolant defaults to `propulsion.<side>.temperature`, the "engine
+temperature" an NMEA 2000 engine gateway publishes (PGN 127489, through
+signalk-server's n2k-signalk); point it at `coolantTemperature` if your
+source uses that key. Heading reads `°M` once its path is a magnetic one
+(for example `navigation.headingMagnetic`). The sea horizon also works
+with a heel-only source: the trim LCD then shows dashes.
+
 The gauges never show a number nobody vouches for:
 
 - A value that is not a number (for example `null` from a source that has
-  lost its data) is never shown as 0: it blanks the gauge, unless a valid
-  value arrived within the last 2 s (another source still sending it).
+  lost its data) is never shown as 0: the gauge blanks within about 3 s,
+  unless another source of the same path keeps sending valid values.
 - A value older than 10 s is shown as dashes. A dial needle parks at its
   minimum, the compass card stays where it was but dimmed, and the sea
   horizon's boat symbol levels off, dimmed.
@@ -139,6 +146,24 @@ without a `secrets.h` can be set up from the web UI at `192.168.4.1`. With
 network (the unit restarts once after the login changes, to apply it);
 requests over the setup access point are not asked to log in, so there the
 access point password is the protection.
+
+The access point settings in `secrets.h` only seed a unit that has no saved
+WiFi settings yet: once WiFi has been saved (in the web UI, or on first
+boot from `secrets.h`), SensESP keeps its saved access point settings across
+reflashes. To apply new ones, erase the flash and flash again over USB, which
+also clears every other setting (the Signal K token too):
+
+```bash
+pio run -e p4_stbd_usb -t erase
+```
+
+```bash
+pio run -e p4_stbd_usb -t upload
+```
+
+The same erase is the way back to a unit that cannot be reached at all
+(wrong saved WiFi and no access point): the 4" has no button for SensESP's
+reset; on the 2.1", holding BOOT for 5 s resets SensESP's settings.
 
 The units also reboot rather than freeze: the main loop runs under a 5 s
 watchdog (paused during OTA uploads), and a failed display start or a stuck

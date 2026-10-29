@@ -10,7 +10,9 @@ compile_commands.json
 # Boat-specific credentials and addresses -- never committed.
 # Template: include/secrets.example.h
 # Anywhere in the tree: a project-local copy would also shadow the shared one.
+# Also editor and merge leftovers (secrets.h~, secrets.h.bak, .orig).
 secrets.h
+secrets.h?*
 
 # Host preview build output (tools/preview)
 build/

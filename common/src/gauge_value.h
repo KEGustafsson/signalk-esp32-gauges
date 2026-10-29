@@ -18,11 +18,19 @@ struct GaugeValue {
   // periodic sweep once the value is stale, so a millis() wraparound after
   // 49.7 days cannot make an old value look fresh again.
   bool seen = false;
-  // Signal K client generation of the last sample, and the end of the
-  // replay window after the first sample of a new connection (see
-  // SkData::store).
+  // The Signal K connection the last sample came from, and the replay
+  // window opened by the first sample of each new connection (see
+  // SkData::store). conn_known is false until the first sample, so the very
+  // first connection after boot opens a window too.
+  bool conn_known = false;
   uint32_t conn_gen = 0;
+  uint32_t conn_epoch = 0;
+  bool replaying = false;
   uint32_t replay_until_ms = 0;
+  // A null arrived while a recent valid value was held: blank once it has
+  // gone kInvalidGraceMs without a valid sample (see SkData::invalid).
+  bool invalid_pending = false;
+  uint32_t invalid_ms = 0;
 
   bool fresh(uint32_t now_ms) const {
     return seen && (now_ms - updated_ms) < kStaleAfterMs;

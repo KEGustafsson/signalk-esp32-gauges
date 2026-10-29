@@ -42,8 +42,11 @@ examples.
   at or below 16 MB (kept there as a precaution: the precompiled libraries
   are built for 24-bit flash mapping), and a ~16 MB filesystem above them for
   SensESP.
-- Serial is the USB Serial/JTAG on the USB-C port (`ARDUINO_USB_MODE=1`,
-  `ARDUINO_USB_CDC_ON_BOOT=1`), as in Waveshare's Arduino setup.
+- The board has two USB-C ports: the ESP32-P4's own USB (Serial/JTAG) and a
+  USB-to-UART bridge. `Serial` is the USB Serial/JTAG one
+  (`ARDUINO_USB_MODE=1`, `ARDUINO_USB_CDC_ON_BOOT=1`, as in Waveshare's
+  Arduino setup); ESP-IDF's console (and so some log lines) may come out on
+  the UART one. If a port is silent, try the other.
 - LVGL renders into one 720×72-pixel buffer (internal RAM, PSRAM if that is
   short) and copies it into the DPI panel's frame buffer. The flush waits for
   each copy; one that never completes restarts the unit.

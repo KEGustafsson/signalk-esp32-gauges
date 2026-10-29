@@ -35,12 +35,12 @@ const GaugeDef kGauges[] = {
      30.0f, 6, 0, 200, {}, 0},
 
     {"port_coolant", GaugeKind::kRadial, Side::kPort, "Coolant",
-     "\xC2\xB0" "C", "propulsion.port.coolantTemperature", 1.0f,
+     "\xC2\xB0" "C", "propulsion.port.temperature", 1.0f,
      kKelvinToCelsius, 0.0f, 120.0f, 20.0f, 4, 0, 1000,
      {{100.0f, 120.0f, kRed}}, 1},
 
     {"stbd_coolant", GaugeKind::kRadial, Side::kStarboard, "Coolant",
-     "\xC2\xB0" "C", "propulsion.starboard.coolantTemperature", 1.0f,
+     "\xC2\xB0" "C", "propulsion.starboard.temperature", 1.0f,
      kKelvinToCelsius, 0.0f, 120.0f, 20.0f, 4, 0, 1000,
      {{100.0f, 120.0f, kRed}}, 1},
 
@@ -63,5 +63,7 @@ const GaugeDef kGauges[] = {
 };
 
 const size_t kGaugeCount = sizeof(kGauges) / sizeof(kGauges[0]);
+static_assert(sizeof(kGauges) / sizeof(kGauges[0]) <= kMaxGauges,
+              "kGauges has more pages than kMaxGauges");
 
 }  // namespace skgauges

@@ -45,6 +45,7 @@ void flush_cb(lv_display_t* display, const lv_area_t* area,
 // Set from the touch interrupt (2.1" only; the 4" has no interrupt line).
 volatile bool touch_irq = false;
 bool touch_pressed = false;
+lv_point_t touch_last = {0, 0};
 
 bool touch_isr(void*) {
   touch_irq = true;
@@ -65,10 +66,18 @@ void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
   }
   touch_irq = false;
   TouchPoint point;
-  touch_pressed = touch->readPoints(&point, 1, 0) > 0;
+  const int n = touch->readPoints(&point, 1, 0);
+  if (n > 0) {
+    touch_last.x = point.x;
+    touch_last.y = point.y;
+  }
+  // A failed read (n < 0, e.g. an I2C glitch) repeats the last state rather
+  // than inventing a release, which would turn a hold into a tap.
+  if (n >= 0) {
+    touch_pressed = n > 0;
+  }
   if (touch_pressed) {
-    data->point.x = point.x;
-    data->point.y = point.y;
+    data->point = touch_last;
     data->state = LV_INDEV_STATE_PRESSED;
   }
 }
@@ -119,6 +128,8 @@ lv_display_t* lvgl_port_init(Board* board, int buffer_lines) {
     lv_indev_set_user_data(indev, touch);
     lv_indev_set_read_cb(indev, touch_read_cb);
     lv_indev_set_display(indev, display);
+    // 400 ms (LVGL's default) catches a steadying hand on a moving boat.
+    lv_indev_set_long_press_time(indev, 800);
   } else {
     ESP_LOGW(kTag, "No touch controller, swiping disabled");
   }

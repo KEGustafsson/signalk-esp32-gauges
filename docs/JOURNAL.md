@@ -114,3 +114,58 @@ growing for ever; the contact sheet fails on a missing or blank render;
 README, the build-flash skill and secrets.example.h now describe the null
 grace, the 1 s replay window, the AP rules and the touch retry as coded.
 Kept: LVGL fetched by release tag (a SHA would force a full clone).
+
+## 2026-10-29 — Multi-agent review round 3 (deeper)
+
+Eight reviewers, each on a narrow scope and required to trace failures
+against the fetched library sources (SensESP 49fdb8a, LVGL 9.3.0,
+ESP32_Display_Panel 1.0.4, Arduino-ESP32 3.3.11, signalk-server, the
+Signal K spec and n2k-signalk). What changed:
+
+- **Replay guard (must-fix, found by two reviewers)**: SensESP's client
+  generation only changes when it tears down an old client, so on the first
+  connection after every boot the server's cached replay was taken as live;
+  the WebSocket library's own reconnects kept the generation too; and the
+  window compare went negative after 24.8 days of one connection, dropping
+  everything. Now: a connection epoch counted from SensESP's "connected"
+  state (set before it subscribes), a per-slot "not yet seen" flag, and a
+  `replaying` flag so the time compare only runs inside the window.
+- **Null grace**: a lone `null` after a recent value is now remembered and
+  blanks the gauge ~2-3 s later unless a valid value follows.
+- **Web UI login (must-fix)**: with no saved HTTP settings (every fresh
+  unit) `load()` left memory untouched, so the login never applied. The saved
+  state is now read from defaults + file, and the save is read back before
+  restarting, so a failed write cannot boot-loop.
+- **Touch fallback (must-fix)**: `Board(const BoardConfig&)` goes through
+  driver factories that are empty in this build, so "run without touch"
+  could never start the display. It now uses the default-config board and
+  drops its touch entry; the attempt counter advances before each try.
+- **OTA**: a failed authentication no longer reboots the gauge (only an
+  upload that started does); `ota_auth.py` treats an IP/.local port as OTA
+  whatever the protocol, and refuses a password defined twice or followed by
+  anything but a comment.
+- **Touch**: a slow drag no longer fires the long press (brightness): a hold
+  must stay within 8 % of the radius; long press 800 ms; a failed touch read
+  keeps the previous state instead of a release.
+- **Data**: heel-only attitude sources work (trim dashes); the coolant
+  default is `propulsion.<side>.temperature`, which NMEA 2000 gateways
+  publish; the heading LCD shows `°M` for a magnetic path; absurd headings
+  are refused; `wrap360` can no longer return 360; an empty path is refused
+  in the web UI; pages and subscriptions agree when a side has no pages.
+- **UI**: the stale boat symbol dims as one layer (no darker seams at
+  overlaps); the hull's shared triangle edge no longer shows a seam; the
+  boat's drawn roll is clamped to +-90.
+- **Credentials**: `secrets.h*` backups ignored and CI-checked (any case),
+  and a filled-in `SECRET_*PASSWORD` in any C/C++ file fails CI.
+- **Docs**: AP settings only seed a unit; erase + USB flash recovers an
+  unreachable unit; the 4" has two USB-C ports. Correction to round 1: the
+  4"'s `Serial` writes do not block, but ESP-IDF's console output may.
+
+Declined: brightness ping-pong instead of the 100/60/30/10 cycle (the cycle
+is predictable, and the 800 ms hold makes accidental presses rarer);
+LVGL by SHA; enforcing AP settings after first boot (documented instead).
+
+Verified: both boards build; live and stale renders inspected (boat crops
+at 720 px); incremental redraws pixel-identical to full; a heel-only,
+then garbage-roll attitude run is clean under ASan/UBSan; every CI
+credential rule tested against injected failures.

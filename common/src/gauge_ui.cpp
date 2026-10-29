@@ -28,6 +28,9 @@ constexpr int kBrightnessLevels[] = {100, 60, 30, 10};
 constexpr int kBrightnessCount =
     sizeof(kBrightnessLevels) / sizeof(kBrightnessLevels[0]);
 const char* const kPrefsNamespace = "skgauges";
+// A hold (brightness) may drift this far, as a fraction of the radius; more
+// is a slow swipe.
+constexpr float kHoldSlop = 0.08f;
 
 struct UiState {
   UiConfig config;
@@ -42,6 +45,7 @@ struct UiState {
   lv_obj_t* overlay_label = nullptr;
   lv_timer_t* overlay_timer = nullptr;
   bool info_visible = false;
+  lv_point_t press_point = {0, 0};
   lv_timer_t* prefs_timer = nullptr;
   String saved_page;      // What NVS holds, to skip writes that change nothing
   int saved_bright = -1;
@@ -113,9 +117,11 @@ void show_page(size_t index, bool announce) {
   const uint32_t start = millis();
   state->current = index;
   state->page.reset();  // Frees the previous page's canvas first
-  state->page = ui::create_page(lv_screen_active(),
-                                kGauges[state->pages[index]],
+  const size_t gauge = state->pages[index];
+  state->page = ui::create_page(lv_screen_active(), kGauges[gauge],
                                 state->geometry);
+  state->page->set_unit_label(
+      unit_for_path(kGauges[gauge], sk_data().sk_path(gauge).c_str()));
   // Page builds run on the loop under its 5 s watchdog; log how long they
   // take on the real hardware.
   ESP_LOGI("gauge_ui", "Page %s built in %u ms", kGauges[state->pages[index]].id,
@@ -177,6 +183,8 @@ void screen_event_cb(lv_event_t* e) {
     }
   } else if (swiped) {
     return;
+  } else if (code == LV_EVENT_PRESSED) {
+    lv_indev_get_point(indev, &state->press_point);
   } else if (code == LV_EVENT_SHORT_CLICKED) {
     if (state->info_visible) {
       hide_overlay(nullptr);
@@ -184,6 +192,17 @@ void screen_event_cb(lv_event_t* e) {
       show_info();
     }
   } else if (code == LV_EVENT_LONG_PRESSED) {
+    // LVGL fires a long press after the hold time however far the finger
+    // has moved, and a slow swipe never reaches gesture speed: a finger
+    // that travelled is a swipe in progress, not a hold.
+    lv_point_t point;
+    lv_indev_get_point(indev, &point);
+    const int32_t dx = point.x - state->press_point.x;
+    const int32_t dy = point.y - state->press_point.y;
+    const int32_t slop = state->geometry.px(kHoldSlop);
+    if (dx * dx + dy * dy > slop * slop) {
+      return;
+    }
     state->brightness_index = (state->brightness_index + 1) % kBrightnessCount;
     const int percent = kBrightnessLevels[state->brightness_index];
     if (state->config.set_brightness) {
@@ -261,13 +280,11 @@ void ui_begin(const UiConfig& config) {
   state->geometry = {w / 2, h / 2, (w < h ? w : h) / 2};
 
   const size_t count = kGaugeCount < kMaxGauges ? kGaugeCount : kMaxGauges;
+  const Side side = effective_side(config.side);  // As SkData subscribes
   for (size_t i = 0; i < count; i++) {
-    if (shown_on(kGauges[i], config.side)) {
+    if (shown_on(kGauges[i], side)) {
       state->pages.push_back(i);
     }
-  }
-  if (state->pages.empty()) {  // A table edit left this side nothing to show
-    for (size_t i = 0; i < count; i++) state->pages.push_back(i);
   }
   load_prefs();
   if (state->config.set_brightness) {
@@ -281,6 +298,7 @@ void ui_begin(const UiConfig& config) {
   lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(screen, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(screen, screen_event_cb, LV_EVENT_GESTURE, nullptr);
+  lv_obj_add_event_cb(screen, screen_event_cb, LV_EVENT_PRESSED, nullptr);
   lv_obj_add_event_cb(screen, screen_event_cb, LV_EVENT_SHORT_CLICKED,
                       nullptr);
   lv_obj_add_event_cb(screen, screen_event_cb, LV_EVENT_LONG_PRESSED,

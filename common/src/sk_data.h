@@ -39,6 +39,10 @@ class SkData {
   void invalid(GaugeValue* slot);
 
   GaugeValue values_[kMaxGauges];
+  // Counts connections reaching "connected", as seen on the loop. SensESP's
+  // client generation changes only when it tears a client down itself; the
+  // WebSocket library also reconnects the same client on its own.
+  uint32_t conn_epoch_ = 0;
   std::function<String()> paths_[kMaxGauges];
 };
 

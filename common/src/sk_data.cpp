@@ -24,7 +24,8 @@ constexpr uint32_t kInvalidGraceMs = 2000;
 
 float wrap360(float deg) {
   deg = fmodf(deg, 360.0f);
-  return deg < 0.0f ? deg + 360.0f : deg;
+  if (deg < 0.0f) deg += 360.0f;
+  return deg >= 360.0f ? 0.0f : deg;  // -1e-7 + 360 rounds to 360
 }
 }  // namespace
 
@@ -33,14 +34,30 @@ SkData& sk_data() {
   return instance;
 }
 
-void SkData::begin(Side unit_side) {
+void SkData::begin(Side side) {
+  // The same pages gauge_ui shows, so none of them is left unsubscribed.
+  const Side unit_side = effective_side(side);
   const size_t count = kGaugeCount < kMaxGauges ? kGaugeCount : kMaxGauges;
 
-  // Drop values that have gone stale, so `seen` never outlives them.
+  sensesp::sensesp_app->get_ws_client()->connect_to(
+      new sensesp::LambdaConsumer<sensesp::SKWSConnectionState>(
+          [this](sensesp::SKWSConnectionState state) {
+            if (state == sensesp::SKWSConnectionState::kSKWSConnected) {
+              conn_epoch_++;
+            }
+          }));
+
+  // Drop values that have gone stale, so `seen` never outlives them, and
+  // values a null disowned that no other source has confirmed since.
   sensesp::event_loop()->onRepeat(1000, [this]() {
     const uint32_t now = millis();
     for (GaugeValue& slot : values_) {
       if (slot.seen && !slot.fresh(now)) {
+        slot.seen = false;
+      }
+      if (slot.invalid_pending &&
+          now - slot.invalid_ms >= kInvalidGraceMs) {
+        slot.invalid_pending = false;
         slot.seen = false;
       }
     }
@@ -80,6 +97,11 @@ void SkData::begin(Side unit_side) {
     listener->set_invalid_callback(on_invalid);
     listener->connect_to(new sensesp::LambdaConsumer<float>(
         [this, slot, scale, offset, is_angle](float raw) {
+          // A heading beyond two turns is garbage, not a bearing to wrap.
+          if (is_angle && fabsf(raw * scale) > 720.0f) {
+            invalid(slot);
+            return;
+          }
           const float value = raw * scale + offset;
           store(slot, is_angle ? wrap360(value) : value, NAN);
         }));
@@ -98,32 +120,55 @@ void SkData::store(GaugeValue* slot, float value, float value2) {
     invalid(slot);
     return;
   }
-  // Replay guard. The client generation changes synchronously on the loop
-  // when SensESP starts a new connection, and is_connected() is false until
-  // it is up, so leftovers of an old connection never count as fresh.
+  // Replay guard. is_connected() follows the WebSocket task directly, so
+  // nothing counts while the link is down. A new connection is one SensESP
+  // built (its client generation changes when it tears the old client down)
+  // or one the WebSocket library re-established on the same client
+  // (conn_epoch_, counted from the "connected" state, which SensESP sets
+  // before it subscribes). The first sample per path on a new connection
+  // opens the replay window.
   auto ws = sensesp::sensesp_app->get_ws_client();
   if (!ws->is_connected()) {
     return;
   }
   const uint32_t now = millis();
   const uint32_t gen = ws->client_generation();
-  if (slot->conn_gen != gen) {
+  if (!slot->conn_known || slot->conn_gen != gen ||
+      slot->conn_epoch != conn_epoch_) {
+    slot->conn_known = true;
     slot->conn_gen = gen;
+    slot->conn_epoch = conn_epoch_;
+    slot->replaying = true;
     slot->replay_until_ms = now + kReplayWindowMs;
     return;
   }
-  if ((int32_t)(now - slot->replay_until_ms) < 0) {
-    return;
+  if (slot->replaying) {
+    // Compared only inside the window, so a long-lived connection never
+    // meets the signed wrap of this difference (24.8 days).
+    if ((int32_t)(now - slot->replay_until_ms) < 0) {
+      return;
+    }
+    slot->replaying = false;
   }
   slot->value = value;
   slot->value2 = value2;
   slot->updated_ms = now;
   slot->seen = true;
+  slot->invalid_pending = false;
 }
 
 void SkData::invalid(GaugeValue* slot) {
-  if (millis() - slot->updated_ms >= kInvalidGraceMs) {
+  const uint32_t now = millis();
+  if (!slot->seen || now - slot->updated_ms >= kInvalidGraceMs) {
     slot->seen = false;
+    slot->invalid_pending = false;
+    return;
+  }
+  // A valid value arrived moments ago, perhaps from another source of the
+  // same path: blank only if none follows within the grace time.
+  if (!slot->invalid_pending) {
+    slot->invalid_pending = true;
+    slot->invalid_ms = now;
   }
 }
 
