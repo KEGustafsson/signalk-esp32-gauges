@@ -193,6 +193,9 @@ void draw_text(lv_layer_t* layer, const char* text, const lv_font_t* font,
   lv_draw_label_dsc_t dsc;
   lv_draw_label_dsc_init(&dsc);
   dsc.text = text;
+  // Draws are queued until the layer is finished; let LVGL copy the text so
+  // callers may pass short-lived buffers.
+  dsc.text_local = 1;
   dsc.font = font;
   dsc.color = lv_color_hex(color);
   dsc.opa = opa;

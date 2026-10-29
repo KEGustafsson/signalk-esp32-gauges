@@ -27,12 +27,19 @@ constexpr float kPointerBase = 0.865f;
 constexpr float kPointerTip = 0.765f;
 constexpr float kPointerHalf = 0.04f;
 
-// Horizon window.
+// Horizon window. The horizon is fixed and level; the boat symbol moves.
 constexpr float kDiscY = -0.02f;
 constexpr float kDiscRadius = 0.50f;
 constexpr float kRimWidth = 0.035f;
-constexpr float kPitchPxPerDeg = 0.03f;  // Fraction of R per degree of trim
-constexpr float kMaxPitchShown = 14.0f;
+constexpr float kPitchPxPerDeg = 0.022f;  // Fraction of R per degree of trim
+constexpr float kMaxPitchShown = 12.0f;   // Keeps the whole boat in the window
+// Boat symbol seen from astern, in fractions of R around its waterline
+// centre: hull trapezoid, deck, and a mast that makes the heel obvious.
+constexpr float kHullHalfTop = 0.20f;
+constexpr float kHullHalfBottom = 0.10f;
+constexpr float kFreeboard = 0.035f;  // Waterline to deck
+constexpr float kDraft = 0.03f;       // Waterline to keel
+constexpr float kMastHeight = 0.17f;  // Deck to masthead
 constexpr uint32_t kSkyTop = 0x2C6AA6;
 constexpr uint32_t kSkyHorizon = 0x9CCBEA;
 constexpr uint32_t kSeaTop = 0x1E5E72;
@@ -81,14 +88,12 @@ AttitudeGaugePage::AttitudeGaugePage(lv_obj_t* parent, const GaugeDef& def,
       shown_pitch_(0.0f) {
   draw_face();
   finish_canvas(face_);
-  const lv_font_t* ladder_font = font_for_px(g_.px(0.05f));
-  ladder5_.reset(new TextImage("5", ladder_font, 0xFFFFFF));
-  ladder10_.reset(new TextImage("10", ladder_font, 0xFFFFFF));
   trim_lcd_.set_prefix("TRIM");
   trim_lcd_.set_suffix("\xC2\xB0");
   heel_lcd_.set_suffix("\xC2\xB0");
 
-  // Stacking: face canvas, horizon overlay, then the LCDs over the window.
+  // Stacking: face canvas (with the horizon), boat/pointer overlay, then the
+  // LCDs over the window.
   overlay_ = create_overlay(draw_cb);
   lv_obj_move_to_index(overlay_, 1);
   set_stale_look(overlay_, true);  // Until the first attitude arrives
@@ -137,6 +142,9 @@ void AttitudeGaugePage::draw_face() {
               major ? LV_MAX(2, g_.px(0.014f)) : LV_MAX(1, g_.px(0.007f)),
               color::kMarking);
   }
+
+  // The sea horizon is part of the static face: it never moves.
+  draw_window(&layer);
   lv_canvas_finish_layer(face_, &layer);
 
   // Scale numbers (absolute values on both sides), rotated along the arc.
@@ -161,22 +169,11 @@ void AttitudeGaugePage::draw_face() {
                               stbd.y, kSideLabelAngle);
 }
 
-void AttitudeGaugePage::draw_horizon(lv_layer_t* layer) const {
+void AttitudeGaugePage::draw_window(lv_layer_t* layer) const {
   const float hx = (float)g_.cx;
   const float hy = g_.cy + g_.pxf(kDiscY);
   const float rd = g_.pxf(kDiscRadius);
-
-  // Seen from the helm, heeling to port turns the horizon clockwise on
-  // screen; bow up drops it.
-  const float theta = -shown_roll_ * kDegToRad;
-  const float ux = cosf(theta), uy = sinf(theta);   // Along the horizon
-  const float nx = sinf(theta), ny = -cosf(theta);  // Toward the sky
-  float pitch = shown_pitch_;
-  if (pitch > kMaxPitchShown) pitch = kMaxPitchShown;
-  if (pitch < -kMaxPitchShown) pitch = -kMaxPitchShown;
   const float px_per_deg = g_.pxf(kPitchPxPerDeg);
-  const float h0x = hx - nx * pitch * px_per_deg;
-  const float h0y = hy - ny * pitch * px_per_deg;
 
   // Sky: the whole disc.
   {
@@ -185,77 +182,39 @@ void AttitudeGaugePage::draw_horizon(lv_layer_t* layer) const {
     draw_circle_grad(layer, (int32_t)hx, (int32_t)hy, (int32_t)rd, c, f, 2);
   }
 
-  // Sea: one span per pixel row, clipped to the disc.
+  // Sea: the lower half, one span per pixel row so it stays inside the disc.
   lv_draw_rect_dsc_t row;
   lv_draw_rect_dsc_init(&row);
   row.bg_opa = LV_OPA_COVER;
-  // Only the rows inside this render strip.
-  const int32_t y_top =
-      LV_MAX((int32_t)ceilf(hy - rd), layer->_clip_area.y1);
-  const int32_t y_bottom =
-      LV_MIN((int32_t)floorf(hy + rd), layer->_clip_area.y2);
-  for (int32_t y = y_top; y <= y_bottom; y++) {
+  for (int32_t y = (int32_t)lroundf(hy); y <= (int32_t)floorf(hy + rd); y++) {
     const float dy = (float)y + 0.5f - hy;
     const float half = sqrtf(fmaxf(0.0f, rd * rd - dy * dy));
-    float x1 = hx - half;
-    float x2 = hx + half;
-    const float rel_y = ((float)y + 0.5f - h0y) * ny;
-    if (fabsf(nx) < 1e-4f) {
-      if (rel_y > 0.0f) continue;  // Whole row is sky
-    } else {
-      // Sea where (x - h0x) * nx + rel_y <= 0.
-      const float xs = h0x - rel_y / nx;
-      if (nx > 0.0f) {
-        x2 = fminf(x2, xs);
-      } else {
-        x1 = fmaxf(x1, xs);
-      }
-    }
-    if (x2 - x1 < 0.5f) continue;
-    row.bg_color = lerp_color(kSeaTop, kSeaBottom, (dy + rd) / (2.0f * rd));
-    lv_area_t a = {(int32_t)lroundf(x1), y, (int32_t)lroundf(x2) - 1, y};
+    if (half < 0.5f) continue;
+    row.bg_color = lerp_color(kSeaTop, kSeaBottom, dy / rd);
+    lv_area_t a = {(int32_t)lroundf(hx - half), y,
+                   (int32_t)lroundf(hx + half) - 1, y};
     lv_draw_rect(layer, &row, &a);
   }
 
-  // Horizon line (also hides the row stair-steps).
-  const float dist = fabsf(pitch * px_per_deg);
-  if (dist < rd - 1.0f) {
-    const float half = sqrtf(rd * rd - dist * dist) - 1.0f;
-    draw_line(layer, h0x - ux * half, h0y - uy * half, h0x + ux * half,
-              h0y + uy * half, LV_MAX(2, g_.px(0.008f)), 0xFFFFFF,
-              LV_OPA_80);
-  }
+  // Horizon line.
+  draw_line(layer, hx - rd + 1.0f, hy, hx + rd - 1.0f, hy,
+            LV_MAX(2, g_.px(0.008f)), 0xFFFFFF, LV_OPA_80);
 
-  // Pitch ladder at +-5 and +-10 degrees.
+  // Trim ladder at +-5 and +-10 degrees (bow up above the horizon).
+  const lv_font_t* font = font_for_px(g_.px(0.05f));
   const float marks[4] = {-10.0f, -5.0f, 5.0f, 10.0f};
   for (float m : marks) {
-    const float cx = h0x + nx * m * px_per_deg;
-    const float cy = h0y + ny * m * px_per_deg;
+    const float y = hy - m * px_per_deg;
     const float len = g_.pxf(fabsf(m) >= 10.0f ? 0.10f : 0.06f);
-    const float from_center = sqrtf((cx - hx) * (cx - hx) +
-                                    (cy - hy) * (cy - hy));
-    if (from_center > rd - g_.pxf(0.08f)) continue;
-    draw_line(layer, cx - ux * len, cy - uy * len, cx + ux * len,
-              cy + uy * len, LV_MAX(1, g_.px(0.006f)), 0xFFFFFF, LV_OPA_90);
-    const TextImage* label = fabsf(m) >= 10.0f ? ladder10_.get()
-                                               : ladder5_.get();
+    draw_line(layer, hx - len, y, hx + len, y, LV_MAX(1, g_.px(0.006f)),
+              0xFFFFFF, LV_OPA_70);
+    const char* text = fabsf(m) >= 10.0f ? "10" : "5";
     const float off = len + g_.pxf(0.045f);
-    const float rot = -shown_roll_;
-    label->draw(layer, cx - ux * off, cy - uy * off, rot);
-    label->draw(layer, cx + ux * off, cy + uy * off, rot);
+    draw_text(layer, text, font, 0xFFFFFF, (int32_t)(hx - off), (int32_t)y,
+              LV_OPA_80);
+    draw_text(layer, text, font, 0xFFFFFF, (int32_t)(hx + off), (int32_t)y,
+              LV_OPA_80);
   }
-
-  // Fixed boat symbol.
-  const int32_t w = LV_MAX(2, g_.px(0.02f));
-  const float wing_in = g_.pxf(0.09f);
-  const float wing_out = g_.pxf(0.26f);
-  const float drop = g_.pxf(0.04f);
-  draw_line(layer, hx - wing_out, hy, hx - wing_in, hy, w, kBoatSymbol);
-  draw_line(layer, hx - wing_in, hy, hx - wing_in, hy + drop, w, kBoatSymbol);
-  draw_line(layer, hx + wing_in, hy, hx + wing_out, hy, w, kBoatSymbol);
-  draw_line(layer, hx + wing_in, hy, hx + wing_in, hy + drop, w, kBoatSymbol);
-  draw_circle(layer, (int32_t)hx, (int32_t)hy, LV_MAX(2, g_.px(0.018f)),
-              kBoatSymbol);
 
   // Rim: covers the jagged disc edge and frames the window.
   lv_draw_arc_dsc_t rim;
@@ -274,8 +233,52 @@ void AttitudeGaugePage::draw_horizon(lv_layer_t* layer) const {
   lv_draw_arc(layer, &rim);
 }
 
+void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
+  // Seen from astern: heeling to starboard (roll +) turns the boat
+  // clockwise; bow up (pitch +) lifts it against the level horizon.
+  float pitch = shown_pitch_;
+  if (pitch > kMaxPitchShown) pitch = kMaxPitchShown;
+  if (pitch < -kMaxPitchShown) pitch = -kMaxPitchShown;
+  const float ox = (float)g_.cx;
+  const float oy = g_.cy + g_.pxf(kDiscY) - pitch * g_.pxf(kPitchPxPerDeg);
+  const float theta = shown_roll_ * kDegToRad;
+  const float c = cosf(theta), s = sinf(theta);
+  auto at = [&](float x_frac, float y_frac) {
+    const float x = g_.pxf(x_frac), y = g_.pxf(y_frac);
+    lv_point_precise_t p;
+    p.x = ox + x * c - y * s;
+    p.y = oy + x * s + y * c;
+    return p;
+  };
+
+  // Hull: deck corners up, keel corners down.
+  const lv_point_precise_t deck_l = at(-kHullHalfTop, -kFreeboard);
+  const lv_point_precise_t deck_r = at(kHullHalfTop, -kFreeboard);
+  const lv_point_precise_t keel_l = at(-kHullHalfBottom, kDraft);
+  const lv_point_precise_t keel_r = at(kHullHalfBottom, kDraft);
+  lv_draw_triangle_dsc_t tri;
+  lv_draw_triangle_dsc_init(&tri);
+  tri.color = lv_color_hex(kBoatSymbol);
+  tri.p[0] = deck_l;
+  tri.p[1] = deck_r;
+  tri.p[2] = keel_r;
+  lv_draw_triangle(layer, &tri);
+  tri.p[0] = deck_l;
+  tri.p[1] = keel_r;
+  tri.p[2] = keel_l;
+  lv_draw_triangle(layer, &tri);
+
+  // Deck line and mast.
+  const lv_point_precise_t mast_foot = at(0.0f, -kFreeboard);
+  const lv_point_precise_t mast_head = at(0.0f, -kFreeboard - kMastHeight);
+  draw_line(layer, deck_l.x, deck_l.y, deck_r.x, deck_r.y,
+            LV_MAX(2, g_.px(0.012f)), 0xFFD9A8);
+  draw_line(layer, mast_foot.x, mast_foot.y, mast_head.x, mast_head.y,
+            LV_MAX(2, g_.px(0.014f)), kBoatSymbol);
+}
+
 void AttitudeGaugePage::draw_dynamic(lv_layer_t* layer) const {
-  draw_horizon(layer);
+  draw_boat(layer);
 
   // Heel pointer on the scale, toward the low side.
   float heel = shown_roll_;
@@ -307,8 +310,8 @@ void AttitudeGaugePage::invalidate_dynamic() {
 
 void AttitudeGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
   const bool fresh = value.fresh(now_ms);
-  // Without live data the horizon levels off, dimmed, so it cannot pass for
-  // a real "level" reading; the LCDs show dashes.
+  // Without live data the boat levels off, dimmed, so it cannot pass for a
+  // real "level" reading; the LCDs show dashes.
   set_stale_look(overlay_, !fresh);
   const float roll = fresh ? value.value : 0.0f;
   const float pitch = fresh ? value.value2 : 0.0f;

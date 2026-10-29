@@ -58,3 +58,13 @@ Verified: both boards build without warnings from this code; the preview
 renders every page; stale/overflow states rendered and inspected; incremental
 redraws are pixel-identical to full redraws on every page; the CI credential
 check passes the clean tree and fails each injected credential.
+
+## 2026-10-29 — Sea horizon: level horizon, moving boat
+
+At the owner's request the attitude page now keeps the sea horizon fixed and
+level and moves a boat symbol (seen from astern: hull, deck, mast) instead:
+it heels with `roll` (starboard down turns it clockwise) and rises with
+`pitch` (bow up), against a fixed trim ladder at 5 and 10 degrees. The sky,
+sea and ladder are now part of the static face, so only the boat and the heel
+pointer redraw. Rendering it exposed a latent bug: `draw_text()` queued a
+pointer to the caller's text; it now sets `text_local` so LVGL copies it.

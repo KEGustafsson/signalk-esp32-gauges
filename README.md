@@ -52,7 +52,7 @@ are on every unit:
 | Heading | `navigation.headingTrue` (rad) | °T, rotating card | 0–360 |
 | Coolant | `propulsion.<side>.coolantTemperature` (K) | °C | 0–120, red from 100 |
 | Oil | `propulsion.<side>.oilTemperature` (K) | °C | 0–120, red from 100 |
-| Sea horizon | `navigation.attitude` (`roll`, `pitch`, rad) | heel ° PORT/STBD, trim ° | heel ±40 |
+| Sea horizon | `navigation.attitude` (`roll`, `pitch`, rad) | boat symbol on a level horizon; heel ° PORT/STBD, trim ° | heel ±40 |
 
 Every path can be changed per unit in the SensESP web UI: on the
 **Configuration** page, in the card for that gauge (for example
@@ -63,8 +63,8 @@ The gauges never show a number nobody vouches for:
 - A value that is not a number (for example `null` from a source that has
   lost its data) blanks the gauge at once instead of being shown as 0.
 - A value older than 10 s is shown as dashes. A dial needle parks at its
-  minimum; the compass card and the sea horizon stay where they were but are
-  dimmed.
+  minimum, the compass card stays where it was but dimmed, and the sea
+  horizon's boat symbol levels off, dimmed.
 - After every (re)connect to Signal K the first value of each path is
   ignored: the server replays the last value it holds, however old.
 
@@ -136,7 +136,8 @@ screen update restarts the unit.
   2.1" uses its built-in board file; the 4" uses a custom board file made from
   Waveshare's ESP-IDF BSP and Arduino examples.
 - **Graphics**: LVGL 9.3. The static dial face (chrome bezel, scale, numbers)
-  is drawn once into a canvas; only the needle, compass card, horizon and LCD
+  is drawn once into a canvas, including the sea horizon, which is always
+  level; only the needle, compass card, boat symbol, heel pointer and LCD
   readouts are redrawn as values change.
 - **Data**: SensESP (main branch) subscribes to the Signal K paths over WebSocket. SensESP
   and LVGL run on the same Arduino loop task, so they share data without locks.

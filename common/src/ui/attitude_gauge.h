@@ -4,8 +4,8 @@
 //
 //  - Top arc: heel scale (+-40 deg) with green/yellow/red bands and a red
 //    pointer that swings toward the low side (port heel -> left).
-//  - Window: sky/sea horizon that tilts as the real horizon would seen from
-//    the helm, shifted by trim, with a pitch ladder and a fixed boat symbol.
+//  - Window: a fixed, level sea horizon with a trim ladder, and a boat symbol
+//    (seen from astern) that heels with the boat and rises/sinks with trim.
 //  - LCDs: heel with PORT/STBD, and TRIM (pitch, bow up positive).
 
 #include <memory>
@@ -27,15 +27,14 @@ class AttitudeGaugePage : public GaugePage {
   float heel_to_angle(float heel_deg) const;
   void draw_face();
   void draw_dynamic(lv_layer_t* layer) const;
-  void draw_horizon(lv_layer_t* layer) const;
+  void draw_window(lv_layer_t* layer) const;
+  void draw_boat(lv_layer_t* layer) const;
   void invalidate_dynamic();
   static void draw_cb(lv_event_t* e);
 
   lv_obj_t* overlay_;
   LcdReadout heel_lcd_;
   LcdReadout trim_lcd_;
-  std::unique_ptr<TextImage> ladder5_;
-  std::unique_ptr<TextImage> ladder10_;
   float shown_roll_;
   float shown_pitch_;
 };

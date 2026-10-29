@@ -71,7 +71,8 @@ inline bool shown_on(const GaugeDef& def, Side unit_side) {
 }
 
 // A value older than this is shown as dashes: a dial needle parks at its
-// minimum, the compass card and sea horizon are dimmed where they stood.
+// minimum, the compass card is dimmed where it stood, and the sea horizon's
+// boat symbol levels off, dimmed.
 static constexpr uint32_t kStaleAfterMs = 10000;
 
 }  // namespace skgauges
