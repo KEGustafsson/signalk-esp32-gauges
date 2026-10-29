@@ -61,12 +61,15 @@ Every path can be changed per unit in the SensESP web UI: on the
 The gauges never show a number nobody vouches for:
 
 - A value that is not a number (for example `null` from a source that has
-  lost its data) blanks the gauge at once instead of being shown as 0.
+  lost its data) is never shown as 0: it blanks the gauge, unless a valid
+  value arrived within the last 2 s (another source still sending it).
 - A value older than 10 s is shown as dashes. A dial needle parks at its
   minimum, the compass card stays where it was but dimmed, and the sea
   horizon's boat symbol levels off, dimmed.
-- After every (re)connect to Signal K the first value of each path is
-  ignored: the server replays the last value it holds, however old.
+- After every (re)connect to Signal K the first value of each path, and
+  anything within 1 s after it, is ignored: the server replays the last
+  value it holds from each source, however old. Nothing is taken while the
+  connection is down.
 
 To change ranges, zones, titles or the page order, edit the table in
 [`common/src/gauge_defs.cpp`](common/src/gauge_defs.cpp).
@@ -81,7 +84,7 @@ To change ranges, zones, titles or the page order, edit the table in
 The page and brightness are remembered across restarts. If the touch
 controller does not start, the unit restarts and tries again (on the 4" with
 the GT911's other address), and after that runs without touch rather than
-not at all: it keeps showing the remembered page until the next power-up.
+not at all, showing the remembered page. Every restart tries touch again.
 
 The small dot at the
 bottom of the bezel is SensESP's status LED: its colour and blink pattern show

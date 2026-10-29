@@ -36,7 +36,7 @@
 
 // SensESP's setup access point (SSID = the unit's hostname).
 //  - set (8+ characters): the access point uses this password;
-//  - empty, with SECRET_WIFI_SSID set: the access point is off;
+//  - empty, with a WiFi SSID and password set: the access point is off;
 //  - empty, no WiFi configured: SensESP's default ("thisisfine"), so a fresh
 //    unit can still be set up from its web UI at 192.168.4.1.
 #define SECRET_AP_PASSWORD ""

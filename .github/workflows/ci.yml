@@ -75,13 +75,18 @@ jobs:
       # of each compile, so a changed source -- including a new SensESP commit
       # on its main branch -- just recompiles that file. A GitHub cache entry
       # cannot be overwritten, so every run saves under its own key and the
-      # next run restores the newest one by prefix.
+      # next run restores the newest one by prefix. PlatformIO never prunes
+      # the cache, so it starts afresh each ISO week instead of growing.
+      - name: Cache week
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
       - name: Cache compiled objects
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.pio-build-cache
-          key: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: pio-objs-${{ matrix.env }}-${{ runner.os }}-
+          key: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ steps.week.outputs.week }}-${{ github.run_id }}
+          restore-keys: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ steps.week.outputs.week }}-
 
       - name: Install PlatformIO
         run: pip install --upgrade platformio
@@ -186,9 +191,11 @@ jobs:
               exit 1
             fi
           done
-          if git grep -qE -e '--auth[= ]' -e '(^|[[:space:]])-a[[:space:]]' \
-              -- '*platformio.ini'; then
-            echo "::error::an OTA password is written into a platformio.ini; scripts/ota_auth.py injects it from secrets.h"
+          # espota takes the password as --auth / -a (also -apw, -a=pw), so no
+          # upload_flags at all; and no secret through a -D build flag.
+          if git grep -qE -e '^[[:space:]]*upload_flags' -e '--auth' \
+              -e 'SECRET_[A-Z_]*PASSWORD' -- '*platformio.ini'; then
+            echo "::error::an OTA password (or upload_flags) is written into a platformio.ini; scripts/ota_auth.py injects it from secrets.h"
             exit 1
           fi
           echo "no committed credentials"

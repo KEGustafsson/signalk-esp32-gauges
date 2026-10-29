@@ -51,8 +51,11 @@ If an OTA upload fails:
    (`esp32_exception_decoder` symbolises backtraces).
 3. On the screen: the gauge appears with dashes; tap shows the IP and the
    Signal K state; the bezel dot is SensESP's status LED.
-4. A unit that has never joined WiFi raises SensESP's access point named after
-   its hostname; configure WiFi and the server in its web UI.
+4. A unit without WiFi credentials in `secrets.h` raises SensESP's access
+   point named after its hostname (password `SECRET_AP_PASSWORD`, or
+   SensESP's default when that is empty); configure WiFi and the server in
+   its web UI. With the boat's WiFi in `secrets.h` and no AP password, the
+   access point stays off.
 5. In the Signal K admin UI, approve the unit's access request.
 
 ## Phase 4: Evaluate
@@ -61,8 +64,9 @@ If an OTA upload fails:
   not proof of the right path or unit conversion.
 - **Dashes stay**: wrong SK path (fix in the web UI), no data on the server, or
   the access request not approved.
-- **Touch dead on a 4"**: GT911 at 0x14 instead of 0x5D
-  (`include/esp_panel_board_custom_conf.h`).
+- **Touch dead**: the serial log says "Touch did not start" after the
+  firmware tried both GT911 addresses (0x5D/0x14, `common/src/board_start.cpp`)
+  -- check the touch cable and the board README's first power-up checklist.
 - **Dark 4" screen**: backlight polarity (`ESP_PANEL_BOARD_BACKLIGHT_ON_LEVEL`).
 - **Reboot loop**: read the backtrace; display init failure and LVGL asserts
   restart the unit by design.

@@ -99,5 +99,18 @@ round-1 fixes. What changed:
   sets the app size).
 
 Verified: both boards build (S3 2.80 MB of a 6.25 MB slot, P4 2.91 of
-8.1 MB); live and stale renders inspected; incremental redraws are pixel-
+8.3 MB); live and stale renders inspected; incremental redraws are pixel-
 identical to full redraws; ASan/UBSan clean on the host.
+
+## 2026-10-29 — OTA log hygiene, CI hardening (review round 3, part 1)
+
+CodeRabbit found that the espressif32 builder runs espota with `--debug`,
+which logs the `--auth` password: `scripts/ota_quiet.py` (post: script)
+drops the flag (checked with `-t envdump`). The empty-password check now
+requires each key once, as exactly one `""`. From the round-3 CI/docs
+review: `platformio.ini` may carry no `upload_flags`, `--auth` or
+`SECRET_*PASSWORD`; the compiled-object cache restarts weekly instead of
+growing for ever; the contact sheet fails on a missing or blank render;
+README, the build-flash skill and secrets.example.h now describe the null
+grace, the 1 s replay window, the AP rules and the touch retry as coded.
+Kept: LVGL fetched by release tag (a SHA would force a full clone).
