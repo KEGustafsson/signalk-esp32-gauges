@@ -73,6 +73,7 @@ CompassGaugePage::CompassGaugePage(lv_obj_t* parent, const GaugeDef& def,
   // so slot the card in directly above the canvas.
   card_obj_ = create_overlay(card_draw_cb);
   lv_obj_move_to_index(card_obj_, 1);
+  set_stale_look(card_obj_, true);  // Until the first heading arrives
   lcd_.set_prefix(def.unit);
 }
 
@@ -86,7 +87,7 @@ void CompassGaugePage::draw_face() {
 }
 
 void CompassGaugePage::draw_card(lv_layer_t* layer) const {
-  // Before the first sample the card rests at north.
+  // Before the first sample the card rests at north (dimmed, see update()).
   const float heading = isnan(shown_heading_) ? 0.0f : shown_heading_;
 
   // Graduations every 2 degrees, longer and heavier every 10.
@@ -100,12 +101,19 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
     line.p1 = polar(g_, angle, g_.pxf(kCardOuter));
     line.p2 = polar(g_, angle, g_.pxf(kCardOuter - (ten ? kTick10Len
                                                          : kTick2Len)));
+    if (!in_clip(layer, line.p1.x, line.p1.y, line.p2.x, line.p2.y,
+                 line.width + 1.0f)) {
+      continue;
+    }
     lv_draw_line(layer, &line);
   }
 
   for (const CardLabel& label : labels_) {
     const float angle = label.bearing - heading;
     lv_point_precise_t p = polar(g_, angle, g_.pxf(label.radius_frac));
+    if (!in_clip(layer, p.x, p.y, p.x, p.y, label.image->radius() + 1.0f)) {
+      continue;
+    }
     label.image->draw(layer, p.x, p.y, angle);
   }
 
@@ -147,9 +155,12 @@ void CompassGaugePage::invalidate_card() {
 
 void CompassGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
   const bool fresh = value.fresh(now_ms);
+  // Without a live heading the card stays where it was, dimmed, and the LCD
+  // shows dashes: a card at its last heading must not pass for a reading.
+  set_stale_look(card_obj_, !fresh);
   if (!fresh) {
     lcd_.set_dashes();
-    return;  // The card stays where it was
+    return;
   }
   lcd_.set_value((float)(lroundf(value.value) % 360), 0, true);
   if (smooth_toward(&shown_heading_, value.value, 0.2f, 0.1f, true)) {

@@ -267,8 +267,8 @@
     #define ESP_PANEL_BOARD_TOUCH_I2C_SDA_PULLUP        (1)
     #define ESP_PANEL_BOARD_TOUCH_I2C_IO_SCL            (8)
     #define ESP_PANEL_BOARD_TOUCH_I2C_IO_SDA            (7)
-    /* 0x5D. Waveshare's BSP also probes the GT911 backup address 0x14; if
-     * touch does not respond, set this to (0x14). */
+    /* 0x5D. Some boards answer at the GT911 backup address 0x14 instead;
+     * src/main.cpp switches to it on the next boot if begin() fails. */
     #define ESP_PANEL_BOARD_TOUCH_I2C_ADDRESS           (0)
 #define ESP_PANEL_BOARD_TOUCH_SWAP_XY           (0)
 #define ESP_PANEL_BOARD_TOUCH_MIRROR_X          (0)
@@ -289,7 +289,7 @@
 #define ESP_PANEL_BOARD_USE_EXPANDER            (0)
 
 #define ESP_PANEL_BOARD_CUSTOM_FILE_VERSION_MAJOR 1
-#define ESP_PANEL_BOARD_CUSTOM_FILE_VERSION_MINOR 0
+#define ESP_PANEL_BOARD_CUSTOM_FILE_VERSION_MINOR 2
 #define ESP_PANEL_BOARD_CUSTOM_FILE_VERSION_PATCH 0
 
 #endif // ESP_PANEL_BOARD_DEFAULT_USE_CUSTOM

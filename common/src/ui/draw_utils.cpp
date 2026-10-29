@@ -236,6 +236,13 @@ TextImage::~TextImage() {
   }
 }
 
+float TextImage::radius() const {
+  if (buf_ == nullptr) return 0.0f;
+  const float w = buf_->header.w;
+  const float h = buf_->header.h;
+  return 0.5f * sqrtf(w * w + h * h);
+}
+
 void TextImage::draw(lv_layer_t* layer, float cx, float cy,
                      float rotation_deg) const {
   if (buf_ == nullptr) {

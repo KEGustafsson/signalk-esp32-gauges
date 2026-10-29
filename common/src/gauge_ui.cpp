@@ -8,6 +8,7 @@
 #include <memory>
 #include <vector>
 
+#include "sensesp_app.h"
 #include "sensesp_base_app.h"
 #include "sk_data.h"
 #include "ui/gauge_page.h"
@@ -19,6 +20,10 @@ namespace {
 constexpr uint32_t kUiPeriodMs = 30;
 constexpr uint32_t kInfoShowMs = 5000;
 constexpr uint32_t kToastShowMs = 1300;
+// Page and brightness are written to flash this long after the last change,
+// not on every swipe: an NVS commit stalls the loop (and the RGB panel's
+// PSRAM frame buffer reads) for a few to tens of ms.
+constexpr uint32_t kPrefsSaveDelayMs = 3000;
 constexpr int kBrightnessLevels[] = {100, 60, 30, 10};
 constexpr int kBrightnessCount =
     sizeof(kBrightnessLevels) / sizeof(kBrightnessLevels[0]);
@@ -37,17 +42,36 @@ struct UiState {
   lv_obj_t* overlay_label = nullptr;
   lv_timer_t* overlay_timer = nullptr;
   bool info_visible = false;
+  lv_timer_t* prefs_timer = nullptr;
+  String saved_page;      // What NVS holds, to skip writes that change nothing
+  int saved_bright = -1;
 };
 
 UiState* state = nullptr;
 
-void save_prefs() {
+void write_prefs(lv_timer_t*) {
+  lv_timer_pause(state->prefs_timer);
+  const char* page = kGauges[state->pages[state->current]].id;
+  if (state->saved_page == page &&
+      state->saved_bright == state->brightness_index) {
+    return;
+  }
   Preferences prefs;
   if (prefs.begin(kPrefsNamespace, false)) {
-    prefs.putString("page", kGauges[state->pages[state->current]].id);
-    prefs.putInt("bright", state->brightness_index);
+    if (state->saved_page != page) prefs.putString("page", page);
+    if (state->saved_bright != state->brightness_index) {
+      prefs.putInt("bright", state->brightness_index);
+    }
     prefs.end();
+    state->saved_page = page;
+    state->saved_bright = state->brightness_index;
   }
+}
+
+// Schedules a write of the current page and brightness (debounced).
+void save_prefs() {
+  lv_timer_reset(state->prefs_timer);
+  lv_timer_resume(state->prefs_timer);
 }
 
 void load_prefs() {
@@ -55,9 +79,11 @@ void load_prefs() {
   if (!prefs.begin(kPrefsNamespace, true)) {
     return;  // First boot: namespace does not exist yet
   }
-  String id = prefs.getString("page", "");
-  int bright = prefs.getInt("bright", 0);
+  String id = prefs.isKey("page") ? prefs.getString("page") : String();
+  int bright = prefs.isKey("bright") ? prefs.getInt("bright") : 0;
   prefs.end();
+  state->saved_page = id;
+  state->saved_bright = bright;
   for (size_t i = 0; i < state->pages.size(); i++) {
     if (id == kGauges[state->pages[i]].id) {
       state->current = i;
@@ -70,6 +96,7 @@ void load_prefs() {
 
 void hide_overlay(lv_timer_t*) {
   lv_obj_add_flag(state->overlay, LV_OBJ_FLAG_HIDDEN);
+  lv_timer_pause(state->overlay_timer);
   state->info_visible = false;
 }
 
@@ -103,7 +130,9 @@ void show_info() {
   String text;
   text += state->config.unit_name;
   text += "  ";
-  text += sensesp::SensESPBaseApp::get_hostname();
+  text += sensesp::sensesp_app != nullptr
+              ? sensesp::SensESPBaseApp::get_hostname()
+              : String("-");
   text += "\nIP ";
   text += WiFi.isConnected() ? WiFi.localIP().toString() : String("-");
   text += "\nSignal K: ";
@@ -111,7 +140,7 @@ void show_info() {
   text += "\n";
   text += def.title;
   text += ": ";
-  text += def.sk_path;
+  text += sk_data().sk_path(state->pages[state->current]);
   text += "\n" LV_SYMBOL_LEFT " swipe " LV_SYMBOL_RIGHT "   hold: brightness";
   show_overlay(text.c_str(), kInfoShowMs, true);
 }
@@ -120,22 +149,29 @@ void screen_event_cb(lv_event_t* e) {
   const lv_event_code_t code = lv_event_get_code(e);
   lv_indev_t* indev = lv_indev_active();
 
-  if (code == LV_EVENT_GESTURE && indev != nullptr) {
+  if (indev == nullptr) {
+    return;
+  }
+  // A swipe in any direction must not also count as a tap or a long press.
+  // wait_release covers later input reads; the gesture_dir check covers a
+  // LONG_PRESSED that LVGL sends in the same read as the gesture (the page
+  // switch below can take longer than the long-press time).
+  const bool swiped = lv_indev_get_gesture_dir(indev) != LV_DIR_NONE;
+
+  if (code == LV_EVENT_GESTURE) {
     const lv_dir_t dir = lv_indev_get_gesture_dir(indev);
     const size_t n = state->pages.size();
+    lv_indev_wait_release(indev);
     if (dir == LV_DIR_LEFT) {
       show_page((state->current + 1) % n, true);
     } else if (dir == LV_DIR_RIGHT) {
       show_page((state->current + n - 1) % n, true);
-    } else {
-      return;
     }
-    // A swipe must not also count as a tap or a long press.
-    lv_indev_wait_release(indev);
+  } else if (swiped) {
+    return;
   } else if (code == LV_EVENT_SHORT_CLICKED) {
     if (state->info_visible) {
       hide_overlay(nullptr);
-      lv_timer_pause(state->overlay_timer);
     } else {
       show_info();
     }
@@ -222,6 +258,9 @@ void ui_begin(const UiConfig& config) {
       state->pages.push_back(i);
     }
   }
+  if (state->pages.empty()) {  // A table edit left this side nothing to show
+    for (size_t i = 0; i < count; i++) state->pages.push_back(i);
+  }
   load_prefs();
   if (state->config.set_brightness) {
     state->config.set_brightness(kBrightnessLevels[state->brightness_index]);
@@ -241,6 +280,8 @@ void ui_begin(const UiConfig& config) {
 
   create_status_dot();
   create_overlay();
+  state->prefs_timer = lv_timer_create(write_prefs, kPrefsSaveDelayMs, nullptr);
+  lv_timer_pause(state->prefs_timer);
   show_page(state->current, false);
   lv_timer_create(ui_timer_cb, kUiPeriodMs, nullptr);
 }
@@ -249,8 +290,10 @@ void ui_set_status_color(uint8_t r, uint8_t g, uint8_t b) {
   if (state == nullptr || state->status_dot == nullptr) {
     return;
   }
-  // Dark phases of a blink pattern show as an unlit LED, not as black.
-  uint32_t rgb = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+  // Dark phases of a blink pattern show as an unlit LED, not as black. The
+  // colour is quantised: SensESP fades its LED every 5 ms, and restyling the
+  // dot on every step would keep the display from ever going idle.
+  uint32_t rgb = (((uint32_t)r << 16) | ((uint32_t)g << 8) | b) & 0xE0E0E0;
   if (r < 0x30 && g < 0x30 && b < 0x30) {
     rgb = 0x303030;
   }

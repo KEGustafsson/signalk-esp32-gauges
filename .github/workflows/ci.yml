@@ -17,8 +17,10 @@ on:
 
 # A newer push supersedes an in-flight run on the same ref. Never cancel main:
 # its runs are the record of what was actually verified on the trunk.
+# On main every commit gets its own group, so a queued run is not dropped
+# either.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
@@ -34,6 +36,7 @@ jobs:
   firmware-build:
     name: Build ${{ matrix.env }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +52,8 @@ jobs:
       PLATFORMIO_BUILD_CACHE_DIR: ${{ github.workspace }}/.pio-build-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # No `cache: pip`: there is no requirements file, PlatformIO is installed
       # ad hoc below. The cache that matters is ~/.platformio.
@@ -95,14 +100,17 @@ jobs:
   # ---------------------------------------------------------------------------
   # The shared gauge UI on the host: tools/preview compiles common/src/ui with
   # LVGL 9.3 and the firmware's own lv_conf.h, then renders every page at 480
-  # and 720 px. A crash, an assert or a missing page fails the job; the images
+  # and 720 px. A crash, an LVGL assert or a failed write fails the job; the images
   # are kept as an artifact so a visual change can be looked at in review.
   # ---------------------------------------------------------------------------
   gauge-preview:
     name: Gauge preview (host)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -132,6 +140,7 @@ jobs:
         with:
           name: gauge-preview
           path: out/preview-*.png
+          retention-days: 14
 
   # ---------------------------------------------------------------------------
   # The scripts and the credential rules. ota_auth.py only runs at upload time,
@@ -140,8 +149,11 @@ jobs:
   scripts:
     name: Scripts and credentials
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -150,21 +162,25 @@ jobs:
       - name: Byte-compile the scripts
         run: python -m compileall -q scripts tools/preview
 
-      # secrets.h must never be committed, and the committed example must not
-      # carry a usable OTA password: a build without secrets.h falls back to
-      # it, and would otherwise accept OTA uploads with a published password.
+      # No secrets.h may be committed anywhere, and the committed example must
+      # not carry a usable password: a build without secrets.h falls back to
+      # it, and would otherwise accept OTA uploads (or web UI / access point
+      # logins) with a published password.
       - name: No committed credentials
         run: |
           set -euo pipefail
-          if [ -n "$(git ls-files include/secrets.h)" ]; then
-            echo "::error::include/secrets.h is committed; it must stay gitignored"
+          if git ls-files | grep -qE '(^|/)secrets\.h$'; then
+            echo "::error::a secrets.h is committed; it must stay gitignored"
             exit 1
           fi
-          if ! grep -qE '^#define SECRET_OTA_PASSWORD ""' include/secrets.example.h; then
-            echo "::error::include/secrets.example.h must keep SECRET_OTA_PASSWORD empty"
-            exit 1
-          fi
-          if grep -rqE --include=platformio.ini -e '--auth=' .; then
+          for key in SECRET_OTA_PASSWORD SECRET_ADMIN_PASSWORD SECRET_AP_PASSWORD; do
+            if ! grep -qE "^#define $key \"\"" include/secrets.example.h; then
+              echo "::error::include/secrets.example.h must keep $key empty"
+              exit 1
+            fi
+          done
+          if git ls-files -z '*platformio.ini' \
+              | xargs -0 grep -qE -e '--auth[= ]' -e '(^|[[:space:]])-a[[:space:]]'; then
             echo "::error::an OTA password is written into a platformio.ini; scripts/ota_auth.py injects it from secrets.h"
             exit 1
           fi

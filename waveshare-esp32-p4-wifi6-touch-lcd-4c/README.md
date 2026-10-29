@@ -35,25 +35,30 @@ examples.
 
 ## Build settings
 
-- Board `esp32-p4_r3` (ESP32-P4 silicon v3.x, Waveshare's default). If your
+- Board `esp32-p4_r3` (ESP32-P4 silicon v3.01 or newer, Waveshare's default). If your
   board has pre-v3 silicon (the boot log prints the chip revision), change it to
   `board = esp32-p4`.
-- 32 MB flash with `partitions_32MB.csv`: two 8 MB OTA slots and a ~16 MB
-  filesystem for SensESP.
+- 32 MB flash with `partitions_32MB.csv`: two ~8 MB OTA slots, both below
+  16 MB (the libraries map only the first 16 MB for code), and a ~16 MB
+  filesystem above them for SensESP.
 - Serial is the USB Serial/JTAG on the USB-C port (`ARDUINO_USB_MODE=1`,
   `ARDUINO_USB_CDC_ON_BOOT=1`), as in Waveshare's Arduino setup.
-- LVGL renders into two 720×72-pixel buffers and copies them into the DPI
-  panel's frame buffer.
+- LVGL renders into one 720×72-pixel buffer (internal RAM, PSRAM if that is
+  short) and copies it into the DPI panel's frame buffer. The flush waits for
+  each copy; one that never completes restarts the unit.
+- On first power-up, check that SensESP's filesystem (above 16 MB) mounts.
 
 ## First power-up checklist
 
 - The gauge appears with dashes in the LCD before WiFi connects.
-- If touch does not respond, the GT911 is probably at its alternative address:
-  set `ESP_PANEL_BOARD_TOUCH_I2C_ADDRESS` to `(0x14)` in
-  `include/esp_panel_board_custom_conf.h`.
+- The touch chip answers at 0x5D on most boards and 0x14 on some. If it does
+  not answer, `Board::begin()` fails and the unit restarts with the other
+  address (`src/main.cpp`), so a 0x14 board starts on its second boot. A unit
+  that keeps restarting with a dark screen has a display or touch fault.
 - If the backlight stays dark (or full brightness ignores the long press),
-  flip `ESP_PANEL_BOARD_BACKLIGHT_ON_LEVEL` in the same file; Waveshare's BSP
-  drives this pin inverted.
+  flip `ESP_PANEL_BOARD_BACKLIGHT_ON_LEVEL` in
+  `include/esp_panel_board_custom_conf.h`; Waveshare's BSP drives this pin
+  inverted.
 - If WiFi never connects, check the boot log for esp-hosted errors: the
   ESP32-C6 firmware must be compatible with the esp-hosted version in
   Arduino-ESP32 3.3.11. Waveshare's documentation covers updating the C6.

@@ -52,6 +52,9 @@ UPLOAD_TARGETS = {"upload", "uploadfs", "uploadfsota"}
 # PlatformIO switches an unset protocol to espota when the port looks like an IP
 # or an mDNS name (platform-espressif32 builder/main.py). Mirrored here so this
 # script agrees with the uploader that eventually runs.
+# Characters that survive SCons substitution and an unquoted shell word.
+SAFE_PASSWORD = re.compile(r"^[A-Za-z0-9._~+=@%^:,/-]+$")
+
 LOOKS_OTA = re.compile(r'"?((([0-9]{1,3}\.){3}[0-9]{1,3})|[^\\/]+\.local)"?$')
 
 
@@ -103,18 +106,21 @@ def main():
             )
             return
         password = match.group(1)
-        # The flag goes through SCons variable expansion and a shell command
-        # line: whitespace would split it and a backslash would not survive
-        # unchanged. Refuse those rather than send espota a different secret.
-        if re.search(r"[\s\\]", password):
+        # The flag goes through SCons variable expansion and then a shell
+        # command line, unquoted: $ ` " ' ; & | < > ( ) and whitespace would be
+        # interpreted on the way and espota would send a different secret (or
+        # the shell would run part of it). Only characters that pass through
+        # both untouched are accepted; refuse anything else loudly.
+        if not SAFE_PASSWORD.match(password):
             _fail(
-                "SECRET_OTA_PASSWORD in %s must not contain spaces or\n"
-                "          backslashes." % secrets
+                "SECRET_OTA_PASSWORD in %s may only contain letters, digits\n"
+                "          and . _ ~ + = @ %% ^ : , / - (it is passed on a shell\n"
+                "          command line). Choose another password and flash once\n"
+                "          over USB so the gauge knows it." % secrets
             )
             return
-        # Never printed: this output goes to build logs. "$$" is a literal
-        # "$" after SCons expands $UPLOAD_FLAGS.
-        env.Append(UPLOAD_FLAGS=["--auth=%s" % password.replace("$", "$$")])  # noqa: F821
+        # Never printed: this output goes to build logs.
+        env.Append(UPLOAD_FLAGS=["--auth=%s" % password])  # noqa: F821
 
     # --- the address of the gauge this env flashes ---------------------------
     if given_port:

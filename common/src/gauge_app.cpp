@@ -1,6 +1,7 @@
 #include "gauge_app.h"
 
 #include <Arduino.h>
+#include <ArduinoOTA.h>
 #include <lvgl.h>
 
 #include <memory>
@@ -43,6 +44,29 @@ std::vector<sensesp::ClientSSIDConfig> wifi_clients(const char* address) {
   return clients;
 }
 
+// A loop that stops turning would leave the last numbers on screen forever,
+// so the Arduino loop task runs under the task watchdog (5 s): a hang reboots
+// the unit. An OTA upload legitimately blocks the loop for its whole
+// transfer, so the watchdog is off while one runs. Registered after
+// SensESP's own OTA setup (its onDelay(0)), so these callbacks are the ones
+// ArduinoOTA keeps.
+void start_loop_watchdog() {
+  enableLoopWDT();
+  if (SECRET_OTA_PASSWORD[0] == '\0') {
+    return;
+  }
+  sensesp::event_loop()->onDelay(1, []() {
+    ArduinoOTA.onStart([]() {
+      disableLoopWDT();
+      ESP_LOGW("gauge", "OTA upload started");
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+      ESP_LOGE("gauge", "OTA upload failed (%u)", error);
+      enableLoopWDT();
+    });
+  });
+}
+
 }  // namespace
 
 void gauge_app_begin(const GaugeAppConfig& config) {
@@ -62,9 +86,24 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   if (SECRET_OTA_PASSWORD[0] != '\0') {
     builder.enable_ota(SECRET_OTA_PASSWORD);
   }
+  // SensESP's setup access point. With a password from secrets.h it uses
+  // that; with the boat's WiFi configured and no AP password it is off (as in
+  // drive-remote-controller); with nothing configured it keeps SensESP's
+  // default so a fresh unit can still be set up.
+  if (SECRET_AP_PASSWORD[0] != '\0') {
+    builder.set_wifi_access_point(config.hostname, SECRET_AP_PASSWORD);
+  } else if (SECRET_WIFI_SSID[0] != '\0') {
+    builder.set_wifi_access_point("", "");
+  }
+  // Without this the web UI (which can repoint the gauge at another Signal K
+  // server) is open to anyone on the network.
+  if (SECRET_ADMIN_PASSWORD[0] != '\0') {
+    builder.set_admin_user(SECRET_ADMIN_USER, SECRET_ADMIN_PASSWORD);
+  }
   sensesp::sensesp_app = builder.get_app();
 
   sk_data().begin(config.side);
+  start_loop_watchdog();
 }
 
 void gauge_app_loop() {

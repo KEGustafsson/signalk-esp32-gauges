@@ -54,10 +54,19 @@ are on every unit:
 | Oil | `propulsion.<side>.oilTemperature` (K) | °C | 0–120, red from 100 |
 | Sea horizon | `navigation.attitude` (`roll`, `pitch`, rad) | heel ° PORT/STBD, trim ° | heel ±40 |
 
-Every path can be changed per unit in the SensESP web UI (**Configuration →
-Gauges**, then restart the unit). A value that is not a number (for example
-`null` from a source that has lost its data) is ignored rather than shown as 0,
-and a value older than 10 s is shown as dashes with the needle parked.
+Every path can be changed per unit in the SensESP web UI: on the
+**Configuration** page, in the card for that gauge (for example
+"PRT Engine (port_rpm)"), then restart the unit.
+
+The gauges never show a number nobody vouches for:
+
+- A value that is not a number (for example `null` from a source that has
+  lost its data) blanks the gauge at once instead of being shown as 0.
+- A value older than 10 s is shown as dashes. A dial needle parks at its
+  minimum; the compass card and the sea horizon stay where they were but are
+  dimmed.
+- After every (re)connect to Signal K the first value of each path is
+  ignored: the server replays the last value it holds, however old.
 
 To change ranges, zones, titles or the page order, edit the table in
 [`common/src/gauge_defs.cpp`](common/src/gauge_defs.cpp).
@@ -66,22 +75,26 @@ To change ranges, zones, titles or the page order, edit the table in
 
 - **Swipe left / right**: next / previous gauge (wraps around).
 - **Tap**: info box with the unit, its IP address, the Signal K connection
-  and the current page's path. Tap again to close it.
+  and the Signal K path the current page listens to. Tap again to close it.
 - **Long press**: backlight 100 → 60 → 30 → 10 %.
 
 The page and brightness are remembered across restarts. The small dot at the
-bottom of the bezel is SensESP's status LED: it blinks while WiFi and Signal K
-connect and is steady when connected.
+bottom of the bezel is SensESP's status LED: its colour and blink pattern show
+the WiFi and Signal K state, and it shows blue, with a brief blink each
+second, when connected.
 
 ## Setup
 
 1. Install [PlatformIO](https://platformio.org/install) (VS Code extension or
    `pip install platformio`).
 2. Copy `include/secrets.example.h` to `include/secrets.h` and fill in the WiFi,
-   the Signal K server and an OTA password. `secrets.h` is gitignored; it is
-   shared by both projects and by the OTA upload script. The four unit addresses
-   are already filled in. Set `SECRET_USE_STATIC_IP` to `1` if you want each
-   unit to configure its address statically instead of using DHCP reservations.
+   the Signal K server, an OTA password and a web UI admin password.
+   `secrets.h` is gitignored; it is shared by both projects and by the OTA
+   upload script. The four unit addresses are already filled in. Set
+   `SECRET_USE_STATIC_IP` to `1` if you want each unit to configure its address
+   statically instead of using DHCP reservations. These values only seed a
+   unit with no saved settings: once WiFi or the Signal K server has been
+   saved on the unit, its saved values win.
 3. First flash of each unit over USB, for example 4" #1:
 
    ```bash
@@ -106,11 +119,15 @@ connect and is steady when connected.
    takes the OTA password and the unit's address from `include/secrets.h`, so
    neither is written into `platformio.ini`.
 
-Each unit also runs SensESP's setup access point, named after its hostname
-(password `thisisfine`), so WiFi and the Signal K server can be set from the
-web UI at `192.168.4.1` without a `secrets.h`. Once the unit is on the boat's
-WiFi, the access point can be turned off, and the password changed, in the web
-UI.
+SensESP's setup access point (named after the unit's hostname) follows
+`secrets.h`: with `SECRET_AP_PASSWORD` set it uses that password; with the
+boat's WiFi set and no AP password it is off; with nothing configured it
+comes up with SensESP's default password `thisisfine`, so a unit flashed
+without a `secrets.h` can be set up from the web UI at `192.168.4.1`.
+
+The units also reboot rather than freeze: the main loop runs under a 5 s
+watchdog (paused during OTA uploads), and a failed display start or a stuck
+screen update restarts the unit.
 
 ## How it is built
 
@@ -130,6 +147,6 @@ UI.
 The firmware compiles for both boards, but it has not yet been run on the
 hardware. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) builds both
 boards (as their starboard units), renders every gauge page on the host, and checks that no credential
-is committed, on every push and pull request. Working rules for contributors
+is committed, on every pull request and every push to `main`. Working rules for contributors
 (and AI agents) are in [AGENTS.md](AGENTS.md). Things to check on first power-up are listed in each board folder's
 README.

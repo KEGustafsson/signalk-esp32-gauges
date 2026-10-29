@@ -41,8 +41,8 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
   `default_16MB.csv` (two 6.25 MB OTA slots + filesystem).
 - Serial is the CH343 UART (`ARDUINO_USB_CDC_ON_BOOT=0`), 115200 baud:
   `pio device monitor`.
-- LVGL renders into two 480×40-pixel buffers in internal RAM and copies them
-  into the panel's PSRAM frame buffer. The RGB bounce buffer (480×10 pixels)
+- LVGL renders into one 480×40-pixel buffer in internal RAM (PSRAM if that
+  is short) and copies it into the panel's PSRAM frame buffer. The RGB bounce buffer (480×10 pixels)
   comes from the board file and keeps the picture stable while WiFi is busy.
 
 ## First power-up checklist
@@ -50,7 +50,9 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
 - The gauge appears with dashes in the LCD before WiFi connects.
 - Swipe left/right changes the page; a short toast shows the page name.
 - Tap shows the IP address; it should match the table above.
-- After approving the access request in Signal K, the bezel dot turns steady
-  and the needle moves.
+- After approving the access request in Signal K, the bezel dot shows blue
+  (with a brief blink each second) and the needle moves.
+- Touch is read after the CST820's interrupt (GPIO16) and while a finger is
+  down; if taps are ignored, check the serial log for touch read errors.
 - If the picture drifts or tears badly while WiFi is busy, lower
   `LVGL_BUFFER_LINES` in `platformio.ini` to free internal RAM.

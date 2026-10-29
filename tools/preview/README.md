@@ -18,7 +18,7 @@ mkdir -p out && build/preview/preview 480 && build/preview/preview 720
 ```
 
 ```bash
-python3 tools/preview/contact_sheet.py out/480 preview-480.png
+python3 tools/preview/contact_sheet.py out/480 out/preview-480.png
 ```
 
 The images land in `out/` as PPM files; `contact_sheet.py` (needs Pillow)

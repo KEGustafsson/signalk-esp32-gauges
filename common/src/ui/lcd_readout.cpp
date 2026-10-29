@@ -25,6 +25,7 @@ uint8_t segments_for(char c) {
     case '8': return 0x7F;
     case '9': return 0x6F;
     case '-': return 0x40;
+    case 'E': return 0x79;
     default: return 0x00;
   }
 }
@@ -106,6 +107,10 @@ void LcdReadout::set_text(const char* text) {
 }
 
 void LcdReadout::set_value(float value, uint8_t decimals, bool zero_pad) {
+  if (!isfinite(value)) {
+    set_dashes();
+    return;
+  }
   char buf[24];
   if (zero_pad) {
     snprintf(buf, sizeof(buf), "%0*.*f", slots_ + (decimals ? 1 : 0),
@@ -166,6 +171,7 @@ void LcdReadout::draw(lv_layer_t* layer, const lv_area_t& coords) const {
               (int32_t)(coords.y1 + h * 0.62f));
     right -= size.x + pad * 0.5f;
   }
+  float left = coords.x1 + pad;
   if (prefix_[0] != '\0') {
     lv_point_t size;
     lv_text_get_size(&size, prefix_, small_font_, 0, 0, LV_COORD_MAX,
@@ -173,6 +179,7 @@ void LcdReadout::draw(lv_layer_t* layer, const lv_area_t& coords) const {
     draw_text(layer, prefix_, small_font_, color::kLcdInk,
               (int32_t)(coords.x1 + pad + size.x / 2.0f),
               (int32_t)(coords.y1 + h * 0.36f));
+    left += size.x + pad * 0.5f;
   }
 
   // Split the text into digit cells; a '.' lights the previous cell's dot.
@@ -187,16 +194,16 @@ void LcdReadout::draw(lv_layer_t* layer, const lv_area_t& coords) const {
     cells[count].dot = false;
     count++;
   }
-  if (count > slots_) {  // Does not fit: show overflow as dashes
+  if (count > slots_) {  // Does not fit: "EEEE", distinct from no-data dashes
     count = slots_;
-    for (int i = 0; i < count; i++) cells[i] = {segments_for('-'), false};
+    for (int i = 0; i < count; i++) cells[i] = {segments_for('E'), false};
   }
 
   const float digit_h = h * 0.66f;
   float digit_w = digit_h * 0.52f;
   float gap = digit_w * 0.34f;
-  // Shrink if the slots do not fit beside the prefix/suffix.
-  const float avail = (right - coords.x1) - pad * 2.0f;
+  // Shrink if the slots do not fit between the prefix and the suffix.
+  const float avail = right - left;
   const float needed = slots_ * digit_w + (slots_ - 1) * gap;
   if (needed > avail && needed > 0) {
     digit_w *= avail / needed;

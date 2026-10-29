@@ -12,8 +12,9 @@ constexpr float kFace = 0.85f;
 constexpr float kDegToRad = 0.017453292519943295f;
 
 // Heel scale on the upper arc. The scale is stretched a little so +-40 deg
-// heel covers +-50 deg of dial.
-constexpr float kScaleStretch = 1.25f;
+// heel covers +-48 deg of dial; 1.2 keeps the 10-degree zone edges on whole
+// dial degrees (LVGL draws arcs at integer angles).
+constexpr float kScaleStretch = 1.2f;
 constexpr float kTickOuter = 0.80f;
 constexpr float kMajorTickLen = 0.08f;
 constexpr float kMinorTickLen = 0.045f;
@@ -90,6 +91,7 @@ AttitudeGaugePage::AttitudeGaugePage(lv_obj_t* parent, const GaugeDef& def,
   // Stacking: face canvas, horizon overlay, then the LCDs over the window.
   overlay_ = create_overlay(draw_cb);
   lv_obj_move_to_index(overlay_, 1);
+  set_stale_look(overlay_, true);  // Until the first attitude arrives
 }
 
 float AttitudeGaugePage::heel_to_angle(float heel_deg) const {
@@ -187,8 +189,11 @@ void AttitudeGaugePage::draw_horizon(lv_layer_t* layer) const {
   lv_draw_rect_dsc_t row;
   lv_draw_rect_dsc_init(&row);
   row.bg_opa = LV_OPA_COVER;
-  const int32_t y_top = (int32_t)ceilf(hy - rd);
-  const int32_t y_bottom = (int32_t)floorf(hy + rd);
+  // Only the rows inside this render strip.
+  const int32_t y_top =
+      LV_MAX((int32_t)ceilf(hy - rd), layer->_clip_area.y1);
+  const int32_t y_bottom =
+      LV_MIN((int32_t)floorf(hy + rd), layer->_clip_area.y2);
   for (int32_t y = y_top; y <= y_bottom; y++) {
     const float dy = (float)y + 0.5f - hy;
     const float half = sqrtf(fmaxf(0.0f, rd * rd - dy * dy));
@@ -302,6 +307,9 @@ void AttitudeGaugePage::invalidate_dynamic() {
 
 void AttitudeGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
   const bool fresh = value.fresh(now_ms);
+  // Without live data the horizon levels off, dimmed, so it cannot pass for
+  // a real "level" reading; the LCDs show dashes.
+  set_stale_look(overlay_, !fresh);
   const float roll = fresh ? value.value : 0.0f;
   const float pitch = fresh ? value.value2 : 0.0f;
 

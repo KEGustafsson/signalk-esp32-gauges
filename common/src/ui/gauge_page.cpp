@@ -33,6 +33,20 @@ lv_obj_t* GaugePage::create_overlay(lv_event_cb_t draw_cb) {
   return obj;
 }
 
+void GaugePage::set_stale_look(lv_obj_t* obj, bool stale) {
+  const lv_opa_t opa = stale ? LV_OPA_40 : LV_OPA_COVER;
+  if (lv_obj_get_style_opa(obj, LV_PART_MAIN) != opa) {
+    lv_obj_set_style_opa(obj, opa, 0);
+  }
+}
+
+bool in_clip(const lv_layer_t* layer, float x1, float y1, float x2, float y2,
+             float pad) {
+  const lv_area_t& clip = layer->_clip_area;
+  return fmaxf(x1, x2) + pad >= clip.x1 && fminf(x1, x2) - pad <= clip.x2 &&
+         fmaxf(y1, y2) + pad >= clip.y1 && fminf(y1, y2) - pad <= clip.y2;
+}
+
 std::unique_ptr<GaugePage> create_page(lv_obj_t* parent, const GaugeDef& def,
                                        const Geometry& geometry) {
   switch (def.kind) {

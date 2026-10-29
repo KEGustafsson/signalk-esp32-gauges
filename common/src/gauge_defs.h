@@ -70,7 +70,8 @@ inline bool shown_on(const GaugeDef& def, Side unit_side) {
          def.side == unit_side;
 }
 
-// A value older than this is shown as dashes and the needle parks at min.
+// A value older than this is shown as dashes: a dial needle parks at its
+// minimum, the compass card and sea horizon are dimmed where they stood.
 static constexpr uint32_t kStaleAfterMs = 10000;
 
 }  // namespace skgauges

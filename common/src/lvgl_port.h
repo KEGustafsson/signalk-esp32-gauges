@@ -21,7 +21,7 @@ class Board;
 
 namespace skgauges {
 
-// buffer_lines: height of each of the two LVGL draw buffers in pixel rows.
+// buffer_lines: height of the LVGL draw buffer in pixel rows.
 lv_display_t* lvgl_port_init(esp_panel::board::Board* board,
                              int buffer_lines);
 

@@ -7,7 +7,7 @@
 #include <vector>
 #include <string>
 #include "gauge_defs.h"
-#include "sk_data.h"
+#include "gauge_value.h"
 #include "ui/gauge_page.h"
 
 static std::vector<uint16_t> fb;
@@ -63,6 +63,10 @@ static float sample_for(const skgauges::GaugeDef& def) {
 
 int main(int argc, char** argv) {
   W = H = argc > 1 ? atoi(argv[1]) : 480;
+  if (W < 64 || W > 4096) {
+    fprintf(stderr, "usage: %s [size in px, 64..4096; default 480]\n", argv[0]);
+    return 2;
+  }
   fb.assign(W * H, 0);
   lv_init();
   lv_tick_set_cb(now_ms);

@@ -9,7 +9,7 @@
 #include <memory>
 
 #include "../gauge_defs.h"
-#include "../sk_data.h"
+#include "../gauge_value.h"
 #include "draw_utils.h"
 
 namespace skgauges {
@@ -31,6 +31,10 @@ class GaugePage {
   // change; the canvas underneath supplies the static face.
   lv_obj_t* create_overlay(lv_event_cb_t draw_cb);
 
+  // Dims `obj` while its data is stale, so a parked compass card or level
+  // horizon cannot be mistaken for a live reading.
+  static void set_stale_look(lv_obj_t* obj, bool stale);
+
   const GaugeDef& def_;
   const Geometry g_;
   lv_obj_t* root_;
@@ -45,6 +49,12 @@ std::unique_ptr<GaugePage> create_page(lv_obj_t* parent, const GaugeDef& def,
 // shortest way round.
 bool smooth_toward(float* shown, float target, float factor, float epsilon,
                    bool wrap = false);
+
+// True if a box around (x1,y1)-(x2,y2), grown by `pad`, touches the layer's
+// clip area. Draw callbacks run once per partial-render strip; skipping what
+// lies outside it saves allocating draw tasks LVGL would discard anyway.
+bool in_clip(const lv_layer_t* layer, float x1, float y1, float x2, float y2,
+             float pad);
 
 }  // namespace ui
 }  // namespace skgauges

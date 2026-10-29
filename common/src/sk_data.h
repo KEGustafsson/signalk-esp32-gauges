@@ -8,24 +8,16 @@
 // lv_timer_handler() back to back on the same task, so the UI reads these
 // values without locking.
 
-#include <math.h>
+#include <Arduino.h>
 #include <stddef.h>
 #include <stdint.h>
 
+#include <functional>
+
 #include "gauge_defs.h"
+#include "gauge_value.h"
 
 namespace skgauges {
-
-struct GaugeValue {
-  float value = NAN;   // Displayed units (attitude: roll / heel in degrees)
-  float value2 = NAN;  // Attitude only: pitch / trim in degrees
-  uint32_t updated_ms = 0;
-  bool seen = false;   // A sample has arrived at least once
-
-  bool fresh(uint32_t now_ms) const {
-    return seen && (now_ms - updated_ms) < kStaleAfterMs;
-  }
-};
 
 class SkData {
  public:
@@ -38,8 +30,16 @@ class SkData {
   // True while SensESP's WebSocket to the Signal K server is up.
   bool server_connected() const;
 
+  // The SK path page `index` currently listens to (as configured in the web
+  // UI), or "" if this unit does not show that page.
+  String sk_path(size_t index) const;
+
  private:
+  void store(GaugeValue* slot, float value, float value2);
+
   GaugeValue values_[kMaxGauges];
+  std::function<String()> paths_[kMaxGauges];
+  uint32_t conn_gen_ = 1;
 };
 
 SkData& sk_data();

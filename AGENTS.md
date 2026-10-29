@@ -93,7 +93,8 @@ A UI change is not done until the preview has been rendered and looked at.
   data line on the 2.1" board.
 - `SKListener::to_json/from_json` are private; listeners that go into
   `ConfigItem` need the public re-implementation in `SkPathConfig`.
-- Logging is `ESP_LOGI/W/E(tag, ...)`.
+- Logging is `ESP_LOGI/W/E(tag, ...)`. The one exception is LVGL's own log
+  callback in `lvgl_port.cpp`, which prints LVGL's preformatted lines.
 - If unsure of an API, read the fetched source under
   `<project>/.pio/libdeps/<env>/` (present after any `pio run`). Do not invent
   function names.

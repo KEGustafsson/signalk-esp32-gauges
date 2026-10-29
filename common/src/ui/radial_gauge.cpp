@@ -67,7 +67,7 @@ RadialGaugePage::RadialGaugePage(lv_obj_t* parent, const GaugeDef& def,
 
 float RadialGaugePage::value_to_angle(float value) const {
   float range = def_.max - def_.min;
-  if (range <= 0.0f) return kStartAngle;
+  if (range <= 0.0f || !isfinite(value)) return kStartAngle;
   float t = (value - def_.min) / range;
   if (t < 0.0f) t = 0.0f;
   if (t > 1.0f) t = 1.0f;

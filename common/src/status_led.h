@@ -16,8 +16,8 @@ namespace skgauges {
 class ScreenStatusLed : public sensesp::SystemStatusLed {
  public:
   // SystemStatusLed's constructor attaches LEDC to the pin it is given; an
-  // out-of-range pin makes that attach fail harmlessly (one log line), and
-  // show() below never touches it.
+  // out-of-range pin makes that attach fail cleanly (a few "invalid pin" log
+  // lines at boot, no channel used), and show() below never touches it.
   ScreenStatusLed() : sensesp::SystemStatusLed(kNoPin) {}
 
  protected:
