@@ -38,7 +38,9 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
 ## Build settings
 
 - Board `esp32-s3-devkitc-1` with `qio_opi` memory (OPI PSRAM), 16 MB flash,
-  `default_16MB.csv` (two 6.25 MB OTA slots + filesystem).
+  `partitions_16MB.csv`: Arduino's `default_16MB.csv` (two 6.25 MB OTA
+  slots) with the filesystem cut from 3.4 MB to 1 MB, which boots faster
+  (see "Boot time" in the top-level README).
 - Serial is the CH343 UART (`ARDUINO_USB_CDC_ON_BOOT=0`), 115200 baud:
   `pio device monitor`.
 - LVGL renders into one 480×40-pixel buffer in internal RAM (PSRAM if that

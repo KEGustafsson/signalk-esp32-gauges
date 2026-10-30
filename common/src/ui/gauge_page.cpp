@@ -23,6 +23,14 @@ GaugePage::GaugePage(lv_obj_t* parent, const GaugeDef& def,
 
 GaugePage::~GaugePage() { lv_obj_delete(root_); }
 
+void GaugePage::set_visible(bool visible) {
+  if (visible) {
+    lv_obj_remove_flag(root_, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(root_, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 lv_obj_t* GaugePage::create_overlay(lv_event_cb_t draw_cb) {
   lv_obj_t* obj = lv_obj_create(root_);
   lv_obj_remove_style_all(obj);

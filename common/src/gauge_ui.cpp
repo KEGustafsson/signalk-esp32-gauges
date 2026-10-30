@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <lvgl.h>
 
 #include <memory>
@@ -31,13 +32,27 @@ const char* const kPrefsNamespace = "skgauges";
 // A hold (brightness) may drift this far, as a fraction of the radius; more
 // is a slow swipe.
 constexpr float kHoldSlop = 0.08f;
+// Pages are kept once built, so a swipe only unhides one. The rest are built
+// ahead in the background, one at a time, while nobody has touched the
+// screen for kPrebuildIdleMs -- each build stalls the loop for a moment.
+constexpr uint32_t kPrebuildPeriodMs = 250;
+constexpr uint32_t kPrebuildIdleMs = 1500;
+// ... and not in the first seconds after boot, when the user is most
+// likely to reach for the screen.
+constexpr uint32_t kPrebuildStartMs = 5000;
+// A page is built only with this much PSRAM to spare beyond its build peak
+// (a 32-bit canvas plus the 16-bit copy it is converted into, 6 bytes a
+// pixel); otherwise the other pages are dropped first.
+constexpr size_t kPsramReserve = 1024 * 1024;
 
 struct UiState {
   UiConfig config;
   ui::Geometry geometry;
   std::vector<size_t> pages;  // Indexes into kGauges shown on this unit
   size_t current = 0;
-  std::unique_ptr<ui::GaugePage> page;
+  ui::GaugePage* page = nullptr;  // The visible one, owned by `built`
+  std::vector<std::unique_ptr<ui::GaugePage>> built;  // Parallel to `pages`
+  lv_timer_t* prebuild_timer = nullptr;
   int brightness_index = 0;
   lv_obj_t* status_dot = nullptr;
   uint32_t status_color = 0xFFFFFFFF;
@@ -113,19 +128,54 @@ void show_overlay(const char* text, uint32_t duration_ms, bool info) {
   state->info_visible = info;
 }
 
-void show_page(size_t index, bool announce) {
+// True if one more page can be built with PSRAM to spare.
+bool room_for_page() {
+  const size_t pixels =
+      (size_t)(state->geometry.cx * 2) * (size_t)(state->geometry.cy * 2);
+  return heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) >=
+         pixels * 6 + kPsramReserve;
+}
+
+// Builds page `index` (hidden) if it is not built yet.
+void build_page(size_t index) {
+  if (state->built[index]) {
+    return;
+  }
   const uint32_t start = millis();
-  state->current = index;
-  state->page.reset();  // Frees the previous page's canvas first
   const size_t gauge = state->pages[index];
-  state->page = ui::create_page(lv_screen_active(), kGauges[gauge],
-                                state->geometry);
-  state->page->set_unit_label(
+  state->built[index] =
+      ui::create_page(lv_screen_active(), kGauges[gauge], state->geometry);
+  state->built[index]->set_visible(false);
+  state->built[index]->set_unit_label(
       unit_for_path(kGauges[gauge], sk_data().sk_path(gauge).c_str()));
   // Page builds run on the loop under its 5 s watchdog; log how long they
   // take on the real hardware.
-  ESP_LOGI("gauge_ui", "Page %s built in %u ms", kGauges[state->pages[index]].id,
+  ESP_LOGI("gauge_ui", "Page %s built in %u ms", kGauges[gauge].id,
            (unsigned)(millis() - start));
+}
+
+// Frees every built page except `keep`.
+void drop_pages_except(size_t keep) {
+  for (size_t i = 0; i < state->built.size(); i++) {
+    if (i != keep) {
+      state->built[i].reset();
+    }
+  }
+}
+
+void show_page(size_t index, bool announce) {
+  if (state->page != nullptr) {
+    state->page->set_visible(false);
+  }
+  state->current = index;
+  if (!state->built[index] && !room_for_page()) {
+    drop_pages_except(index);  // Short of PSRAM: back to one page at a time
+  }
+  build_page(index);
+  state->page = state->built[index].get();
+  state->page->set_visible(true);
+  // Draw the current value at once, not on the next UI tick.
+  state->page->update(sk_data().get(state->pages[index]), millis());
   if (announce) {
     char text[48];
     snprintf(text, sizeof(text), "%u / %u\n%s",
@@ -216,8 +266,33 @@ void screen_event_cb(lv_event_t* e) {
   }
 }
 
+// Builds the next page ahead of time while the screen is not being touched.
+void prebuild_cb(lv_timer_t* timer) {
+  static uint32_t first_call_ms = millis();  // The loop's first ticks
+  if (millis() - first_call_ms < kPrebuildStartMs ||
+      lv_display_get_inactive_time(nullptr) < kPrebuildIdleMs) {
+    return;
+  }
+  for (size_t step = 1; step < state->pages.size(); step++) {
+    // Nearest first, alternating right and left of the current page.
+    const size_t n = state->pages.size();
+    const size_t offset = (step + 1) / 2;
+    const size_t index = (step % 2) ? (state->current + offset) % n
+                                    : (state->current + n - offset) % n;
+    if (!state->built[index]) {
+      if (room_for_page()) {
+        build_page(index);
+        return;  // One per tick: keep each stall short
+      }
+      break;
+    }
+  }
+  lv_timer_delete(timer);  // All built, or no room for more
+  state->prebuild_timer = nullptr;
+}
+
 void ui_timer_cb(lv_timer_t*) {
-  if (state->page) {
+  if (state->page != nullptr) {
     state->page->update(sk_data().get(state->pages[state->current]),
                         millis());
   }
@@ -308,15 +383,24 @@ void ui_begin(const UiConfig& config) {
   create_overlay();
   state->prefs_timer = lv_timer_create(write_prefs, kPrefsSaveDelayMs, nullptr);
   lv_timer_pause(state->prefs_timer);
+  state->built.resize(state->pages.size());
   show_page(state->current, false);
   lv_timer_create(ui_timer_cb, kUiPeriodMs, nullptr);
+  state->prebuild_timer =
+      lv_timer_create(prebuild_cb, kPrebuildPeriodMs, nullptr);
 }
 
 void ui_show_notice(const char* text) {
   if (state == nullptr) {
     return;
   }
-  state->page.reset();
+  // Free every page (and stop building more) before an OTA upload.
+  if (state->prebuild_timer != nullptr) {
+    lv_timer_delete(state->prebuild_timer);
+    state->prebuild_timer = nullptr;
+  }
+  state->page = nullptr;
+  for (auto& page : state->built) page.reset();
   show_overlay(text, kInfoShowMs, false);
   lv_timer_pause(state->overlay_timer);  // Stays until the restart
   lv_refr_now(nullptr);

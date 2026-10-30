@@ -40,8 +40,9 @@ examples.
   `board = esp32-p4`.
 - 32 MB flash with `partitions_32MB.csv`: two ~8 MB OTA slots that both end
   at or below 16 MB (kept there as a precaution: the precompiled libraries
-  are built for 24-bit flash mapping), and a ~16 MB filesystem above them for
-  SensESP.
+  are built for 24-bit flash mapping), and a 1 MB filesystem above them for
+  SensESP's settings. It used to be ~16 MB, which held touch for seconds at
+  every boot: see "Boot time" in the top-level README.
 - The board has two USB-C ports: the ESP32-P4's own USB (Serial/JTAG) and a
   USB-to-UART bridge. `Serial` is the USB Serial/JTAG one
   (`ARDUINO_USB_MODE=1`, `ARDUINO_USB_CDC_ON_BOOT=1`, as in Waveshare's
@@ -50,7 +51,7 @@ examples.
 - LVGL renders into one 720×72-pixel buffer (internal RAM, PSRAM if that is
   short) and copies it into the DPI panel's frame buffer. The flush waits for
   each copy; one that never completes restarts the unit.
-- On first power-up, check that SensESP's filesystem (above 16 MB) mounts.
+- On first power-up, check that SensESP's filesystem (at 16 MB) mounts.
 
 ## First power-up checklist
 

@@ -93,6 +93,36 @@ controller does not start, the unit restarts and tries again (on the 4" with
 the GT911's other address), and after that runs without touch rather than
 not at all, showing the remembered page. Every restart tries touch again.
 
+Pages are kept once built, and the others are built in the background a few
+seconds after boot, while the screen is not being touched, so a swipe only
+has to show a page. (If PSRAM runs short, the unit falls back to building
+one page at a time.)
+
+### Boot time
+
+The gauge appears as soon as the display is up, but touch only answers once
+SensESP has started (`setup()` has returned). Most of that time went into
+SensESP reading its settings: each lookup walks the whole SPIFFS partition,
+so the filesystem is now 1 MB on both boards (it was ~16 MB on the 4" and
+3.4 MB on the 2.1"). The serial log shows where boot time goes (`boot:`
+lines, in ms since start) and warns when anything holds the main loop for
+150 ms or more (`loop:` lines).
+
+The new partition table only takes effect with a USB flash (OTA uploads do
+not change it), and it resets SensESP's settings once: WiFi comes back from
+`secrets.h`, but Signal K paths changed in the web UI go back to their
+defaults and the unit has to be approved again in the Signal K admin UI
+(**Security → Access Requests**). Erasing first is cleanest; use each unit's
+`_usb` env, for example:
+
+```bash
+pio run -e p4_stbd_usb -t erase
+```
+
+```bash
+pio run -e p4_stbd_usb -t upload
+```
+
 The small dot at the
 bottom of the bezel is SensESP's status LED: its colour and blink pattern show
 the WiFi and Signal K state, and it shows blue, with a brief blink each
