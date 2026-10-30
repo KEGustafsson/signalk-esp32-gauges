@@ -270,3 +270,13 @@ loaded at boot. Pages past the factory ones start as dials with no path
 (not subscribed, dashes). `docs/PAGES.md` is the end-user guide to adding,
 removing, changing and reordering pages. Both boards build; preview
 rendered.
+
+Review fix (CodeRabbit): a page no longer falls back on its slot's factory
+definition. Every page starts from its style's template and takes its unit
+and range from its card (Scale minimum / maximum are the dial's range unless
+the server sends displayScale or the scale is set by hand); ticks are
+recomputed from the range (the same as the factory ticks for every factory
+dial). So settings copied between cards give the same page, a cleared dial
+path stays empty, and a style change resets to the style's defaults. A unit
+changed on its own converts the range (`convert_range()`, host-tested:
+0-120 °C -> 0-250 °F, 0-3000 rpm -> 0-50 Hz).

@@ -44,11 +44,11 @@ const GaugeDef kAttitude = {
     {{-10.0f, 10.0f, 0x2EB82E}, {10.0f, 20.0f, 0xE8C21A}, {20.0f, 40.0f, kRed}},
     3};
 // A page past the factory ones, or switched to a dial: the path's value as
-// sent (SI), on
-// 0..100 until a scale is set or the server sends meta.displayScale.
+// sent (SI), on 0..100 until a scale is set or the server sends
+// meta.displayScale.
 const GaugeDef kDial = {
     "dial", GaugeKind::kRadial, "Gauge", "SI", "", 0.0f, 100.0f, 20.0f, 4, 1,
-    500, {}, 0};
+    250, {}, 0};
 
 // Factory pages in swipe order; a device shows its own side's engine. The
 // first page is the one a freshly flashed device starts on.

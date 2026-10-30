@@ -42,13 +42,6 @@ bool parse_style(const String& name, GaugeKind* kind) {
   return false;
 }
 
-// The definition a page of `kind` starts from: its factory page if that is
-// the same style, else the style's template.
-const GaugeDef& base_for(const GaugeDef* factory, GaugeKind kind) {
-  return factory != nullptr && factory->kind == kind ? *factory
-                                                     : style_template(kind);
-}
-
 bool same_meta(const GaugeMeta& a, const GaugeMeta& b) {
   if (a.has_scale != b.has_scale || a.scale_lower != b.scale_lower ||
       a.scale_upper != b.scale_upper || a.units != b.units ||
@@ -134,14 +127,17 @@ bool GaugeSettings::from_json(const JsonObject& config) {
   if (config["max"].is<float>()) new_max = config["max"].as<float>();
   if (config["decimals"].is<int>()) new_decimals = config["decimals"].as<int>();
 
-  // A style changed in the web UI starts from that style's defaults: a
-  // heading path left on a sea horizon would never show anything. Only what
-  // this save left as it was is reset, so a path typed in along with the new
-  // style is kept. Not while loading at boot, where the saved style differs
-  // from the factory one without anything having changed.
+  // The card holds everything a page is drawn from, so its settings copied
+  // into another card give the same page. Two changes made in the web UI
+  // carry the fields this save left as they were along with them (not while
+  // loading at boot, where nothing has changed):
+  //  - a new style starts from that style's defaults: a heading path left on
+  //    a sea horizon would never show anything;
+  //  - a new display unit on a dial converts its range, e.g. 0..120 °C to
+  //    0..250 °F.
   if (loaded_ && new_kind != kind) {
-    const GaugeDef& base = base_for(factory_, new_kind);
-    if (new_title == title) new_title = &base == factory_ ? base.title : "";
+    const GaugeDef& base = style_template(new_kind);
+    if (new_title == title) new_title = "";  // The style's default
     if (new_path == sk_path) new_path = base.sk_path;
     if (new_unit == unit_id) new_unit = base.unit_id;
     if (new_manual == manual_scale && new_min == min && new_max == max) {
@@ -150,15 +146,19 @@ bool GaugeSettings::from_json(const JsonObject& config) {
       new_max = base.max;
     }
     if (new_decimals == decimals) new_decimals = base.decimals;
+  } else if (loaded_ && new_unit != unit_id && new_min == min &&
+             new_max == max) {
+    convert_range(unit_id.c_str(), new_unit.c_str(), &new_min, &new_max);
   }
   if (new_path.isEmpty()) {
     // A compass or sea horizon falls back to its usual path. A dial left
     // without one is not subscribed (an empty path would subscribe to the
     // server's root) and shows dashes.
-    new_path = base_for(factory_, new_kind).sk_path;
+    new_path = style_template(new_kind).sk_path;
   }
-  if (new_manual &&
-      !(isfinite(new_min) && isfinite(new_max) && new_min < new_max)) {
+  // A dial's range is its scale when set by hand, and its default when the
+  // server sends no displayScale.
+  if (!(isfinite(new_min) && isfinite(new_max) && new_min < new_max)) {
     return false;
   }
   if (new_decimals < 0 || new_decimals > 3) return false;
@@ -232,11 +232,21 @@ void GaugeConfig::begin(Side side) {
 
 void GaugeConfig::take_snapshot(size_t index, const GaugeSettings& s) {
   Snapshot& snap = snapshot_[index];
-  snap.base = base_for(s.factory(), s.kind);
+  // Everything comes from the card, nothing from the slot: a style's
+  // template with the card's unit and range (ticks to suit the range).
+  snap.unit_id = s.unit_id;
+  snap.base = style_template(s.kind);
   snap.base.id = kPageIds[index];
+  if (s.kind == GaugeKind::kRadial &&
+      find_display_unit(s.unit_id.c_str()) != nullptr && s.min < s.max) {
+    snap.base.unit_id = snap.unit_id.c_str();
+    snap.base.min = s.min;
+    snap.base.max = s.max;
+    snap.base.major_step =
+        nice_step(s.min, s.max, &snap.base.minor_per_major);
+  }
   snap.title = s.title;
   snap.sk_path = s.sk_path;
-  snap.unit_id = s.unit_id;
   snap.options = GaugeOptions();
   snap.options.title = snap.title.c_str();
   snap.options.sk_path = snap.sk_path.c_str();
@@ -347,7 +357,7 @@ const String ConfigSchema(const skgauges::GaugeSettings&) {
   schema += R"J("sk_path":{"title":"Signal K path","type":"string","description":"Empty: a compass or sea horizon reads its usual path; a dial shows dashes."},)J";
   schema += R"J("unit":{"title":"Display unit (dial)","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":[)J" +
             units + R"J(]},"description":"Converted from the path's Signal K (SI) unit; SI shows the value as sent."},)J";
-  schema += R"J("manual_scale":{"title":"Set the scale by hand (dial)","type":"boolean","description":"Off: the server's displayScale for the path, else the default range."},)J";
+  schema += R"J("manual_scale":{"title":"Set the scale by hand (dial)","type":"boolean","description":"Off: the server's displayScale for the path when it sends one, else the scale below."},)J";
   schema += R"J("min":{"title":"Scale minimum (dial)","type":"number"},)J";
   schema += R"J("max":{"title":"Scale maximum (dial)","type":"number"},)J";
   schema += R"J("show_zones":{"title":"Show Signal K zones (dial)","type":"boolean","description":"The path's meta.zones from the server: nominal, alert, warn, alarm, emergency."},)J";

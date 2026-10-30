@@ -63,6 +63,13 @@ float nice_step(float min, float max, uint8_t* minor_per_major);
 // e.g. 32..248 F -> 0..250).
 void nice_range(float* min, float* max);
 
+// Converts a range given in display unit `from_id` to `to_id` (rounded out to
+// a tidy scale), for a page whose unit is changed; "SI" (as sent) counts as
+// the other unit's SI unit. Units of different quantities give 0..100.
+// Unknown ids leave the range as it is.
+void convert_range(const char* from_id, const char* to_id, float* min,
+                   float* max);
+
 // The effective definition of `base` with `options` and `meta` applied. The
 // result points into all three (an "SI" dial's unit label is meta.units), so
 // they must outlive it.

@@ -76,9 +76,16 @@ shows the Signal K path it reads.
 Changing the **Style** starts the page from that style's defaults: the
 title, path, unit, scale and decimals you leave as they were are reset (a
 compass to `navigation.headingTrue`, a sea horizon to `navigation.attitude`,
-a dial to no path), while anything you change in the same save is kept. So
-to turn a page into a fuel gauge, pick **Dial** and type the tank's path and
-unit before pressing **Save**.
+a dial to no path, unit SI, 0–100), while anything you change in the same
+save is kept. So to turn a page into a fuel gauge, pick **Dial** and type
+the tank's path, unit and scale before pressing **Save**.
+
+Changing only the **Display unit** of a dial converts its scale: 0–120 °C
+becomes 0–250 °F, 0–30 kn becomes 0–60 km/h. A unit that measures something
+else gives 0–100; set the scale you want in the same save.
+
+A card holds everything its page shows, so the page does not depend on which
+card it is in: settings copied from one card to another give the same page.
 
 ## Reorder pages
 
@@ -95,8 +102,8 @@ card. **Save** both and **Restart** once.
 | **Title** | all | The text on the dial face, e.g. `PRT Engine`. Leave it empty for the style's default (`Gauge`, `HEADING`, `HEEL`). |
 | **Signal K path** | all | The path the page reads, e.g. `propulsion.port.revolutions`. Empty: a compass reads `navigation.headingTrue`, a sea horizon `navigation.attitude`; a dial shows dashes. The Signal K server's **Data Browser** lists every path your boat has. |
 | **Display unit** | dial | The unit shown on the dial, converted from the Signal K unit of the path (see the table below). **SI** shows the value exactly as Signal K sends it and labels it with the server's unit. |
-| **Set the scale by hand** | dial | Off: the dial's range comes from the Signal K server (`displayScale`), or else is the default. On: the range is **Scale minimum** to **Scale maximum**, in the display unit. |
-| **Scale minimum / maximum** | dial | The dial's range when set by hand, e.g. 0 and 3000 for rpm. The tick marks follow the range. |
+| **Set the scale by hand** | dial | Off: the dial's range comes from the Signal K server (`displayScale`) when it sends one, else from **Scale minimum / maximum**. On: always **Scale minimum / maximum**. |
+| **Scale minimum / maximum** | dial | The dial's range in the display unit, e.g. 0 and 3000 for rpm. The tick marks follow the range. |
 | **Show Signal K zones** | dial | Draws the coloured zones the Signal K server holds for the path. Off: no zones. |
 | **Decimals** | all | Digits after the decimal point in the LCD readout, 0–3. |
 | **Data timeout [s]** | all | How old a value may be before the page shows dashes (default 10 s). A slow source, e.g. a tank sender every 30 s, needs a longer timeout. |
@@ -233,4 +240,4 @@ at once.
 | The needle sits at the end of the scale | The value is outside the range: widen the scale, or check the display unit (e.g. rpm chosen for a path that is not in Hz). |
 | A new page card is missing | Raise **Number of pages**, save, and restart: the cards appear after the restart. |
 | A change did nothing | Page settings apply after **Restart**. |
-| The web UI refuses a save | A setting is out of range: a dial with Set the scale by hand needs a minimum below its maximum; decimals are 0–3; the data timeout is 1–600 s. |
+| The web UI refuses a save | A setting is out of range: the scale minimum must be below its maximum; decimals are 0–3; the data timeout is 1–600 s. |

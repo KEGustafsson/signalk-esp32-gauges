@@ -80,6 +80,32 @@ void nice_range(float* min, float* max) {
   *max = ceilf(*max / step - 1e-4f) * step;
 }
 
+void convert_range(const char* from_id, const char* to_id, float* min,
+                   float* max) {
+  const DisplayUnit* from = find_display_unit(from_id);
+  const DisplayUnit* to = find_display_unit(to_id);
+  if (from == nullptr || to == nullptr || from == to) {
+    return;
+  }
+  if (is_as_sent(*from) || is_as_sent(*to) || strcmp(from->si, to->si) == 0) {
+    float lo = convert(*min, *from, *to);
+    float hi = convert(*max, *from, *to);
+    if (lo > hi) {
+      const float t = lo;
+      lo = hi;
+      hi = t;
+    }
+    if (isfinite(lo) && isfinite(hi) && lo < hi) {
+      nice_range(&lo, &hi);
+      *min = lo;
+      *max = hi;
+      return;
+    }
+  }
+  *min = 0.0f;
+  *max = 100.0f;
+}
+
 GaugeDef resolve_gauge(const GaugeDef& base, const GaugeOptions& options,
                        const GaugeMeta& meta) {
   GaugeDef def = base;

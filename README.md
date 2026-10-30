@@ -69,9 +69,9 @@ set up the way SKip sets up a gauge widget. Save, then restart the device
 - **Display unit** (dial) -- converted from the path's Signal K (SI) unit:
   rpm/Hz, °C/°F/K, kn/km/h/mph/m/s, °, bar/kPa/psi, m/ft, %, V, A, W; or
   **SI** for the value as sent, labelled with the server's unit.
-- **Set the scale by hand**, **Scale minimum / maximum** (dial) -- off, the
-  dial takes the server's `displayScale` for the path, else the default
-  range (0–100 for a page past the factory ones).
+- **Set the scale by hand**, **Scale minimum / maximum** (dial) -- the
+  dial's range; off, the server's `displayScale` for the path takes
+  precedence when it sends one. Changing only the unit converts the range.
 - **Show Signal K zones** (dial) -- see below.
 - **Decimals** -- 0–3, for the LCD readout.
 - **Data timeout [s]** -- a value older than this shows dashes (default 10).
