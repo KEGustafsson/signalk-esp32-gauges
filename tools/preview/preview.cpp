@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include "gauge_defs.h"
+#include "gauge_resolve.h"
 #include "gauge_value.h"
 #include "ui/gauge_page.h"
 
@@ -48,6 +49,40 @@ static bool save(const char* path) {
 
 // Sample values in displayed units, by gauge id; gauges not listed here
 // show the middle of their range.
+// Metadata a Signal K server might send for each path (SI units), so the
+// renders show zones the way a unit draws them -- through resolve_gauge().
+static skgauges::GaugeMeta meta_for(const skgauges::GaugeDef& def) {
+  using skgauges::SiZone;
+  using skgauges::zone_state_color;
+  skgauges::GaugeMeta meta;
+  auto zone = [](bool hl, float l, bool hu, float u, const char* state) {
+    SiZone z;
+    z.has_lower = hl;
+    z.lower = l;
+    z.has_upper = hu;
+    z.upper = u;
+    z.color = zone_state_color(state);
+    return z;
+  };
+  const char* id = def.id;
+  if (strstr(id, "_rpm") != nullptr) {  // Hz: warn 2500-2800, alarm 2800+ rpm
+    meta.zones = {zone(true, 0, true, 41.667f, "normal"),
+                  zone(true, 41.667f, true, 46.667f, "warn"),
+                  zone(true, 46.667f, false, 0, "alarm")};
+  } else if (strstr(id, "_coolant") != nullptr) {  // K: 90-100 warn, 100+
+    meta.zones = {zone(true, 363.15f, true, 373.15f, "warn"),
+                  zone(true, 373.15f, false, 0, "alarm")};
+  } else if (strstr(id, "_oil") != nullptr) {  // K: 110+ alarm
+    meta.zones = {zone(true, 383.15f, false, 0, "alarm")};
+  } else if (strcmp(id, "gauge2") == 0) {  // V: battery state bands
+    meta.zones = {zone(false, 0, true, 11.8f, "alarm"),
+                  zone(true, 11.8f, true, 12.2f, "warn"),
+                  zone(true, 12.2f, true, 14.6f, "nominal"),
+                  zone(true, 15.0f, false, 0, "alarm")};
+  }
+  return meta;
+}
+
 static float sample_for(const skgauges::GaugeDef& def) {
   static const struct {
     const char* id;
@@ -56,6 +91,7 @@ static float sample_for(const skgauges::GaugeDef& def) {
       {"port_rpm", 1650},   {"stbd_rpm", 2240},    {"speed", 12.4f},
       {"heading", 291},     {"port_coolant", 82},  {"stbd_coolant", 79},
       {"port_oil", 96},     {"stbd_oil", 104},     {"attitude", -1.8f},
+      {"gauge1", 12.3f},    {"gauge2", 12.8f},
   };
   for (const auto& s : kSamples) {
     if (strcmp(s.id, def.id) == 0) return s.value;
@@ -82,7 +118,9 @@ int main(int argc, char** argv) {
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
   skgauges::ui::Geometry g{W / 2, H / 2, W / 2};
   for (size_t i = 0; i < skgauges::kGaugeCount; i++) {
-    const auto& def = skgauges::kGauges[i];
+    const skgauges::GaugeDef def = skgauges::resolve_gauge(
+        skgauges::kGauges[i], skgauges::GaugeOptions(),
+        meta_for(skgauges::kGauges[i]));
     auto page = skgauges::ui::create_page(scr, def, g);
     skgauges::GaugeValue v;
     v.value = sample_for(def);

@@ -45,18 +45,58 @@ are on every unit:
 
 ## Gauges
 
-| Page | Default Signal K path | Shown as | Range |
+| Page | Default Signal K path | Shown as | Default range |
 |---|---|---|---|
-| PRT / STB Engine | `propulsion.<port\|starboard>.revolutions` (Hz) | rpm | 0–3000, orange from 2500 |
+| PRT / STB Engine | `propulsion.<port\|starboard>.revolutions` (Hz) | rpm | 0–3000 |
 | Speed | `navigation.speedOverGround` (m/s) | kn | 0–30 |
 | Heading | `navigation.headingTrue` (rad) | °T (°M when the path is magnetic), rotating card | 0–360 |
-| Coolant | `propulsion.<side>.temperature` (K) | °C | 0–120, red from 100 |
-| Oil | `propulsion.<side>.oilTemperature` (K) | °C | 0–120, red from 100 |
+| Coolant | `propulsion.<side>.temperature` (K) | °C | 0–120 |
+| Oil | `propulsion.<side>.oilTemperature` (K) | °C | 0–120 |
 | Sea horizon | `navigation.attitude` (`roll`, `pitch`, rad) | boat symbol on a level horizon; heel ° PORT/STBD, trim ° | heel ±40 |
+| Depth (spare, hidden) | `environment.depth.belowTransducer` (m) | m | 0–50 |
+| Battery (spare, hidden) | `electrical.batteries.house.voltage` (V) | V | 10–16 |
 
-Every path can be changed per unit in the SensESP web UI: on the
-**Configuration** page, in the card for that gauge (for example
-"PRT Engine (port_rpm)"), then restart the unit.
+### Settings, like a SKip gauge
+
+Each page has a card in the SensESP web UI (**Configuration** page, for
+example "PRT Engine (port_rpm)"), set up the way SKip sets up a steel gauge
+widget. Save, then restart the unit:
+
+- **Show this page** -- leave a page out of the swipe order, or show a spare
+  one (Depth and Battery start hidden). If every page of a unit is switched
+  off, all of them are shown.
+- **Label** -- the text on the dial face.
+- **Signal K path** -- any numeric path.
+- **Display unit** (dials) -- converted from the path's Signal K (SI) unit:
+  rpm/Hz, °C/°F/K, kn/km/h/mph/m/s, °, bar/kPa/psi, m/ft, %, V, A, W.
+- **Set the scale by hand**, **Scale minimum / maximum** (dials) -- off, the
+  dial takes the server's `displayScale` for the path, else the default
+  range (converted to the chosen unit; 0–100 for a unit of another
+  quantity).
+- **Show Signal K zones** (dials) -- see below.
+- **Decimals** -- 0–3, for the LCD readout.
+- **Data timeout [s]** -- a value older than this shows dashes (default 10).
+
+### Zones come from the Signal K server
+
+The coloured bands on a dial are the path's zones as the server holds them
+(`meta.zones`), in SKip's colours: nominal blue, alert yellow, warn orange,
+alarm and emergency red; `normal` is not drawn. Without zones on the server
+a dial shows none. Set them in the Signal K server's admin UI (Data Browser
+→ the path → Meta), or in `baseDeltas.json`, in SI units, for example for
+an engine (Hz, 2500 / 2800 rpm):
+
+```json
+"zones": [
+  { "lower": 41.667, "upper": 46.667, "state": "warn" },
+  { "lower": 46.667, "state": "alarm" }
+]
+```
+
+The gauge subscribes with metadata, so zones changed on the server redraw
+the dial when the server sends them (at the latest on the next reconnect),
+without a restart. A `displayScale`
+(`{"lower": 0, "upper": 50}`, SI) sets the dial's range the same way.
 
 Coolant defaults to `propulsion.<side>.temperature`, the "engine
 temperature" an NMEA 2000 engine gateway publishes (PGN 127489, through
@@ -70,7 +110,8 @@ The gauges never show a number nobody vouches for:
 - A value that is not a number (for example `null` from a source that has
   lost its data) is never shown as 0: the gauge blanks within about 3 s,
   unless another source of the same path keeps sending valid values.
-- A value older than 10 s is shown as dashes. A dial needle parks at its
+- A value older than the page's data timeout (10 s unless set) is shown
+  as dashes. A dial needle parks at its
   minimum, the compass card stays where it was but dimmed, and the sea
   horizon's boat symbol levels off, dimmed.
 - After every (re)connect to Signal K the first value of each path, and
@@ -78,8 +119,8 @@ The gauges never show a number nobody vouches for:
   value it holds from each source, however old. Nothing is taken while the
   connection is down.
 
-To change ranges, zones, titles or the page order, edit the table in
-[`common/src/gauge_defs.cpp`](common/src/gauge_defs.cpp).
+To change the defaults, the tick spacing or the page order, edit the table
+in [`common/src/gauge_defs.cpp`](common/src/gauge_defs.cpp).
 
 ## Touch
 

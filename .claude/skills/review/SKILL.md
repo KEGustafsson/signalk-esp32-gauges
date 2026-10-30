@@ -43,7 +43,8 @@ Only report genuine issues -- don't flag things that aren't problems.
 
 ### SensESP Patterns
 - `SensESPAppBuilder`, `event_loop()->tick()`, one loop task for SensESP+LVGL
-- Signal K paths only in `gauge_defs.cpp`, editable via `ConfigItem`
+- Signal K path defaults only in `gauge_defs.cpp`, editable per page via the
+  `GaugeSettings` card; zones from the server's `meta.zones`, never hard-coded
 - No hard-coded WiFi credentials; secrets only in the gitignored secrets.h
 
 ### Power and Performance

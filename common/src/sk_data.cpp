@@ -4,8 +4,8 @@
 
 #include <memory>
 
+#include "gauge_settings.h"
 #include "sensesp/system/lambda_consumer.h"
-#include "sensesp/ui/config_item.h"
 #include "sensesp_app.h"
 #include "sk_listeners.h"
 
@@ -35,10 +35,6 @@ SkData& sk_data() {
 }
 
 void SkData::begin(Side side) {
-  // The same pages gauge_ui shows, so none of them is left unsubscribed.
-  const Side unit_side = effective_side(side);
-  const size_t count = kGaugeCount < kMaxGauges ? kGaugeCount : kMaxGauges;
-
   // Every state change counts, the disconnect included: the "connected"
   // state and the replayed deltas reach the loop through separate polls, in
   // no fixed order, but a disconnect is seen long before the WebSocket
@@ -68,38 +64,39 @@ void SkData::begin(Side side) {
     }
   });
 
-  for (size_t i = 0; i < count; i++) {
-    const GaugeDef& def = kGauges[i];
-    if (!shown_on(def, unit_side)) {
-      continue;
-    }
+  // The pages gauge_ui shows, each with its path, display unit and data
+  // timeout from its settings card. Metadata for the path (zones,
+  // displayScale) goes to gauge_config(), which redraws the page from it.
+  for (size_t i : gauge_config().pages(side)) {
+    const GaugeDef& def = gauge_config().def(i);
     GaugeValue* slot = &values_[i];
-    String config_path = String("/Gauges/") + def.id;
-    String title = String(def.title) + " (" + def.id + ")";
+    slot->stale_ms = gauge_config().stale_ms(i);
+    const String path = def.sk_path;
     const float scale = def.scale;
     const float offset = def.offset;
     auto on_invalid = [this, slot]() { invalid(slot); };
+    auto on_meta = [i](const sensesp::SKMetaView& meta) {
+      gauge_config().set_meta(i, meta);
+    };
 
     if (def.kind == GaugeKind::kAttitude) {
       auto listener = std::make_shared<AttitudeListener>(
-          def.sk_path, def.listen_delay_ms, config_path,
+          path, def.listen_delay_ms,
           [this, slot, scale, offset](float roll_rad, float pitch_rad) {
             store(slot, roll_rad * scale + offset,
                   pitch_rad * scale + offset);
           });
       listener->set_invalid_callback(on_invalid);
-      paths_[i] = [listener]() { return listener->sk_path_copy(); };
-      sensesp::ConfigItem(listener)
-          ->set_title(title)
-          ->set_requires_restart(true)
-          ->set_sort_order(100 + i);
+      listener->set_meta_callback(on_meta);
+      listeners_.push_back(listener);
       continue;
     }
 
-    auto listener = std::make_shared<StrictFloatListener>(
-        def.sk_path, def.listen_delay_ms, config_path);
+    auto listener =
+        std::make_shared<StrictFloatListener>(path, def.listen_delay_ms);
     const bool is_angle = def.kind == GaugeKind::kCompass;
     listener->set_invalid_callback(on_invalid);
+    listener->set_meta_callback(on_meta);
     listener->connect_to(new sensesp::LambdaConsumer<float>(
         [this, slot, scale, offset, is_angle](float raw) {
           // A heading beyond two turns is garbage, not a bearing to wrap.
@@ -110,11 +107,7 @@ void SkData::begin(Side side) {
           const float value = raw * scale + offset;
           store(slot, is_angle ? wrap360(value) : value, NAN);
         }));
-    paths_[i] = [listener]() { return listener->sk_path_copy(); };
-    sensesp::ConfigItem(listener)
-        ->set_title(title)
-        ->set_requires_restart(true)
-        ->set_sort_order(100 + i);
+    listeners_.push_back(listener);
   }
 }
 
@@ -176,12 +169,6 @@ void SkData::invalid(GaugeValue* slot) {
   }
 }
 
-String SkData::sk_path(size_t index) const {
-  if (index >= kMaxGauges || !paths_[index]) {
-    return String();
-  }
-  return paths_[index]();
-}
 
 bool SkData::server_connected() const {
   if (sensesp::sensesp_app == nullptr) {

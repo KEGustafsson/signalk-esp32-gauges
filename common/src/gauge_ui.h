@@ -25,10 +25,6 @@ struct UiConfig {
 // Call once after the LVGL display and input device exist.
 void ui_begin(const UiConfig& config);
 
-// Call once the Signal K paths are set up (after SkData::begin()): pages
-// built before that get their path-dependent unit label (°T / °M) again.
-void ui_paths_ready();
-
 // Replaces the gauge page with a full-screen notice and draws it at once
 // (used while an OTA upload blocks the loop).
 void ui_show_notice(const char* text);

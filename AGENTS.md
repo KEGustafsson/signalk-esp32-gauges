@@ -22,8 +22,8 @@ are about never showing a wrong number with confidence.
 
 ## Non-negotiables
 
-1. **Never present unconfirmable data as live.** A value older than
-   `kStaleAfterMs` shows dashes and parks the needle; a non-numeric delta
+1. **Never present unconfirmable data as live.** A value older than the
+   page's data timeout (default `kStaleAfterMs`) shows dashes and parks the needle; a non-numeric delta
    (`null` from a source that lost its data) is dropped, never coerced to 0.
    `sk_listeners.h` exists for exactly this -- do not swap it for the stock
    `SKValueListener<float>`.
@@ -44,8 +44,14 @@ If a task would require breaking one of these, stop and flag it.
 
 - **`common/src/`** -- the shared PlatformIO library (`SignalKGauges`), linked
   into both projects with `symlink://../common`.
-  - `gauge_defs.cpp` is the single table of pages: SK paths, unit conversion,
-    ranges, zones, side. Never hard-code a path or range anywhere else.
+  - `gauge_defs.cpp` is the single table of pages and their defaults: SK
+    paths, display units, ranges, ticks, side. Never hard-code a path or range
+    anywhere else. Zones are not in it: dials draw the server's `meta.zones`.
+  - `gauge_settings.*` -- the per-page web UI card (like a SKip gauge) and
+    `GaugeConfig`, which holds the boot snapshot of the settings, the
+    metadata received and the resolved `GaugeDef` each page is drawn from.
+    `gauge_resolve.*` and `units.*` (host-safe, used by the preview) turn
+    defaults + settings + metadata into that `GaugeDef`.
   - `ui/` -- pure LVGL drawing. No Arduino, no SensESP: it must keep compiling
     on the host for `tools/preview`, which CI runs.
   - `sk_data.*`, `sk_listeners.h`, `status_led.h`, `gauge_app.*`, `gauge_ui.*`,
@@ -94,8 +100,10 @@ A UI change is not done until the preview has been rendered and looked at.
 - Use `SensESPAppBuilder`. `set_system_status_led()` must stay set to
   `ScreenStatusLed`: the ESP32-S3 Arduino variant's `PIN_RGB_LED 48` is an LCD
   data line on the 2.1" board.
-- `SKListener::to_json/from_json` are private; listeners that go into
-  `ConfigItem` need the public re-implementation in `SkPathConfig`.
+- Page settings are a `FileSystemSaveable` (`GaugeSettings`, `/Gauges/<id>`)
+  with its own `ConfigSchema`; listeners are not `ConfigItem`s. Listeners
+  derive from `GaugeListener` (`sk_listeners.h`), which opts in to metadata
+  (`wants_meta()`) and hands it to `GaugeConfig::set_meta()`.
 - Logging is `ESP_LOGI/W/E(tag, ...)`. The one exception is LVGL's own log
   callback in `lvgl_port.cpp`, which prints LVGL's preformatted lines.
 - If unsure of an API, read the fetched source under

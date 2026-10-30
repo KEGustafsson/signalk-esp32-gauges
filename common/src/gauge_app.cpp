@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "gauge_secrets.h"
+#include "gauge_settings.h"
 #include "gauge_ui.h"
 #include "sensesp/system/resettable.h"
 #include "sensesp/ui/config_item.h"
@@ -179,6 +180,8 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   // The display itself was started in main.cpp before this.
   ESP_LOGI("boot", "Display ready, building the gauge at %u ms",
            (unsigned)millis());
+  // The page settings (web UI) decide what the first page looks like.
+  gauge_config().begin();
   ui_begin({config.side, config.unit_name, config.set_brightness});
   lv_timer_handler();
   ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());
@@ -216,8 +219,8 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   ESP_LOGI("boot", "SensESP set up at %u ms", (unsigned)millis());
   apply_web_ui_login();
 
+  gauge_config().add_config_items();
   sk_data().begin(config.side);
-  ui_paths_ready();
   start_loop_watchdog();
   ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
            (unsigned)millis());

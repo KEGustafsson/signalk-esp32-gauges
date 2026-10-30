@@ -12,27 +12,25 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <functional>
+#include <memory>
+#include <vector>
 
 #include "gauge_defs.h"
 #include "gauge_value.h"
+#include "sensesp/signalk/signalk_listener.h"
 
 namespace skgauges {
 
 class SkData {
  public:
   // Subscribes to the SK path of every page this unit shows. Call after
-  // SensESPAppBuilder's get_app().
+  // SensESPAppBuilder's get_app() and gauge_config().begin().
   void begin(Side unit_side);
 
   const GaugeValue& get(size_t index) const { return values_[index]; }
 
   // True while SensESP's WebSocket to the Signal K server is up.
   bool server_connected() const;
-
-  // The SK path page `index` currently listens to (as configured in the web
-  // UI), or "" if this unit does not show that page.
-  String sk_path(size_t index) const;
 
  private:
   void store(GaugeValue* slot, float value, float value2);
@@ -43,7 +41,7 @@ class SkData {
   // generation changes only when it tears a client down itself; the
   // WebSocket library also reconnects the same client on its own.
   uint32_t conn_epoch_ = 0;
-  std::function<String()> paths_[kMaxGauges];
+  std::vector<std::shared_ptr<sensesp::SKListener>> listeners_;
 };
 
 SkData& sk_data();

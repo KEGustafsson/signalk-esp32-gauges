@@ -207,3 +207,26 @@ per boot; 3.4 MB on the 2.1".
 
 Measured on the host (x86): building a page takes 2-6 ms; expect tens to
 hundreds of ms on the boards -- the `Page ... built in` log line says.
+
+## 2026-10-30 — Zones from the Signal K server; SKip-like gauge settings
+
+Asked for: zones from Signal K instead of the fixed red bands, and gauges
+configurable the way SKip configures its steel gauge widget.
+
+- Dials now draw the path's `meta.zones` from the server (SensESP subscribes
+  with `sendMeta=all`; `GaugeListener` opts in to metadata), converted to the
+  display unit and clipped to the dial, in SKip's dark-theme colours
+  (nominal/alert/warn/alarm/emergency; `normal` not drawn). Without zones on
+  the server a dial shows none. New metadata rebuilds the page.
+- Each page's web UI card (`GaugeSettings`, `/Gauges/<id>`): show/hide,
+  label, path, display unit (`units.cpp`), scale by hand or the server's
+  `displayScale`, show zones, decimals, data timeout. Validated before
+  saving; an old `{"sk_path"}` save still loads. Takes effect on restart.
+- `gauge_resolve.cpp` (host-safe) turns table defaults + settings + metadata
+  into the `GaugeDef` a page is drawn from, recomputing ticks for a new range.
+  Two spare pages (Depth, Battery) start hidden.
+
+Verified: ASan/UBSan host test of the resolver (rpm, °C/°F, compass °M,
+attitude bands); both boards build; preview rendered with sample server
+zones and looked at. Not verified: on hardware, and against a live server's
+metadata.

@@ -28,9 +28,6 @@ class GaugePage {
   // Pages are kept once built (gauge_ui.cpp): only the visible one is drawn.
   void set_visible(bool visible);
 
-  // Replaces the table's unit label where a page shows it next to live data
-  // (see unit_for_path()).
-  virtual void set_unit_label(const char* unit) { (void)unit; }
 
  protected:
   // A transparent full-screen object whose draw callback paints the moving
