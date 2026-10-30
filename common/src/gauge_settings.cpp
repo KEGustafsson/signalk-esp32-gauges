@@ -211,10 +211,15 @@ void GaugeConfig::set_meta(size_t index, const sensesp::SKMetaView& view) {
     meta.zones.push_back(zone);
   }
 
+  // Zones and scale are in the path's unit; converted as if they were in
+  // another, they would mark the wrong part of the dial. Drop them.
   const DisplayUnit* unit = find_display_unit(defs_[index].unit_id);
   if (!view.units.isEmpty() && unit != nullptr && view.units != unit->si) {
-    ESP_LOGW(kTag, "%s: the server gives %s in %s, the gauge converts from %s",
+    ESP_LOGW(kTag,
+             "%s: the server gives %s in %s, the gauge converts from %s; "
+             "its zones and scale are not used",
              kGauges[index].id, sk_path(index), view.units.c_str(), unit->si);
+    meta = GaugeMeta();
   }
 
   if (same_meta(meta, meta_[index])) {

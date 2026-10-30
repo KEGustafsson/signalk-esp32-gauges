@@ -82,7 +82,9 @@ widget. Save, then restart the unit:
 The coloured bands on a dial are the path's zones as the server holds them
 (`meta.zones`), in SKip's colours: nominal blue, alert yellow, warn orange,
 alarm and emergency red; `normal` is not drawn. Without zones on the server
-a dial shows none. Set them in the Signal K server's admin UI (Data Browser
+a dial shows none, and none either when the server's `units` for the path
+are not what the chosen display unit converts from (for example °C on a
+path in Hz). Set them in the Signal K server's admin UI (Data Browser
 → the path → Meta), or in `baseDeltas.json`, in SI units, for example for
 an engine (Hz, 2500 / 2800 rpm):
 
