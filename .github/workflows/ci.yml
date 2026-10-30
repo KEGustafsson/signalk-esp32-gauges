@@ -202,7 +202,7 @@ jobs:
           # the template's WiFi passwords): every SECRET_*PASSWORD define must
           # be exactly "" -- anything else ("" "x", a line continuation, a
           # value) is a credential, or could hide one.
-          defines=$(git grep -nE '#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*([[:space:]]|$)' \
+          defines=$(git grep -nE '#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*([^A-Za-z0-9_]|$)' \
               -- '*.h' '*.hpp' '*.c' '*.cpp' '*.ino' || true)
           filled=$(printf '%s\n' "$defines" | grep -vE \
               '^[^:]+:[0-9]+:[[:space:]]*#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*[[:space:]]+""[[:space:]]*(//.*)?$' \
@@ -210,6 +210,15 @@ jobs:
           if [ -n "$filled" ]; then
             echo "::error::a SECRET_*PASSWORD with a value is committed:"
             printf '%s\n' "$filled" | cut -d: -f1,2
+            exit 1
+          fi
+          # The template once more through the C preprocessor itself, which
+          # sees through line continuations, comments and #if blocks.
+          expanded=$(cpp -dM -P include/secrets.example.h \
+              | grep -E '^#define SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]* ' || true)
+          if [ -z "$expanded" ] ||
+              printf '%s\n' "$expanded" | grep -qvE '^#define SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]* ""$'; then
+            echo "::error::include/secrets.example.h: every SECRET_*PASSWORD must expand to \"\""
             exit 1
           fi
           echo "no committed credentials"
