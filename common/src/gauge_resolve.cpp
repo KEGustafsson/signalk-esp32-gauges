@@ -105,6 +105,9 @@ GaugeDef resolve_gauge(const GaugeDef& base, const GaugeOptions& options,
     def.unit = unit->label;
     def.scale = unit->scale;
     def.offset = unit->offset;
+    if (is_as_sent(*unit) && meta.units != "ratio") {
+      def.unit = meta.units.c_str();  // "" until the server says
+    }
   }
   if (base.kind == GaugeKind::kCompass) {
     def.unit = unit_for_path(base, def.sk_path);

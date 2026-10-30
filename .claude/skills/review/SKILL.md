@@ -20,7 +20,8 @@ best practices.
 - Read [AGENTS.md](../../../AGENTS.md) first: its non-negotiables look like
   removable complexity and are not.
 - Read the board folder's README and `platformio.ini` for the build
-  configuration, and `common/src/gauge_defs.cpp` for what each page shows.
+  configuration, `common/src/gauge_defs.cpp` for the factory pages and
+  `common/src/gauge_settings.cpp` for how the web UI defines the pages.
 
 ## Phase 1: Review Perspectives
 
@@ -43,8 +44,9 @@ Only report genuine issues -- don't flag things that aren't problems.
 
 ### SensESP Patterns
 - `SensESPAppBuilder`, `event_loop()->tick()`, one loop task for SensESP+LVGL
-- Signal K path defaults only in `gauge_defs.cpp`, editable per page via the
-  `GaugeSettings` card; zones from the server's `meta.zones`, never hard-coded
+- Pages are user-defined (`GaugeSettings` cards "Page 1".."Page 12"); factory
+  paths and ranges only in `gauge_defs.cpp`; zones from the server's
+  `meta.zones`, never hard-coded
 - No hard-coded WiFi credentials; secrets only in the gitignored secrets.h
 
 ### Power and Performance

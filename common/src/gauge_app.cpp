@@ -181,8 +181,8 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   ESP_LOGI("boot", "Display ready, building the gauge at %u ms",
            (unsigned)millis());
   // The page settings (web UI) decide what the first page looks like.
-  gauge_config().begin();
-  ui_begin({config.side, config.unit_name, config.set_brightness});
+  gauge_config().begin(config.side);
+  ui_begin({config.unit_name, config.set_brightness});
   lv_timer_handler();
   ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());
 
@@ -220,7 +220,7 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   apply_web_ui_login();
 
   gauge_config().add_config_items();
-  sk_data().begin(config.side);
+  sk_data().begin();
   start_loop_watchdog();
   ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
            (unsigned)millis());

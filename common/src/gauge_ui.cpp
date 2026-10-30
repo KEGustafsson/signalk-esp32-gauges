@@ -49,7 +49,7 @@ constexpr size_t kPsramReserve = 1024 * 1024;
 struct UiState {
   UiConfig config;
   ui::Geometry geometry;
-  std::vector<size_t> pages;  // Indexes into kGauges shown on this unit
+  std::vector<size_t> pages;  // gauge_config() pages, in swipe order
   size_t current = 0;
   ui::GaugePage* page = nullptr;  // The visible one, owned by `built`
   std::vector<std::unique_ptr<ui::GaugePage>> built;  // Parallel to `pages`
@@ -72,7 +72,7 @@ UiState* state = nullptr;
 
 void write_prefs(lv_timer_t*) {
   lv_timer_pause(state->prefs_timer);
-  const char* page = kGauges[state->pages[state->current]].id;
+  const char* page = gauge_config().def(state->pages[state->current]).id;
   if (state->saved_page == page &&
       state->saved_bright == state->brightness_index) {
     return;
@@ -106,7 +106,7 @@ void load_prefs() {
   state->saved_page = id;
   state->saved_bright = bright;
   for (size_t i = 0; i < state->pages.size(); i++) {
-    if (id == kGauges[state->pages[i]].id) {
+    if (id == gauge_config().def(state->pages[i]).id) {
       state->current = i;
     }
   }
@@ -157,7 +157,7 @@ void build_page(size_t index) {
   state->built_generation[index] = generation;
   // Page builds run on the loop under its 5 s watchdog; log how long they
   // take on the real hardware.
-  ESP_LOGI("gauge_ui", "Page %s built in %u ms", kGauges[gauge].id,
+  ESP_LOGI("gauge_ui", "Page %s built in %u ms", gauge_config().def(gauge).id,
            (unsigned)(millis() - start));
 }
 
@@ -367,7 +367,7 @@ void ui_begin(const UiConfig& config) {
   const int32_t h = lv_display_get_vertical_resolution(display);
   state->geometry = {w / 2, h / 2, (w < h ? w : h) / 2};
 
-  state->pages = gauge_config().pages(config.side);  // As SkData subscribes
+  state->pages = gauge_config().pages();  // As SkData subscribes
   load_prefs();
   if (state->config.set_brightness) {
     state->config.set_brightness(kBrightnessLevels[state->brightness_index]);

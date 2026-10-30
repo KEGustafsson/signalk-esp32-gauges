@@ -5,6 +5,8 @@
 namespace skgauges {
 
 const DisplayUnit kDisplayUnits[] = {
+    // The value as Signal K sends it, labelled with the server's meta.units
+    {"SI", "", "", 1.0f, 0.0f},
     // Revolutions (Hz)
     {"rpm", "rpm", "Hz", 60.0f, 0.0f},
     {"Hz", "Hz", "Hz", 1.0f, 0.0f},

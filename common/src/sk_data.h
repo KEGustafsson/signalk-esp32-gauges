@@ -23,9 +23,9 @@ namespace skgauges {
 
 class SkData {
  public:
-  // Subscribes to the SK path of every page this unit shows. Call after
+  // Subscribes to the SK path of every page switched on. Call after
   // SensESPAppBuilder's get_app() and gauge_config().begin().
-  void begin(Side unit_side);
+  void begin();
 
   const GaugeValue& get(size_t index) const { return values_[index]; }
 
@@ -36,7 +36,7 @@ class SkData {
   void store(GaugeValue* slot, float value, float value2);
   void invalid(GaugeValue* slot);
 
-  GaugeValue values_[kMaxGauges];
+  GaugeValue values_[kMaxPages];
   // Counts connection state changes, as seen on the loop. SensESP's client
   // generation changes only when it tears a client down itself; the
   // WebSocket library also reconnects the same client on its own.

@@ -1,15 +1,19 @@
 # signalk-esp32-gauges
 
 Classic steel-style Signal K instrument gauges for Waveshare round touch
-displays. Each unit shows one gauge at a time — engine rpm, speed, heading,
-coolant and oil temperature, and a sea-horizon heel/trim indicator — and you
-swipe between them. Data comes from a Signal K server through
+displays. Each device shows one page at a time and you swipe between them.
+The pages are yours to define in the web UI, like gauge widgets in SKip: up
+to 12, each a steel dial (rpm, temperature, speed, any number), a compass
+card or a sea-horizon heel/trim indicator, with its own title, Signal K path,
+unit and scale; the coloured zones come from the Signal K server. Data comes
+from a Signal K server through
 [SensESP](https://github.com/SignalK/SensESP); the look follows the
 "Classic Steel" gauges of [SKIP](https://github.com/halos-org/skip).
 
-![All gauge pages, rendered at 2.1" resolution](docs/preview-2.1in.png)
+![Gauge pages, rendered at 2.1" resolution](docs/preview-2.1in.png)
 
-*All pages with sample values, rendered on a PC by
+*The factory pages (both sides) and two example user-defined dials, with
+sample values and sample Signal K zones, rendered on a PC by
 [`tools/preview`](tools/preview/) from the firmware's own drawing code.*
 
 | Folder | Hardware | Display |
@@ -33,51 +37,60 @@ Each board builds as a starboard or a port device:
 | 2.1" | starboard | `waveshare-esp32-s3-touch-lcd-2.1` | `s3_stbd` | `s3_stbd_usb` |
 | 2.1" | port | `waveshare-esp32-s3-touch-lcd-2.1` | `s3_port` | `s3_port_usb` |
 
-A device's side decides which engine it shows. Heading, speed and the sea horizon
-are on every device:
+The side only picks the engine of the factory pages (below); every page can
+be changed in the web UI.
 
-| Port devices swipe through | Starboard devices swipe through |
-|---|---|
-| PRT Engine rpm | STB Engine rpm |
-| Speed | Speed |
-| Heading | Heading |
-| Coolant (port) | Coolant (starboard) |
-| Oil (port) | Oil (starboard) |
-| Sea horizon (heel / trim) | Sea horizon (heel / trim) |
+## Pages
 
-## Gauges
+A page is one of three styles:
 
-| Page | Default Signal K path | Shown as | Default range |
-|---|---|---|---|
-| PRT / STB Engine | `propulsion.<port\|starboard>.revolutions` (Hz) | rpm | 0–3000 |
-| Speed | `navigation.speedOverGround` (m/s) | kn | 0–30 |
-| Heading | `navigation.headingTrue` (rad) | °T (°M when the path is magnetic), rotating card | 0–360 |
-| Coolant | `propulsion.<side>.temperature` (K) | °C | 0–120 |
-| Oil | `propulsion.<side>.oilTemperature` (K) | °C | 0–120 |
-| Sea horizon | `navigation.attitude` (`roll`, `pitch`, rad) | boat symbol on a level horizon; heel ° PORT/STBD, trim ° | heel ±40 |
-| Depth (spare, hidden) | `environment.depth.belowTransducer` (m) | m | 0–50 |
-| Battery (spare, hidden) | `electrical.batteries.house.voltage` (V) | V | 10–16 |
+| Style | Shows | Reads |
+|---|---|---|
+| **Dial** | Steel dial with needle, scale and LCD readout; zones from Signal K | any numeric path, e.g. rpm, temperature, speed, pressure, depth, voltage |
+| **Compass** | Rotating compass card with LCD heading, °T (°M when the path is magnetic) | a heading, e.g. `navigation.headingTrue` |
+| **Sea horizon** | Boat symbol on a level horizon; heel ° PORT/STBD on a ±40° scale, trim ° | `navigation.attitude` (`roll`, `pitch`) |
 
-### Settings, like a SKip gauge
+### Setting up the pages
 
-Each page has a card in the SensESP web UI (**Configuration** page, for
-example "PRT Engine (port_rpm)"), set up the way SKip sets up a steel gauge
-widget. Save, then restart the unit:
+The SensESP web UI (**Configuration**) has a card for each of the 12 pages,
+**Page 1** to **Page 12**, set up the way SKip sets up a gauge widget. The
+pages switched on are the swipe order. Save, then restart the device:
 
-- **Show this page** -- leave a page out of the swipe order, or show a spare
-  one (Depth and Battery start hidden). If every page of a unit is switched
-  off, all of them are shown.
-- **Label** -- the text on the dial face.
-- **Signal K path** -- any numeric path.
-- **Display unit** (dials) -- converted from the path's Signal K (SI) unit:
-  rpm/Hz, °C/°F/K, kn/km/h/mph/m/s, °, bar/kPa/psi, m/ft, %, V, A, W.
-- **Set the scale by hand**, **Scale minimum / maximum** (dials) -- off, the
+- **Style** -- Dial, Compass, Sea horizon, or Off to leave the page out. If
+  every page is off, page 1 shows its factory setting.
+- **Title** -- the text on the dial face; empty for the style's default.
+- **Signal K path** -- the path the page reads; empty for a compass or sea
+  horizon means its usual path.
+- **Display unit** (dial) -- converted from the path's Signal K (SI) unit:
+  rpm/Hz, °C/°F/K, kn/km/h/mph/m/s, °, bar/kPa/psi, m/ft, %, V, A, W; or
+  **SI** for the value as sent, labelled with the server's unit.
+- **Set the scale by hand**, **Scale minimum / maximum** (dial) -- off, the
   dial takes the server's `displayScale` for the path, else the default
-  range (converted to the chosen unit; 0–100 for a unit of another
-  quantity).
-- **Show Signal K zones** (dials) -- see below.
+  range (0–100 for a page you switched on).
+- **Show Signal K zones** (dial) -- see below.
 - **Decimals** -- 0–3, for the LCD readout.
 - **Data timeout [s]** -- a value older than this shows dashes (default 10).
+
+### Factory pages
+
+A freshly flashed device shows six pages; pages 7–12 start off.
+
+| Page | Style | Title | Signal K path | Unit | Range |
+|---|---|---|---|---|---|
+| 1 | Dial | PRT / STB Engine | `propulsion.<side>.revolutions` | rpm | 0–3000 |
+| 2 | Dial | Speed | `navigation.speedOverGround` | kn | 0–30 |
+| 3 | Compass | HEADING | `navigation.headingTrue` | °T | 0–360 |
+| 4 | Dial | Coolant | `propulsion.<side>.temperature` | °C | 0–120 |
+| 5 | Dial | Oil | `propulsion.<side>.oilTemperature` | °C | 0–120 |
+| 6 | Sea horizon | HEEL | `navigation.attitude` | ° | heel ±40 |
+
+`<side>` is `port` or `starboard`, from the device's env. Coolant reads
+`propulsion.<side>.temperature`, the "engine temperature" an NMEA 2000
+engine gateway publishes (PGN 127489, through signalk-server's
+n2k-signalk); point it at `coolantTemperature` if your source uses that
+key. The sea horizon also works with a heel-only source: the trim LCD then
+shows dashes. The factory pages are in
+[`common/src/gauge_defs.cpp`](common/src/gauge_defs.cpp).
 
 ### Zones come from the Signal K server
 
@@ -88,7 +101,7 @@ a dial shows none, and none either when the server's `units` for the path
 are not what the chosen display unit converts from (for example °C on a
 path in Hz). Set them in the Signal K server's admin UI (Data Browser
 → the path → Meta), or in `baseDeltas.json`, in SI units, for example for
-an engine (Hz, 2500 / 2800 rpm):
+an engine (Hz; warn from 2500 rpm, alarm from 2800 rpm):
 
 ```json
 "zones": [
@@ -102,12 +115,7 @@ the dial when the server sends them (at the latest on the next reconnect),
 without a restart. A `displayScale`
 (`{"lower": 0, "upper": 50}`, SI) sets the dial's range the same way.
 
-Coolant defaults to `propulsion.<side>.temperature`, the "engine
-temperature" an NMEA 2000 engine gateway publishes (PGN 127489, through
-signalk-server's n2k-signalk); point it at `coolantTemperature` if your
-source uses that key. Heading reads `°M` once its path is a magnetic one
-(for example `navigation.headingMagnetic`). The sea horizon also works
-with a heel-only source: the trim LCD then shows dashes.
+### Only confirmed data
 
 The gauges never show a number nobody vouches for:
 
@@ -123,24 +131,21 @@ The gauges never show a number nobody vouches for:
   value it holds from each source, however old. Nothing is taken while the
   connection is down.
 
-To change the defaults, the tick spacing or the page order, edit the table
-in [`common/src/gauge_defs.cpp`](common/src/gauge_defs.cpp).
-
 ## Touch
 
 - **Swipe left / right**: next / previous gauge (wraps around).
-- **Tap**: info box with the unit, its IP address, the Signal K connection
+- **Tap**: info box with the device, its IP address, the Signal K connection
   and the Signal K path the current page listens to. Tap again to close it.
 - **Long press**: backlight 100 → 60 → 30 → 10 %.
 
 The page and brightness are remembered across restarts. If the touch
-controller does not start, the unit restarts and tries again (on the 4" with
+controller does not start, the device restarts and tries again (on the 4" with
 the GT911's other address), and after that runs without touch rather than
 not at all, showing the remembered page. Every restart tries touch again.
 
 Pages are kept once built, and the others are built in the background a few
 seconds after boot, while the screen is not being touched, so a swipe only
-has to show a page. (If PSRAM runs short, the unit falls back to building
+has to show a page. (If PSRAM runs short, the device falls back to building
 one page at a time.)
 
 ### Boot time
@@ -156,8 +161,8 @@ lines, in ms since start) and warns when anything holds the main loop for
 The new partition table only takes effect with a USB flash (OTA uploads do
 not change it), and it resets SensESP's settings once: WiFi comes back from
 `secrets.h`, but Signal K paths changed in the web UI go back to their
-defaults and the unit has to be approved again in the Signal K admin UI
-(**Security → Access Requests**). Erasing first is cleanest; use each unit's
+defaults and the device has to be approved again in the Signal K admin UI
+(**Security → Access Requests**). Erasing first is cleanest; use each device's
 `_usb` env in its board project, for example from the repository root:
 
 ```bash
@@ -187,8 +192,8 @@ second, when connected.
    computer does not resolve `.local` names. Set `SECRET_USE_STATIC_IP` to `1`
    (with IP addresses, netmask, gateway and DNS filled in) if you want each
    device to configure its address statically instead of using DHCP. These values only seed a
-   unit with no saved settings: once WiFi or the Signal K server has been
-   saved on the unit, its saved values win.
+   device with no saved settings: once WiFi or the Signal K server has been
+   saved on the device, its saved values win.
 3. First flash of each device over USB, for example a 4" starboard one:
 
    ```bash
@@ -199,8 +204,8 @@ second, when connected.
    pio run -e p4_stbd_usb -t upload
    ```
 
-4. In the Signal K server admin UI, approve the unit's access request
-   (**Security → Access Requests**; the unit is named after its hostname, e.g.
+4. In the Signal K server admin UI, approve the device's access request
+   (**Security → Access Requests**; the device is named after its hostname, e.g.
    `gauge-4c-stbd`). Read access is enough.
 5. After that, update over WiFi:
 
@@ -210,21 +215,21 @@ second, when connected.
 
    `scripts/ota_auth.py` (adapted from
    [drive-remote-controller](https://github.com/KEGustafsson/drive-remote-controller))
-   takes the OTA password and the unit's address from `include/secrets.h`, so
+   takes the OTA password and the device's address from `include/secrets.h`, so
    neither is written into `platformio.ini`; `scripts/ota_quiet.py` keeps
    espota from echoing the password into the upload log.
 
-SensESP's setup access point (named after the unit's hostname) follows
+SensESP's setup access point (named after the device's hostname) follows
 `secrets.h`: with `SECRET_AP_PASSWORD` set it uses that password; with the
 boat's WiFi set and no AP password it is off; with nothing configured it
-comes up with SensESP's default password `thisisfine`, so a unit flashed
+comes up with SensESP's default password `thisisfine`, so a device flashed
 without a `secrets.h` can be set up from the web UI at `192.168.4.1`. With
 `SECRET_ADMIN_PASSWORD` set, the web UI asks for that login on the boat's
-network (the unit restarts once after the login changes, to apply it);
+network (the device restarts once after the login changes, to apply it);
 requests over the setup access point are not asked to log in, so there the
 access point password is the protection.
 
-The access point settings in `secrets.h` only seed a unit that has no saved
+The access point settings in `secrets.h` only seed a device that has no saved
 WiFi settings yet: once WiFi has been saved (in the web UI, or on first
 boot from `secrets.h`), SensESP keeps its saved access point settings across
 reflashes. To apply new ones, erase the flash and flash again over USB, which
@@ -238,13 +243,13 @@ pio run -e p4_stbd_usb -t erase
 pio run -e p4_stbd_usb -t upload
 ```
 
-The same erase is the way back to a unit that cannot be reached at all
+The same erase is the way back to a device that cannot be reached at all
 (wrong saved WiFi and no access point): the 4" has no button for SensESP's
 reset; on the 2.1", holding BOOT for 5 s resets SensESP's settings.
 
-The units also reboot rather than freeze: the main loop runs under a 5 s
+The devices also reboot rather than freeze: the main loop runs under a 5 s
 watchdog (paused during OTA uploads), and a failed display start or a stuck
-screen update restarts the unit.
+screen update restarts the device.
 
 ## How it is built
 
@@ -264,7 +269,7 @@ screen update restarts the unit.
 
 The firmware compiles for both boards, but it has not yet been run on the
 hardware. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) builds both
-boards (as their starboard units), renders every gauge page on the host, and checks that no credential
+boards (as their starboard devices), renders every gauge page on the host, and checks that no credential
 is committed, on every pull request and every push to `main`. Working rules for contributors
 (and AI agents) are in [AGENTS.md](AGENTS.md). Things to check on first power-up are listed in each board folder's
 README.

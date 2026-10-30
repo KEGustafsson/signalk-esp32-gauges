@@ -15,13 +15,50 @@ constexpr const char* kTag = "gauges";
 constexpr int kMinTimeoutS = 1;
 constexpr int kMaxTimeoutS = 600;
 
-size_t gauge_count() {
-  return kGaugeCount < kMaxGauges ? kGaugeCount : kMaxGauges;
+const char* const kPageIds[kMaxPages] = {
+    "page1", "page2", "page3", "page4",  "page5",  "page6",
+    "page7", "page8", "page9", "page10", "page11", "page12"};
+
+// The web UI's names for a page's style; "Off" hides the page.
+constexpr const char* kOff = "Off";
+const char* style_name(GaugeKind kind) {
+  switch (kind) {
+    case GaugeKind::kCompass:
+      return "Compass";
+    case GaugeKind::kAttitude:
+      return "Sea horizon";
+    case GaugeKind::kRadial:
+    default:
+      return "Dial";
+  }
+}
+bool parse_style(const String& name, bool* on, GaugeKind* kind) {
+  if (name == kOff) {
+    *on = false;
+    return true;
+  }
+  for (GaugeKind k :
+       {GaugeKind::kRadial, GaugeKind::kCompass, GaugeKind::kAttitude}) {
+    if (name == style_name(k)) {
+      *on = true;
+      *kind = k;
+      return true;
+    }
+  }
+  return false;
+}
+
+// The definition a page of `kind` starts from: its factory page if that is
+// the same style, else the style's template.
+const GaugeDef& base_for(const GaugeDef* factory, GaugeKind kind) {
+  return factory != nullptr && factory->kind == kind ? *factory
+                                                     : style_template(kind);
 }
 
 bool same_meta(const GaugeMeta& a, const GaugeMeta& b) {
   if (a.has_scale != b.has_scale || a.scale_lower != b.scale_lower ||
-      a.scale_upper != b.scale_upper || a.zones.size() != b.zones.size()) {
+      a.scale_upper != b.scale_upper || a.units != b.units ||
+      a.zones.size() != b.zones.size()) {
     return false;
   }
   for (size_t i = 0; i < a.zones.size(); i++) {
@@ -38,38 +75,41 @@ bool same_meta(const GaugeMeta& a, const GaugeMeta& b) {
 
 }  // namespace
 
-GaugeSettings::GaugeSettings(size_t index)
-    : sensesp::FileSystemSaveable(String("/Gauges/") + kGauges[index].id),
-      shown(kGauges[index].shown_by_default),
-      title(kGauges[index].title),
-      sk_path(kGauges[index].sk_path),
-      unit_id(kGauges[index].unit_id),
-      min(kGauges[index].min),
-      max(kGauges[index].max),
-      decimals(kGauges[index].decimals),
+GaugeSettings::GaugeSettings(size_t slot, Side side)
+    : sensesp::FileSystemSaveable(String("/Pages/") + (int)(slot + 1)),
       timeout_s((int)(kStaleAfterMs / 1000)),
-      index_(index) {}
+      factory_(default_page(side, slot)) {
+  const GaugeDef& def =
+      factory_ != nullptr ? *factory_ : style_template(GaugeKind::kRadial);
+  on = factory_ != nullptr;
+  kind = def.kind;
+  title = factory_ != nullptr ? def.title : "";
+  sk_path = def.sk_path;
+  unit_id = def.unit_id;
+  min = def.min;
+  max = def.max;
+  decimals = def.decimals;
+}
 
 bool GaugeSettings::to_json(JsonObject& root) {
-  root["shown"] = shown;
+  root["style"] = on ? style_name(kind) : kOff;
   root["title"] = title;
   root["sk_path"] = sk_path;
+  root["unit"] = unit_id;
+  root["manual_scale"] = manual_scale;
+  root["min"] = min;
+  root["max"] = max;
+  root["show_zones"] = show_zones;
   root["decimals"] = decimals;
   root["timeout_s"] = timeout_s;
-  if (base().kind == GaugeKind::kRadial) {
-    root["unit"] = unit_id;
-    root["manual_scale"] = manual_scale;
-    root["min"] = min;
-    root["max"] = max;
-    root["show_zones"] = show_zones;
-  }
   return true;
 }
 
 // Validates everything first and changes nothing on a bad value, so the web
-// UI reports the error. Keys an older save lacks keep their defaults (the
-// first version of this card held only sk_path).
+// UI reports the error. Keys a save lacks keep their current values.
 bool GaugeSettings::from_json(const JsonObject& config) {
+  bool new_on = on;
+  GaugeKind new_kind = kind;
   String new_title = title;
   String new_path = sk_path;
   String new_unit = unit_id;
@@ -79,17 +119,23 @@ bool GaugeSettings::from_json(const JsonObject& config) {
   int new_decimals = decimals;
   int new_timeout = timeout_s;
 
+  if (config["style"].is<String>() &&
+      !parse_style(config["style"].as<String>(), &new_on, &new_kind)) {
+    return false;
+  }
   if (config["title"].is<String>()) {
     new_title = config["title"].as<String>();
     new_title.trim();
-    if (new_title.isEmpty()) new_title = base().title;
   }
   if (config["sk_path"].is<String>()) {
     new_path = config["sk_path"].as<String>();
     new_path.trim();
-    if (new_path.isEmpty()) {  // Would subscribe to the server's root
-      return false;
-    }
+  }
+  if (new_path.isEmpty()) {
+    // A compass or sea horizon falls back to its usual path; a dial needs
+    // one (an empty path would subscribe to the server's root).
+    new_path = base_for(factory_, new_kind).sk_path;
+    if (new_on && new_path.isEmpty()) return false;
   }
   if (config["unit"].is<String>()) {
     new_unit = config["unit"].as<String>();
@@ -115,10 +161,11 @@ bool GaugeSettings::from_json(const JsonObject& config) {
     }
   }
 
-  if (config["shown"].is<bool>()) shown = config["shown"].as<bool>();
   if (config["show_zones"].is<bool>()) {
     show_zones = config["show_zones"].as<bool>();
   }
+  on = new_on;
+  kind = new_kind;
   title = new_title;
   sk_path = new_path;
   unit_id = new_unit;
@@ -135,60 +182,65 @@ GaugeConfig& gauge_config() {
   return instance;
 }
 
-void GaugeConfig::begin() {
+void GaugeConfig::begin(Side side) {
+  side_ = side;
   // SensESP mounts the same filesystem later; mounting again is a no-op.
   if (!SPIFFS.begin(true)) {
-    ESP_LOGE(kTag, "Filesystem not mounted; gauges use their defaults");
+    ESP_LOGE(kTag, "Filesystem not mounted; pages use their defaults");
   }
-  for (size_t i = 0; i < gauge_count(); i++) {
-    settings_[i] = std::make_shared<GaugeSettings>(i);
+  pages_.clear();
+  for (size_t i = 0; i < kMaxPages; i++) {
+    settings_[i] = std::make_shared<GaugeSettings>(i, side);
     settings_[i]->load();
-    const GaugeSettings& s = *settings_[i];
-    Snapshot& snap = snapshot_[i];
-    snap.shown = s.shown;
-    snap.title = s.title;
-    snap.sk_path = s.sk_path;
-    snap.unit_id = s.unit_id;
-    snap.options.title = snap.title.c_str();
-    snap.options.sk_path = snap.sk_path.c_str();
-    snap.options.unit_id = snap.unit_id.c_str();
-    snap.options.manual_scale = s.manual_scale;
-    snap.options.min = s.min;
-    snap.options.max = s.max;
-    snap.options.decimals = s.decimals;
-    snap.options.show_zones = s.show_zones;
-    stale_ms_[i] = (uint32_t)s.timeout_s * 1000;
-    resolve(i);
+    take_snapshot(i, *settings_[i]);
+    if (settings_[i]->on) pages_.push_back(i);
+  }
+  if (pages_.empty()) {  // Every page switched off: page 1 as from the factory
+    ESP_LOGW(kTag, "Every page is off; showing page 1's factory setting");
+    take_snapshot(0, GaugeSettings(0, side));
+    pages_.push_back(0);
   }
 }
 
+void GaugeConfig::take_snapshot(size_t index, const GaugeSettings& s) {
+  Snapshot& snap = snapshot_[index];
+  snap.base = base_for(s.factory(), s.kind);
+  snap.base.id = kPageIds[index];
+  snap.title = s.title;
+  snap.sk_path = s.sk_path;
+  snap.unit_id = s.unit_id;
+  snap.options = GaugeOptions();
+  snap.options.title = snap.title.c_str();
+  snap.options.sk_path = snap.sk_path.c_str();
+  snap.options.unit_id = snap.unit_id.c_str();
+  snap.options.manual_scale = s.manual_scale;
+  snap.options.min = s.min;
+  snap.options.max = s.max;
+  snap.options.decimals = s.decimals;
+  snap.options.show_zones = s.show_zones;
+  stale_ms_[index] = (uint32_t)s.timeout_s * 1000;
+  resolve(index);
+}
+
 void GaugeConfig::add_config_items() {
-  for (size_t i = 0; i < gauge_count(); i++) {
-    const GaugeDef& base = kGauges[i];
-    String description = String("Like a SKip gauge. Default path: ") +
-                         base.sk_path +
-                         ". Zones come from the Signal K server's metadata "
-                         "for the path (meta.zones).";
+  for (size_t i = 0; i < kMaxPages; i++) {
+    const GaugeDef* factory = settings_[i]->factory();
+    String description =
+        "Like a SKip gauge. Style Off leaves the page out of the swipe "
+        "order. Zones come from the Signal K server's metadata for the path "
+        "(meta.zones). Factory setting: ";
+    if (factory != nullptr) {
+      description += String(style_name(factory->kind)) + " \"" +
+                     factory->title + "\" on " + factory->sk_path + ".";
+    } else {
+      description += "off.";
+    }
     sensesp::ConfigItem(settings_[i])
-        ->set_title(String(base.title) + " (" + base.id + ")")
+        ->set_title(String("Page ") + (int)(i + 1))
         ->set_description(description)
         ->set_requires_restart(true)
         ->set_sort_order(100 + (int)i);
   }
-}
-
-std::vector<size_t> GaugeConfig::pages(Side unit_side) const {
-  const Side side = effective_side(unit_side);
-  std::vector<size_t> list;
-  for (size_t i = 0; i < gauge_count(); i++) {
-    if (shown_on(kGauges[i], side) && snapshot_[i].shown) list.push_back(i);
-  }
-  if (list.empty()) {  // Every page switched off: show them rather than none
-    for (size_t i = 0; i < gauge_count(); i++) {
-      if (shown_on(kGauges[i], side)) list.push_back(i);
-    }
-  }
-  return list;
 }
 
 void GaugeConfig::set_meta(size_t index, const sensesp::SKMetaView& view) {
@@ -210,15 +262,17 @@ void GaugeConfig::set_meta(size_t index, const sensesp::SKMetaView& view) {
     zone.color = zone_state_color(z.state.c_str());
     meta.zones.push_back(zone);
   }
+  meta.units = view.units.c_str();
 
   // Zones and scale are in the path's unit; converted as if they were in
   // another, they would mark the wrong part of the dial. Drop them.
   const DisplayUnit* unit = find_display_unit(defs_[index].unit_id);
-  if (!view.units.isEmpty() && unit != nullptr && view.units != unit->si) {
+  if (!view.units.isEmpty() && unit != nullptr && !is_as_sent(*unit) &&
+      view.units != unit->si) {
     ESP_LOGW(kTag,
              "%s: the server gives %s in %s, the gauge converts from %s; "
              "its zones and scale are not used",
-             kGauges[index].id, sk_path(index), view.units.c_str(), unit->si);
+             defs_[index].id, sk_path(index), view.units.c_str(), unit->si);
     meta = GaugeMeta();
   }
 
@@ -229,40 +283,38 @@ void GaugeConfig::set_meta(size_t index, const sensesp::SKMetaView& view) {
   resolve(index);
   generation_[index]++;
   ESP_LOGI(kTag, "%s: metadata applied (%u zones drawn, scale %.6g..%.6g)",
-           kGauges[index].id, (unsigned)defs_[index].zone_count,
+           defs_[index].id, (unsigned)defs_[index].zone_count,
            defs_[index].min, defs_[index].max);
 }
 
 void GaugeConfig::resolve(size_t index) {
-  defs_[index] =
-      resolve_gauge(kGauges[index], snapshot_[index].options, meta_[index]);
+  defs_[index] = resolve_gauge(snapshot_[index].base, snapshot_[index].options,
+                               meta_[index]);
 }
 
 }  // namespace skgauges
 
 namespace sensesp {
 
-const String ConfigSchema(const skgauges::GaugeSettings& settings) {
-  using skgauges::GaugeKind;
+const String ConfigSchema(const skgauges::GaugeSettings&) {
   String units;
   for (size_t i = 0; i < skgauges::kDisplayUnitCount; i++) {
     if (i > 0) units += ",";
     units += String("\"") + skgauges::kDisplayUnits[i].id + "\"";
   }
-  String schema = R"({"type":"object","properties":{)";
-  schema += R"("shown":{"title":"Show this page","type":"boolean"},)";
-  schema += R"("title":{"title":"Label","type":"string","description":"Text on the dial face."},)";
-  schema += R"("sk_path":{"title":"Signal K path","type":"string"},)";
-  if (settings.base().kind == GaugeKind::kRadial) {
-    schema += R"("unit":{"title":"Display unit","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":[)" +
-              units + R"(]},"description":"Converted from the path's Signal K (SI) unit."},)";
-    schema += R"("manual_scale":{"title":"Set the scale by hand","type":"boolean","description":"Off: the server's displayScale for the path, else the default range."},)";
-    schema += R"("min":{"title":"Scale minimum","type":"number"},)";
-    schema += R"("max":{"title":"Scale maximum","type":"number"},)";
-    schema += R"("show_zones":{"title":"Show Signal K zones","type":"boolean","description":"The path's meta.zones from the server: nominal, alert, warn, alarm, emergency."},)";
-  }
-  schema += R"("decimals":{"title":"Decimals","type":"integer","minimum":0,"maximum":3},)";
-  schema += R"("timeout_s":{"title":"Data timeout [s]","type":"integer","minimum":1,"maximum":600,"description":"A value older than this shows dashes."})";
+  // A select is an array schema in SensESP's web UI; its value is a string.
+  String schema = R"J({"type":"object","properties":{)J";
+  schema += R"J("style":{"title":"Style","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Off","Dial","Compass","Sea horizon"]},"description":"Dial: rpm, temperature, speed, any number. Compass: a heading. Sea horizon: navigation.attitude (heel and trim). Off: not shown."},)J";
+  schema += R"J("title":{"title":"Title","type":"string","description":"Text on the dial face; empty for the style's default."},)J";
+  schema += R"J("sk_path":{"title":"Signal K path","type":"string","description":"Empty for a compass or sea horizon: its usual path."},)J";
+  schema += R"J("unit":{"title":"Display unit (dial)","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":[)J" +
+            units + R"J(]},"description":"Converted from the path's Signal K (SI) unit; SI shows the value as sent."},)J";
+  schema += R"J("manual_scale":{"title":"Set the scale by hand (dial)","type":"boolean","description":"Off: the server's displayScale for the path, else the default range."},)J";
+  schema += R"J("min":{"title":"Scale minimum (dial)","type":"number"},)J";
+  schema += R"J("max":{"title":"Scale maximum (dial)","type":"number"},)J";
+  schema += R"J("show_zones":{"title":"Show Signal K zones (dial)","type":"boolean","description":"The path's meta.zones from the server: nominal, alert, warn, alarm, emergency."},)J";
+  schema += R"J("decimals":{"title":"Decimals","type":"integer","minimum":0,"maximum":3},)J";
+  schema += R"J("timeout_s":{"title":"Data timeout [s]","type":"integer","minimum":1,"maximum":600,"description":"A value older than this shows dashes."})J";
   schema += "}}";
   return schema;
 }

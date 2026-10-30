@@ -1,9 +1,10 @@
 # Gauge preview on a PC
 
-Renders every gauge page with the firmware's own drawing code
-(`common/src/ui`) and LVGL 9.3, at the 2.1" (480) or 4" (720) resolution,
-with fixed sample values. Use it to try out ranges, zones or colours in
-`common/src/gauge_defs.cpp` without flashing a board.
+Renders the factory pages (`common/src/gauge_defs.cpp`) and two example
+user-defined dials with the firmware's own drawing code (`common/src/ui`,
+through `resolve_gauge()`) and LVGL 9.3, at the 2.1" (480) or 4" (720)
+resolution, with fixed sample values and sample Signal K zones. Use it to
+try out styles, ranges, zones or colours without flashing a board.
 
 ```bash
 cmake -S tools/preview -B build/preview -DCMAKE_BUILD_TYPE=Release

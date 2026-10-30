@@ -34,7 +34,7 @@ SkData& sk_data() {
   return instance;
 }
 
-void SkData::begin(Side side) {
+void SkData::begin() {
   // Every state change counts, the disconnect included: the "connected"
   // state and the replayed deltas reach the loop through separate polls, in
   // no fixed order, but a disconnect is seen long before the WebSocket
@@ -67,7 +67,7 @@ void SkData::begin(Side side) {
   // The pages gauge_ui shows, each with its path, display unit and data
   // timeout from its settings card. Metadata for the path (zones,
   // displayScale) goes to gauge_config(), which redraws the page from it.
-  for (size_t i : gauge_config().pages(side)) {
+  for (size_t i : gauge_config().pages()) {
     const GaugeDef& def = gauge_config().def(i);
     GaugeValue* slot = &values_[i];
     slot->stale_ms = gauge_config().stale_ms(i);

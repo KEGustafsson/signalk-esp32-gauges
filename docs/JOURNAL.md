@@ -240,3 +240,24 @@ starboard / port): no unit numbers and no boat-specific IP addresses.
 (`gauge-4c-stbd.local` ...) and leaves the static-IP gateway and DNS empty;
 a real `secrets.h` sets IPs where needed. Both boards build from the
 template; credential checks pass.
+
+## 2026-10-30 — User-defined pages
+
+Asked for: the number of pages, and each page's title, path, range and
+zones, user-defined like SKip, instead of a fixed set of gauges plus spares.
+
+- The fixed page table is gone. A device has 12 page cards in the web UI
+  ("Page 1".."Page 12", saved at `/Pages/<n>`); each is Off or one of three
+  styles -- Dial, Compass, Sea horizon -- with title, path, display unit,
+  scale (by hand / server displayScale), zones on/off, decimals and data
+  timeout. The pages switched on are the swipe order.
+- The side (env) only seeds the factory pages: its engine's rpm, speed,
+  heading, coolant, oil, sea horizon; pages 7-12 start off. A page switched
+  to another style starts from that style's template (a dial on 0..100 in
+  the new "SI" unit: the value as sent, labelled with the server's
+  meta.units).
+- Preview renders the factory pages plus two example user dials (depth with
+  a server displayScale, battery in SI/V with a hand-set scale).
+
+Verified: both boards build; the schema assembles to valid JSON; preview
+rendered and looked at. Not verified: the web UI cards on a device.

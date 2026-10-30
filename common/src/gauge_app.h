@@ -14,7 +14,7 @@ namespace skgauges {
 struct GaugeAppConfig {
   const char* hostname;   // mDNS name, SensESP AP name, SK client name
   const char* unit_name;  // Human label shown in the info overlay
-  Side side;              // Which engine this unit shows
+  Side side;              // Which engine the factory pages show
   // This unit's address (its SECRET_OTA_HOST_* entry). Used as a static IP
   // when secrets.h sets SECRET_USE_STATIC_IP to 1.
   const char* address;

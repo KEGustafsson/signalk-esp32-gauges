@@ -47,56 +47,86 @@ static bool save(const char* path) {
   return ok;
 }
 
-// Sample values in displayed units, by gauge id; gauges not listed here
-// show the middle of their range.
-// Metadata a Signal K server might send for each path (SI units), so the
-// renders show zones the way a unit draws them -- through resolve_gauge().
-static skgauges::GaugeMeta meta_for(const skgauges::GaugeDef& def) {
-  using skgauges::SiZone;
-  using skgauges::zone_state_color;
+// What the preview renders: every factory page, and two dials set up the
+// way a user would in the web UI, each with the metadata a Signal K server
+// might send for its path (SI units) and a sample value in displayed units.
+struct PreviewPage {
+  const char* id;
+  skgauges::GaugeDef base;
+  skgauges::GaugeOptions options;
   skgauges::GaugeMeta meta;
-  auto zone = [](bool hl, float l, bool hu, float u, const char* state) {
-    SiZone z;
-    z.has_lower = hl;
-    z.lower = l;
-    z.has_upper = hu;
-    z.upper = u;
-    z.color = zone_state_color(state);
-    return z;
-  };
-  const char* id = def.id;
-  if (strstr(id, "_rpm") != nullptr) {  // Hz: warn 2500-2800, alarm 2800+ rpm
-    meta.zones = {zone(true, 0, true, 41.667f, "normal"),
-                  zone(true, 41.667f, true, 46.667f, "warn"),
-                  zone(true, 46.667f, false, 0, "alarm")};
-  } else if (strstr(id, "_coolant") != nullptr) {  // K: 90-100 warn, 100+
-    meta.zones = {zone(true, 363.15f, true, 373.15f, "warn"),
-                  zone(true, 373.15f, false, 0, "alarm")};
-  } else if (strstr(id, "_oil") != nullptr) {  // K: 110+ alarm
-    meta.zones = {zone(true, 383.15f, false, 0, "alarm")};
-  } else if (strcmp(id, "gauge2") == 0) {  // V: battery state bands
-    meta.zones = {zone(false, 0, true, 11.8f, "alarm"),
-                  zone(true, 11.8f, true, 12.2f, "warn"),
-                  zone(true, 12.2f, true, 14.6f, "nominal"),
-                  zone(true, 15.0f, false, 0, "alarm")};
-  }
-  return meta;
+  float sample;
+};
+
+static skgauges::SiZone zone(bool hl, float l, bool hu, float u,
+                             const char* state) {
+  skgauges::SiZone z;
+  z.has_lower = hl;
+  z.lower = l;
+  z.has_upper = hu;
+  z.upper = u;
+  z.color = skgauges::zone_state_color(state);
+  return z;
 }
 
-static float sample_for(const skgauges::GaugeDef& def) {
+static std::vector<PreviewPage> preview_pages() {
   static const struct {
     const char* id;
     float value;
   } kSamples[] = {
-      {"port_rpm", 1650},   {"stbd_rpm", 2240},    {"speed", 12.4f},
-      {"heading", 291},     {"port_coolant", 82},  {"stbd_coolant", 79},
-      {"port_oil", 96},     {"stbd_oil", 104},     {"attitude", -1.8f},
-      {"gauge1", 12.3f},    {"gauge2", 12.8f},
+      {"port_rpm", 1650}, {"stbd_rpm", 2240},   {"speed", 12.4f},
+      {"heading", 291},   {"port_coolant", 82}, {"stbd_coolant", 79},
+      {"port_oil", 96},   {"stbd_oil", 104},    {"attitude", -1.8f},
   };
-  for (const auto& s : kSamples) {
-    if (strcmp(s.id, def.id) == 0) return s.value;
+  std::vector<PreviewPage> pages;
+  for (size_t i = 0; i < skgauges::kFactoryPageCount; i++) {
+    const skgauges::GaugeDef& def = *skgauges::kFactoryPages[i];
+    PreviewPage page{def.id, def, skgauges::GaugeOptions(), {},
+                     (def.min + def.max) / 2.0f};
+    for (const auto& s : kSamples) {
+      if (strcmp(s.id, def.id) == 0) page.sample = s.value;
+    }
+    if (strstr(def.id, "_rpm") != nullptr) {  // Hz: warn 2500-2800, alarm 2800+
+      page.meta.zones = {zone(true, 0, true, 41.667f, "normal"),
+                         zone(true, 41.667f, true, 46.667f, "warn"),
+                         zone(true, 46.667f, false, 0, "alarm")};
+    } else if (strstr(def.id, "_coolant") != nullptr) {  // K: 90-100, 100+
+      page.meta.zones = {zone(true, 363.15f, true, 373.15f, "warn"),
+                         zone(true, 373.15f, false, 0, "alarm")};
+    } else if (strstr(def.id, "_oil") != nullptr) {  // K: 110+ alarm
+      page.meta.zones = {zone(true, 383.15f, false, 0, "alarm")};
+    }
+    pages.push_back(page);
   }
-  return (def.min + def.max) / 2.0f;
+
+  const skgauges::GaugeDef& dial =
+      skgauges::style_template(skgauges::GaugeKind::kRadial);
+  PreviewPage depth{"depth", dial, skgauges::GaugeOptions(), {}, 12.3f};
+  depth.options.title = "Depth";
+  depth.options.sk_path = "environment.depth.belowTransducer";
+  depth.options.unit_id = "m";
+  depth.meta.units = "m";
+  depth.meta.has_scale = true;  // displayScale 0..50 m from the server
+  depth.meta.scale_lower = 0;
+  depth.meta.scale_upper = 50;
+  depth.meta.zones = {zone(false, 0, true, 3.0f, "alarm"),
+                      zone(true, 3.0f, true, 5.0f, "warn")};
+  pages.push_back(depth);
+
+  PreviewPage battery{"battery", dial, skgauges::GaugeOptions(), {}, 12.8f};
+  battery.options.title = "Battery";
+  battery.options.sk_path = "electrical.batteries.house.voltage";
+  battery.options.unit_id = "SI";  // As sent, labelled "V" from meta.units
+  battery.options.manual_scale = true;
+  battery.options.min = 10;
+  battery.options.max = 16;
+  battery.meta.units = "V";
+  battery.meta.zones = {zone(false, 0, true, 11.8f, "alarm"),
+                        zone(true, 11.8f, true, 12.2f, "warn"),
+                        zone(true, 12.2f, true, 14.6f, "nominal"),
+                        zone(true, 15.0f, false, 0, "alarm")};
+  pages.push_back(battery);
+  return pages;
 }
 
 int main(int argc, char** argv) {
@@ -117,13 +147,15 @@ int main(int argc, char** argv) {
   lv_obj_set_style_bg_color(scr, lv_color_hex(0), 0);
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
   skgauges::ui::Geometry g{W / 2, H / 2, W / 2};
-  for (size_t i = 0; i < skgauges::kGaugeCount; i++) {
-    const skgauges::GaugeDef def = skgauges::resolve_gauge(
-        skgauges::kGauges[i], skgauges::GaugeOptions(),
-        meta_for(skgauges::kGauges[i]));
+  // The resolved definitions point into these; they live until main returns.
+  const std::vector<PreviewPage> pages = preview_pages();
+  for (size_t i = 0; i < pages.size(); i++) {
+    const PreviewPage& p = pages[i];
+    const skgauges::GaugeDef def =
+        skgauges::resolve_gauge(p.base, p.options, p.meta);
     auto page = skgauges::ui::create_page(scr, def, g);
     skgauges::GaugeValue v;
-    v.value = sample_for(def);
+    v.value = p.sample;
     v.value2 = -0.7f;
     v.seen = true;
     for (int k = 0; k < 60; k++) {
@@ -132,7 +164,7 @@ int main(int argc, char** argv) {
       lv_refr_now(d);
     }
     char path[64];
-    snprintf(path, sizeof(path), "out/%d_%zu_%s.ppm", W, i, def.id);
+    snprintf(path, sizeof(path), "out/%d_%zu_%s.ppm", W, i, p.id);
     if (!save(path)) {
       fprintf(stderr, "could not write %s (does out/ exist?)\n", path);
       return 1;
@@ -144,7 +176,7 @@ int main(int argc, char** argv) {
       page->update(v, v.updated_ms + skgauges::kStaleAfterMs);
       lv_refr_now(d);
     }
-    snprintf(path, sizeof(path), "out/stale%d_%zu_%s.ppm", W, i, def.id);
+    snprintf(path, sizeof(path), "out/stale%d_%zu_%s.ppm", W, i, p.id);
     if (!save(path)) {
       fprintf(stderr, "could not write %s\n", path);
       return 1;

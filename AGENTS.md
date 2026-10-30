@@ -9,7 +9,8 @@
 
 Signal K instrument gauges (classic steel style) for Waveshare round touch
 displays. Two boards (4" and 2.1"), each built as a starboard or a port
-device, two firmware projects, one shared library:
+device (the side only picks the engine of the factory pages), two firmware
+projects, one shared library:
 
 | Device | Side | Project | env (OTA / USB) |
 |---|---|---|---|
@@ -45,10 +46,14 @@ If a task would require breaking one of these, stop and flag it.
 
 - **`common/src/`** -- the shared PlatformIO library (`SignalKGauges`), linked
   into both projects with `symlink://../common`.
-  - `gauge_defs.cpp` is the single table of pages and their defaults: SK
-    paths, display units, ranges, ticks, side. Never hard-code a path or range
-    anywhere else. Zones are not in it: dials draw the server's `meta.zones`.
-  - `gauge_settings.*` -- the per-page web UI card (like a SKip gauge) and
+  - Pages are user-defined: `kMaxPages` (12) web UI cards, each Off or a
+    style (dial, compass, sea horizon) with title, path, unit, scale,
+    decimals and timeout, like a SKip gauge widget.
+  - `gauge_defs.cpp` holds the factory pages (by side) and the style
+    templates: SK paths, display units, ranges, ticks. Never hard-code a path
+    or range anywhere else. Zones are not in it: dials draw the server's
+    `meta.zones`.
+  - `gauge_settings.*` -- the page cards (`GaugeSettings`, `/Pages/<n>`) and
     `GaugeConfig`, which holds the boot snapshot of the settings, the
     metadata received and the resolved `GaugeDef` each page is drawn from.
     `gauge_resolve.*` and `units.*` (host-safe, used by the preview) turn
@@ -58,7 +63,7 @@ If a task would require breaking one of these, stop and flag it.
   - `sk_data.*`, `sk_listeners.h`, `status_led.h`, `gauge_app.*`, `gauge_ui.*`,
     `lvgl_port.*` -- SensESP / Arduino / ESP32_Display_Panel glue.
 - **`waveshare-*/`** -- one PlatformIO project per board: `platformio.ini`
-  (one env per unit), `src/main.cpp` (board bring-up only), `include/lv_conf.h`,
+  (one env per device and side), `src/main.cpp` (board bring-up only), `include/lv_conf.h`,
   and for the 4" `include/esp_panel_board_custom_conf.h`.
 - **`include/secrets.example.h`** -- template for the gitignored, shared
   `include/secrets.h`: WiFi, Signal K server, OTA password, device addresses.
@@ -101,7 +106,7 @@ A UI change is not done until the preview has been rendered and looked at.
 - Use `SensESPAppBuilder`. `set_system_status_led()` must stay set to
   `ScreenStatusLed`: the ESP32-S3 Arduino variant's `PIN_RGB_LED 48` is an LCD
   data line on the 2.1" board.
-- Page settings are a `FileSystemSaveable` (`GaugeSettings`, `/Gauges/<id>`)
+- Page settings are a `FileSystemSaveable` (`GaugeSettings`, `/Pages/<n>`)
   with its own `ConfigSchema`; listeners are not `ConfigItem`s. Listeners
   derive from `GaugeListener` (`sk_listeners.h`), which opts in to metadata
   (`wants_meta()`) and hands it to `GaugeConfig::set_meta()`.

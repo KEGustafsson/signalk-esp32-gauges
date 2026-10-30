@@ -1,17 +1,17 @@
 #pragma once
 
-// The gauge pages every board can show, in swipe order.
+// Gauge pages. A device shows up to kMaxPages pages, in swipe order; each is
+// one of three styles (a steel dial, a compass card or the sea horizon) and
+// is set up like a SKip gauge widget in the SensESP web UI
+// (gauge_settings.h): style or off, title, Signal K path, display unit,
+// scale, decimals and data timeout. Zones come from the Signal K server's
+// metadata for the path (meta.zones).
 //
-// One table drives both the Signal K subscriptions (sk_data.cpp) and the
-// rendering (ui/*.cpp), so adding or retuning a gauge is a one-line change in
-// gauge_defs.cpp. Signal K delivers SI units (rad, m/s, K, Hz); each entry
-// names a display unit (units.h) that converts with
-// `display = raw * scale + offset`.
-//
-// The table holds the defaults only. Like a SKip gauge widget, every page can
-// be set up in the SensESP web UI (gauge_settings.h): shown or not, label,
-// path, display unit, scale and decimals. Its zones come from the Signal K
-// server's metadata for the path (meta.zones), not from this table.
+// This file holds the factory settings only: the pages a freshly flashed
+// device shows (default_page(), by its side), and the starting point for a
+// page switched to another style (style_template()). Signal K delivers SI
+// units (rad, m/s, K, Hz); each definition names a display unit (units.h)
+// that converts with `display = raw * scale + offset`.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -25,9 +25,8 @@ enum class GaugeKind : uint8_t {
   kAttitude,  // Sea-horizon heel/trim indicator (navigation.attitude)
 };
 
-// Which unit shows a page. Each physical gauge is built for one side
-// (GAUGE_SIDE in platformio.ini) and shows that side's engine pages plus the
-// shared ones (heading, speed, attitude).
+// The engine a device's factory pages show (GAUGE_SIDE in platformio.ini).
+// Only the defaults depend on it: every page can be repointed in the web UI.
 enum class Side : uint8_t {
   kBoth,
   kPort,
@@ -45,9 +44,8 @@ struct Zone {
 static constexpr size_t kMaxZones = 8;
 
 struct GaugeDef {
-  const char* id;        // Short, stable id; used in the web config path
+  const char* id;        // Short, stable id: the template's, or the page's
   GaugeKind kind;
-  Side side;
   const char* title;     // Upper text on the dial face, e.g. "PRT Engine"
   const char* unit_id;   // Default display unit (units.h), e.g. "rpm"
   const char* sk_path;   // Default Signal K path
@@ -57,7 +55,6 @@ struct GaugeDef {
   uint8_t minor_per_major;  // Minor tick intervals between majors
   uint8_t decimals;      // Digits after the decimal point on the LCD
   uint16_t listen_delay_ms;  // Signal K subscription period
-  bool shown_by_default;     // Spare gauges start hidden
   // Fixed bands drawn as part of the scale (only the attitude page's heel
   // bands); a gauge's alarm zones come from Signal K (gauge_resolve.h).
   Zone zones[kMaxZones];
@@ -70,26 +67,21 @@ struct GaugeDef {
   float offset = 0.0f;
 };
 
-// The page table (gauge_defs.cpp). Entries past kMaxGauges are ignored.
-extern const GaugeDef kGauges[];
-extern const size_t kGaugeCount;
-static constexpr size_t kMaxGauges = 16;
+// How many pages a device can have (web UI cards "Page 1".."Page 12").
+static constexpr size_t kMaxPages = 12;
 
-// True if a unit built for `unit_side` shows this page.
-inline bool shown_on(const GaugeDef& def, Side unit_side) {
-  return def.side == Side::kBoth || unit_side == Side::kBoth ||
-         def.side == unit_side;
-}
+// The factory definition of page `slot` (0-based) on a device built for
+// `side`, or nullptr if that page starts switched off.
+const GaugeDef* default_page(Side side, size_t slot);
 
-// The side whose pages a unit actually shows and subscribes: its own, or all
-// of them if a table edit left it nothing (so it shows and feeds every page
-// rather than a blank screen).
-inline Side effective_side(Side unit_side) {
-  for (size_t i = 0; i < kGaugeCount && i < kMaxGauges; i++) {
-    if (shown_on(kGauges[i], unit_side)) return unit_side;
-  }
-  return Side::kBoth;
-}
+// Where a page switched to `kind` starts when its factory page is another
+// style (or off): a dial reads the path in its SI unit on 0..100, the
+// compass a heading, the sea horizon navigation.attitude.
+const GaugeDef& style_template(GaugeKind kind);
+
+// Every distinct factory page, both sides (the preview renders these).
+extern const GaugeDef* const kFactoryPages[];
+extern const size_t kFactoryPageCount;
 
 // The unit label for a page whose Signal K path may have been changed in the
 // web UI: a compass fed a magnetic heading must not say "°T".
