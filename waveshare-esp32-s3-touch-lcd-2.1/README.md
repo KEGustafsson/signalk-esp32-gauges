@@ -3,10 +3,10 @@
 Signal K steel gauges for the 2.1" round board. See the
 [top-level README](../README.md) for the gauges, touch controls and setup.
 
-| Unit | Side | Address | OTA | First flash |
-|---|---|---|---|---|
-| 2.1" #1 | starboard | 192.168.220.132 | `pio run -e s3_stbd -t upload` | `pio run -e s3_stbd_usb -t upload` |
-| 2.1" #2 | port | 192.168.220.133 | `pio run -e s3_port -t upload` | `pio run -e s3_port_usb -t upload` |
+| Side | OTA | First flash |
+|---|---|---|
+| starboard | `pio run -e s3_stbd -t upload` | `pio run -e s3_stbd_usb -t upload` |
+| port | `pio run -e s3_port -t upload` | `pio run -e s3_port_usb -t upload` |
 
 ## Hardware
 

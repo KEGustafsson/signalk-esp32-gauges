@@ -230,3 +230,13 @@ Verified: ASan/UBSan host test of the resolver (rpm, °C/°F, compass °M,
 attitude bands); both boards build; preview rendered with sample server
 zones and looked at. Not verified: on hardware, and against a live server's
 metadata.
+
+## 2026-10-30 — Generic device docs
+
+The README, AGENTS.md, board READMEs, the build-flash skill and the
+platformio.ini comments now name devices only by size and side (4" / 2.1",
+starboard / port): no unit numbers and no boat-specific IP addresses.
+`secrets.example.h` defaults each device's OTA address to its mDNS name
+(`gauge-4c-stbd.local` ...) and leaves the static-IP gateway and DNS empty;
+a real `secrets.h` sets IPs where needed. Both boards build from the
+template; credential checks pass.

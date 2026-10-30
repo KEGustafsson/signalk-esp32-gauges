@@ -3,19 +3,20 @@
 > The working contract for the repository, modelled on
 > [drive-remote-controller](https://github.com/KEGustafsson/drive-remote-controller)'s.
 > The SensESP idioms are in *SensESP v3 API rules*; everything else is what
-> keeps four display units on a boat trustworthy.
+> keeps gauge displays on a boat trustworthy.
 
 ## What this is
 
 Signal K instrument gauges (classic steel style) for Waveshare round touch
-displays. Four units, two firmware projects, one shared library:
+displays. Two boards (4" and 2.1"), each built as a starboard or a port
+device, two firmware projects, one shared library:
 
-| Unit | Side | Address | Project | env (OTA / USB) |
-|---|---|---|---|---|
-| 4" #1 | starboard | 192.168.220.130 | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_stbd` / `p4_stbd_usb` |
-| 4" #2 | port | 192.168.220.131 | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_port` / `p4_port_usb` |
-| 2.1" #1 | starboard | 192.168.220.132 | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_stbd` / `s3_stbd_usb` |
-| 2.1" #2 | port | 192.168.220.133 | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_port` / `s3_port_usb` |
+| Device | Side | Project | env (OTA / USB) |
+|---|---|---|---|
+| 4" | starboard | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_stbd` / `p4_stbd_usb` |
+| 4" | port | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_port` / `p4_port_usb` |
+| 2.1" | starboard | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_stbd` / `s3_stbd_usb` |
+| 2.1" | port | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_port` / `s3_port_usb` |
 
 The gauges only *display*: nothing here commands a machine. The rules below
 are about never showing a wrong number with confidence.
@@ -60,7 +61,7 @@ If a task would require breaking one of these, stop and flag it.
   (one env per unit), `src/main.cpp` (board bring-up only), `include/lv_conf.h`,
   and for the 4" `include/esp_panel_board_custom_conf.h`.
 - **`include/secrets.example.h`** -- template for the gitignored, shared
-  `include/secrets.h`: WiFi, Signal K server, OTA password, unit addresses.
+  `include/secrets.h`: WiFi, Signal K server, OTA password, device addresses.
 - **`scripts/ota_auth.py`** -- injects the OTA password and address from
   secrets.h at upload time. Never write `--auth=` into a platformio.ini.
   `scripts/ota_quiet.py` (post:) drops the builder's espota `--debug`, which
@@ -123,7 +124,7 @@ A UI change is not done until the preview has been rendered and looked at.
 
 ## Hardware status
 
-**None of the four units has been flashed yet.** Everything is build- and
+**No device has been flashed yet.** Everything is build- and
 host-verified only. Work through the first power-up checklists in each board
 folder's README before trusting a reading.
 

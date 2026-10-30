@@ -12,12 +12,12 @@ argument-hint: "[optional: p4_stbd, p4_port, s3_stbd or s3_port]"
 
 Ask which one if it was not given:
 
-| Unit | Address | Project | OTA env | USB env |
-|---|---|---|---|---|
-| 4" #1 starboard | 192.168.220.130 | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_stbd` | `p4_stbd_usb` |
-| 4" #2 port | 192.168.220.131 | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_port` | `p4_port_usb` |
-| 2.1" #1 starboard | 192.168.220.132 | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_stbd` | `s3_stbd_usb` |
-| 2.1" #2 port | 192.168.220.133 | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_port` | `s3_port_usb` |
+| Device | Project | OTA env | USB env |
+|---|---|---|---|
+| 4" starboard | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_stbd` | `p4_stbd_usb` |
+| 4" port | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_port` | `p4_port_usb` |
+| 2.1" starboard | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_stbd` | `s3_stbd_usb` |
+| 2.1" port | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_port` | `s3_port_usb` |
 
 The OTA env's address and password come from the gitignored
 `include/secrets.h` (`SECRET_OTA_HOST_<ENV>`, `SECRET_OTA_PASSWORD`).

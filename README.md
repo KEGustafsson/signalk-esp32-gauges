@@ -22,19 +22,21 @@ swipe between them. Data comes from a Signal K server through
 Each hardware folder is its own PlatformIO project. Both build the same gauge
 code from `common/`, scaled to the panel's size.
 
-## The four units
+## Devices
 
-| Unit | Side | Address | Project | OTA env | First flash (USB) |
-|---|---|---|---|---|---|
-| 4" #1 | starboard | 192.168.220.130 | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4_stbd` | `p4_stbd_usb` |
-| 4" #2 | port | 192.168.220.131 | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4_port` | `p4_port_usb` |
-| 2.1" #1 | starboard | 192.168.220.132 | `waveshare-esp32-s3-touch-lcd-2.1` | `s3_stbd` | `s3_stbd_usb` |
-| 2.1" #2 | port | 192.168.220.133 | `waveshare-esp32-s3-touch-lcd-2.1` | `s3_port` | `s3_port_usb` |
+Each board builds as a starboard or a port device:
 
-A unit's side decides which engine it shows. Heading, speed and the sea horizon
-are on every unit:
+| Device | Side | Project | OTA env | First flash (USB) |
+|---|---|---|---|---|
+| 4" | starboard | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4_stbd` | `p4_stbd_usb` |
+| 4" | port | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4_port` | `p4_port_usb` |
+| 2.1" | starboard | `waveshare-esp32-s3-touch-lcd-2.1` | `s3_stbd` | `s3_stbd_usb` |
+| 2.1" | port | `waveshare-esp32-s3-touch-lcd-2.1` | `s3_port` | `s3_port_usb` |
 
-| Port units swipe through | Starboard units swipe through |
+A device's side decides which engine it shows. Heading, speed and the sea horizon
+are on every device:
+
+| Port devices swipe through | Starboard devices swipe through |
 |---|---|
 | PRT Engine rpm | STB Engine rpm |
 | Speed | Speed |
@@ -180,12 +182,14 @@ second, when connected.
    `. _ ~ + = @ : , / -` only: it goes on a shell command line) and a web UI
    admin password.
    `secrets.h` is gitignored; it is shared by both projects and by the OTA
-   upload script. The four unit addresses are already filled in. Set
-   `SECRET_USE_STATIC_IP` to `1` if you want each unit to configure its address
-   statically instead of using DHCP reservations. These values only seed a
+   upload script. Each device's address defaults to its mDNS name (for
+   example `gauge-4c-stbd.local`); put an IP address there instead if your
+   computer does not resolve `.local` names. Set `SECRET_USE_STATIC_IP` to `1`
+   (with IP addresses, netmask, gateway and DNS filled in) if you want each
+   device to configure its address statically instead of using DHCP. These values only seed a
    unit with no saved settings: once WiFi or the Signal K server has been
    saved on the unit, its saved values win.
-3. First flash of each unit over USB, for example 4" #1:
+3. First flash of each device over USB, for example a 4" starboard one:
 
    ```bash
    cd waveshare-esp32-p4-wifi6-touch-lcd-4c

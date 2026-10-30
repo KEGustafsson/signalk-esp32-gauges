@@ -3,10 +3,10 @@
 Signal K steel gauges for the 4" round board. See the
 [top-level README](../README.md) for the gauges, touch controls and setup.
 
-| Unit | Side | Address | OTA | First flash |
-|---|---|---|---|---|
-| 4" #1 | starboard | 192.168.220.130 | `pio run -e p4_stbd -t upload` | `pio run -e p4_stbd_usb -t upload` |
-| 4" #2 | port | 192.168.220.131 | `pio run -e p4_port -t upload` | `pio run -e p4_port_usb -t upload` |
+| Side | OTA | First flash |
+|---|---|---|
+| starboard | `pio run -e p4_stbd -t upload` | `pio run -e p4_stbd_usb -t upload` |
+| port | `pio run -e p4_port -t upload` | `pio run -e p4_port_usb -t upload` |
 
 ## Hardware
 
