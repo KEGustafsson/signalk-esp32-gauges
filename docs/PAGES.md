@@ -82,7 +82,9 @@ the tank's path, unit and scale before pressing **Save**.
 
 Changing only the **Display unit** of a dial converts its scale: 0–120 °C
 becomes 0–250 °F, 0–30 kn becomes 0–60 km/h. A unit that measures something
-else gives 0–100; set the scale you want in the same save.
+else gives 0–100; set the scale you want in the same save. When the path
+changes in the same save (a new page, for example), the scale is left as it
+is — set it to suit the new path.
 
 A card holds everything its page shows, so the page does not depend on which
 card it is in: settings copied from one card to another give the same page.

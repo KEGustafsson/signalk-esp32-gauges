@@ -133,8 +133,9 @@ bool GaugeSettings::from_json(const JsonObject& config) {
   // loading at boot, where nothing has changed):
   //  - a new style starts from that style's defaults: a heading path left on
   //    a sea horizon would never show anything;
-  //  - a new display unit on a dial converts its range, e.g. 0..120 °C to
-  //    0..250 °F.
+  //  - a new display unit on a dial that keeps its path converts its range,
+  //    e.g. 0..120 °C to 0..250 °F. A path set in the same save (a new page,
+  //    say) keeps the range as it is: the old range never described it.
   if (loaded_ && new_kind != kind) {
     const GaugeDef& base = style_template(new_kind);
     if (new_title == title) new_title = "";  // The style's default
@@ -146,8 +147,8 @@ bool GaugeSettings::from_json(const JsonObject& config) {
       new_max = base.max;
     }
     if (new_decimals == decimals) new_decimals = base.decimals;
-  } else if (loaded_ && new_unit != unit_id && new_min == min &&
-             new_max == max) {
+  } else if (loaded_ && new_unit != unit_id && new_path == sk_path &&
+             !sk_path.isEmpty() && new_min == min && new_max == max) {
     convert_range(unit_id.c_str(), new_unit.c_str(), &new_min, &new_max);
   }
   if (new_path.isEmpty()) {

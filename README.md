@@ -71,7 +71,8 @@ set up the way SKip sets up a gauge widget. Save, then restart the device
   **SI** for the value as sent, labelled with the server's unit.
 - **Set the scale by hand**, **Scale minimum / maximum** (dial) -- the
   dial's range; off, the server's `displayScale` for the path takes
-  precedence when it sends one. Changing only the unit converts the range.
+  precedence when it sends one. Changing only the unit (same path) converts
+  the range.
 - **Show Signal K zones** (dial) -- see below.
 - **Decimals** -- 0–3, for the LCD readout.
 - **Data timeout [s]** -- a value older than this shows dashes (default 10).
