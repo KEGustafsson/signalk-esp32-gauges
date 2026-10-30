@@ -173,3 +173,12 @@ Verified: both boards build; live and stale renders inspected (boat crops
 at 720 px); incremental redraws pixel-identical to full; a heel-only,
 then garbage-roll attitude run is clean under ASan/UBSan; every CI
 credential rule tested against injected failures.
+
+## 2026-10-30 — 4" DSI bus on v3 P4 silicon
+
+ESP32_Display_Panel 1.0.4 fills a partial DSI host config with
+`MIPI_DSI_PHY_CLK_SRC_DEFAULT`, which ESP-IDF 5.5 keeps as the pre-v3
+`PLL_F20M`; v3 silicon has no such PHY PLL reference, so
+`esp_lcd_new_dsi_bus()` aborts. `start_board()` now replaces the partial host
+config with a full one using `MIPI_DSI_PHY_PLLREF_CLK_SRC_DEFAULT` (only when
+`CONFIG_ESP_REV_MIN_FULL >= 300`). Not verified on hardware.
