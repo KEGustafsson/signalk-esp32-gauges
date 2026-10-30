@@ -123,12 +123,6 @@ bool GaugeSettings::from_json(const JsonObject& config) {
     new_path = config["sk_path"].as<String>();
     new_path.trim();
   }
-  if (new_path.isEmpty()) {
-    // A compass or sea horizon falls back to its usual path. A dial left
-    // without one is not subscribed (an empty path would subscribe to the
-    // server's root) and shows dashes.
-    new_path = base_for(factory_, new_kind).sk_path;
-  }
   if (config["unit"].is<String>()) {
     new_unit = config["unit"].as<String>();
     if (find_display_unit(new_unit.c_str()) == nullptr) return false;
@@ -138,14 +132,36 @@ bool GaugeSettings::from_json(const JsonObject& config) {
   }
   if (config["min"].is<float>()) new_min = config["min"].as<float>();
   if (config["max"].is<float>()) new_max = config["max"].as<float>();
+  if (config["decimals"].is<int>()) new_decimals = config["decimals"].as<int>();
+
+  // A style changed in the web UI starts from that style's defaults: a
+  // heading path left on a sea horizon would never show anything. Only what
+  // this save left as it was is reset, so a path typed in along with the new
+  // style is kept. Not while loading at boot, where the saved style differs
+  // from the factory one without anything having changed.
+  if (loaded_ && new_kind != kind) {
+    const GaugeDef& base = base_for(factory_, new_kind);
+    if (new_title == title) new_title = &base == factory_ ? base.title : "";
+    if (new_path == sk_path) new_path = base.sk_path;
+    if (new_unit == unit_id) new_unit = base.unit_id;
+    if (new_manual == manual_scale && new_min == min && new_max == max) {
+      new_manual = false;
+      new_min = base.min;
+      new_max = base.max;
+    }
+    if (new_decimals == decimals) new_decimals = base.decimals;
+  }
+  if (new_path.isEmpty()) {
+    // A compass or sea horizon falls back to its usual path. A dial left
+    // without one is not subscribed (an empty path would subscribe to the
+    // server's root) and shows dashes.
+    new_path = base_for(factory_, new_kind).sk_path;
+  }
   if (new_manual &&
       !(isfinite(new_min) && isfinite(new_max) && new_min < new_max)) {
     return false;
   }
-  if (config["decimals"].is<int>()) {
-    new_decimals = config["decimals"].as<int>();
-    if (new_decimals < 0 || new_decimals > 3) return false;
-  }
+  if (new_decimals < 0 || new_decimals > 3) return false;
   if (config["timeout_s"].is<int>()) {
     new_timeout = config["timeout_s"].as<int>();
     if (new_timeout < kMinTimeoutS || new_timeout > kMaxTimeoutS) {
@@ -208,6 +224,7 @@ void GaugeConfig::begin(Side side) {
   for (size_t i = 0; i < (size_t)page_count_->count && i < kMaxPages; i++) {
     settings_[i] = std::make_shared<GaugeSettings>(i, side);
     settings_[i]->load();
+    settings_[i]->mark_loaded();
     take_snapshot(i, *settings_[i]);
     pages_.push_back(i);
   }

@@ -39,6 +39,9 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
 
   // The factory page, or nullptr for a page past the factory ones.
   const GaugeDef* factory() const { return factory_; }
+  // Call after the boot load: from then on, a save that changes the style
+  // resets the fields it left untouched to the new style's defaults.
+  void mark_loaded() { loaded_ = true; }
 
   GaugeKind kind;
   String title;  // Empty: the style's default
@@ -53,6 +56,7 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
 
  private:
   const GaugeDef* factory_;
+  bool loaded_ = false;
 };
 
 // How many pages are swiped through: Page 1 .. Page `count`.

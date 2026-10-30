@@ -73,8 +73,12 @@ Open its **Page n** card, change what you need, **Save**, **Restart**. To
 see which page is which, tap the device's screen on that page: the info box
 shows the Signal K path it reads.
 
-Changing the **Style** keeps the rest of the card: switching the rpm page to
-a compass, for example, still has the rpm path until you change it.
+Changing the **Style** starts the page from that style's defaults: the
+title, path, unit, scale and decimals you leave as they were are reset (a
+compass to `navigation.headingTrue`, a sea horizon to `navigation.attitude`,
+a dial to no path), while anything you change in the same save is kept. So
+to turn a page into a fuel gauge, pick **Dial** and type the tank's path and
+unit before pressing **Save**.
 
 ## Reorder pages
 

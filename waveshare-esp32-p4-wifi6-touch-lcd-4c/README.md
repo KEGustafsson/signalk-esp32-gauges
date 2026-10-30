@@ -70,4 +70,5 @@ examples.
 - If WiFi never connects, check the boot log for esp-hosted errors: the
   ESP32-C6 firmware must be compatible with the esp-hosted version in
   Arduino-ESP32 3.3.11. Waveshare's documentation covers updating the C6.
-- Tap shows the IP address; it should match the table above.
+- Tap shows the IP address; it should match the one your router gave the
+  device (or the static address in `secrets.h`).

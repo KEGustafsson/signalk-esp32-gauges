@@ -51,7 +51,8 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
 
 - The gauge appears with dashes in the LCD before WiFi connects.
 - Swipe left/right changes the page; a short toast shows the page name.
-- Tap shows the IP address; it should match the table above.
+- Tap shows the IP address; it should match the one your router gave the
+  device (or the static address in `secrets.h`).
 - After approving the access request in Signal K, the bezel dot shows blue
   (with a brief blink each second) and the needle moves.
 - Touch is read after the CST820's interrupt (GPIO16) and while a finger is
