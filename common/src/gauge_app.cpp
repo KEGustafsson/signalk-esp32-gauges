@@ -176,7 +176,9 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   // UI first, so the gauge is on screen while WiFi and Signal K connect.
   // Touch only answers once setup() returns and the loop runs, so the boot
   // milestones are logged to show where that time goes.
-  ESP_LOGI("boot", "Display up at %u ms", (unsigned)millis());
+  // The display itself was started in main.cpp before this.
+  ESP_LOGI("boot", "Display ready, building the gauge at %u ms",
+           (unsigned)millis());
   ui_begin({config.side, config.unit_name, config.set_brightness});
   lv_timer_handler();
   ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());
@@ -215,6 +217,7 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   apply_web_ui_login();
 
   sk_data().begin(config.side);
+  ui_paths_ready();
   start_loop_watchdog();
   ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
            (unsigned)millis());

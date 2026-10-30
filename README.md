@@ -113,14 +113,14 @@ not change it), and it resets SensESP's settings once: WiFi comes back from
 `secrets.h`, but Signal K paths changed in the web UI go back to their
 defaults and the unit has to be approved again in the Signal K admin UI
 (**Security → Access Requests**). Erasing first is cleanest; use each unit's
-`_usb` env, for example:
+`_usb` env in its board project, for example from the repository root:
 
 ```bash
-pio run -e p4_stbd_usb -t erase
+pio run -d waveshare-esp32-p4-wifi6-touch-lcd-4c -e p4_stbd_usb -t erase
 ```
 
 ```bash
-pio run -e p4_stbd_usb -t upload
+pio run -d waveshare-esp32-p4-wifi6-touch-lcd-4c -e p4_stbd_usb -t upload
 ```
 
 The small dot at the

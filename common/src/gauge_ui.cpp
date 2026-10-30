@@ -136,6 +136,16 @@ bool room_for_page() {
          pixels * 6 + kPsramReserve;
 }
 
+// The unit label follows the Signal K path configured in the web UI (a
+// compass on a magnetic path reads °M). Paths exist only once SkData::begin()
+// has run, after the first page is built, so it is applied again then (see
+// ui_paths_ready()) and whenever a page is shown.
+void apply_unit_label(size_t index) {
+  const size_t gauge = state->pages[index];
+  state->built[index]->set_unit_label(
+      unit_for_path(kGauges[gauge], sk_data().sk_path(gauge).c_str()));
+}
+
 // Builds page `index` (hidden) if it is not built yet.
 void build_page(size_t index) {
   if (state->built[index]) {
@@ -146,8 +156,7 @@ void build_page(size_t index) {
   state->built[index] =
       ui::create_page(lv_screen_active(), kGauges[gauge], state->geometry);
   state->built[index]->set_visible(false);
-  state->built[index]->set_unit_label(
-      unit_for_path(kGauges[gauge], sk_data().sk_path(gauge).c_str()));
+  apply_unit_label(index);
   // Page builds run on the loop under its 5 s watchdog; log how long they
   // take on the real hardware.
   ESP_LOGI("gauge_ui", "Page %s built in %u ms", kGauges[gauge].id,
@@ -172,6 +181,7 @@ void show_page(size_t index, bool announce) {
     drop_pages_except(index);  // Short of PSRAM: back to one page at a time
   }
   build_page(index);
+  apply_unit_label(index);
   state->page = state->built[index].get();
   state->page->set_visible(true);
   // Draw the current value at once, not on the next UI tick.
@@ -388,6 +398,17 @@ void ui_begin(const UiConfig& config) {
   lv_timer_create(ui_timer_cb, kUiPeriodMs, nullptr);
   state->prebuild_timer =
       lv_timer_create(prebuild_cb, kPrebuildPeriodMs, nullptr);
+}
+
+void ui_paths_ready() {
+  if (state == nullptr) {
+    return;
+  }
+  for (size_t i = 0; i < state->built.size(); i++) {
+    if (state->built[i]) {
+      apply_unit_label(i);
+    }
+  }
 }
 
 void ui_show_notice(const char* text) {
