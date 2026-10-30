@@ -200,20 +200,27 @@ jobs:
           fi
           # A filled-in password in any C/C++ file (a renamed copy, or one of
           # the template's WiFi passwords): every SECRET_*PASSWORD define must
-          # be exactly "" -- anything else ("" "x", a line continuation, a
-          # value) is a credential, or could hide one.
-          defines=$(git grep -nE '#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*([^A-Za-z0-9_]|$)' \
-              -- '*.h' '*.hpp' '*.c' '*.cpp' '*.ino' || true)
-          filled=$(printf '%s\n' "$defines" | grep -vE \
-              '^[^:]+:[0-9]+:[[:space:]]*#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*[[:space:]]+""[[:space:]]*(//.*)?$' \
-              | grep -v '^$' || true)
+          # be exactly "" -- anything else ("" "x", a value) is a credential,
+          # or could hide one. Backslash-newline continuations are joined
+          # first, and every #define counts whatever #if it sits in. Only file
+          # names are printed, never the value.
+          filled=""
+          while IFS= read -r -d '' file; do
+            bad=$(sed -e ':a' -e '/\\$/{N;s/\\\n//;ba}' -- "$file" \
+                | grep -E '#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*([^A-Za-z0-9_]|$)' \
+                | grep -vE '^[[:space:]]*#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*[[:space:]]+""[[:space:]]*(//.*)?$' \
+                || true)
+            if [ -n "$bad" ]; then
+              filled="$filled $file"
+            fi
+          done < <(git ls-files -z -- '*.h' '*.hpp' '*.c' '*.cpp' '*.ino')
           if [ -n "$filled" ]; then
-            echo "::error::a SECRET_*PASSWORD with a value is committed:"
-            printf '%s\n' "$filled" | cut -d: -f1,2
+            echo "::error::a SECRET_*PASSWORD with a value is committed in:$filled"
             exit 1
           fi
-          # The template once more through the C preprocessor itself, which
-          # sees through line continuations, comments and #if blocks.
+          # The template once more through the C preprocessor itself: what
+          # the firmware actually gets, after comments, concatenation of
+          # lines and #if (the scan above also covers inactive branches).
           expanded=$(cpp -dM -P include/secrets.example.h \
               | grep -E '^#define SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]* ' || true)
           if [ -z "$expanded" ] ||
