@@ -42,12 +42,15 @@ uint8_t lcd_slots(const GaugeDef& def) {
   return (uint8_t)(digits + def.decimals + (def.min < 0.0f ? 1 : 0));
 }
 
+// As many decimals as the step needs (2.5 -> 1, 0.25 -> 2), at most 3.
 void format_label(char* buf, size_t len, float value, float step) {
-  if (fabsf(step - roundf(step)) < 0.001f) {
-    snprintf(buf, len, "%.0f", value);
-  } else {
-    snprintf(buf, len, "%.1f", value);
+  int decimals = 0;
+  float scaled = fabsf(step);
+  while (decimals < 3 && fabsf(scaled - roundf(scaled)) > 0.001f * scaled) {
+    scaled *= 10.0f;
+    decimals++;
   }
+  snprintf(buf, len, "%.*f", decimals, value);
 }
 
 }  // namespace

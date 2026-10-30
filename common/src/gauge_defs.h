@@ -5,10 +5,13 @@
 // One table drives both the Signal K subscriptions (sk_data.cpp) and the
 // rendering (ui/*.cpp), so adding or retuning a gauge is a one-line change in
 // gauge_defs.cpp. Signal K delivers SI units (rad, m/s, K, Hz); each entry
-// converts to the displayed unit with `display = raw * scale + offset`.
+// names a display unit (units.h) that converts with
+// `display = raw * scale + offset`.
 //
-// The SK path in the table is only the default: every path can be changed at
-// runtime from the SensESP web UI (Configuration -> Gauges) without a rebuild.
+// The table holds the defaults only. Like a SKip gauge widget, every page can
+// be set up in the SensESP web UI (gauge_settings.h): shown or not, label,
+// path, display unit, scale and decimals. Its zones come from the Signal K
+// server's metadata for the path (meta.zones), not from this table.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -39,25 +42,32 @@ struct Zone {
   uint32_t color;  // 0xRRGGBB
 };
 
-static constexpr size_t kMaxZones = 3;
+static constexpr size_t kMaxZones = 8;
 
 struct GaugeDef {
   const char* id;        // Short, stable id; used in the web config path
   GaugeKind kind;
   Side side;
   const char* title;     // Upper text on the dial face, e.g. "PRT Engine"
-  const char* unit;      // Lower text on the dial face, e.g. "rpm"
+  const char* unit_id;   // Default display unit (units.h), e.g. "rpm"
   const char* sk_path;   // Default Signal K path
-  float scale;           // display = raw * scale + offset
-  float offset;
-  float min;             // Dial range in displayed units
+  float min;             // Default dial range in the default display unit
   float max;
   float major_step;      // A labelled major tick every major_step
   uint8_t minor_per_major;  // Minor tick intervals between majors
   uint8_t decimals;      // Digits after the decimal point on the LCD
   uint16_t listen_delay_ms;  // Signal K subscription period
+  bool shown_by_default;     // Spare gauges start hidden
+  // Fixed bands drawn as part of the scale (only the attitude page's heel
+  // bands); a gauge's alarm zones come from Signal K (gauge_resolve.h).
   Zone zones[kMaxZones];
   uint8_t zone_count;
+
+  // Filled in from the display unit by resolve_gauge(); a table entry leaves
+  // them at these defaults.
+  const char* unit = "";  // Lower text on the dial face, e.g. "rpm"
+  float scale = 1.0f;     // display = raw * scale + offset
+  float offset = 0.0f;
 };
 
 // The page table (gauge_defs.cpp). Entries past kMaxGauges are ignored.
@@ -84,9 +94,10 @@ inline Side effective_side(Side unit_side) {
 // The unit label for a page whose Signal K path may have been changed in the
 // web UI: a compass fed a magnetic heading must not say "°T".
 inline const char* unit_for_path(const GaugeDef& def, const char* sk_path) {
-  if (def.kind == GaugeKind::kCompass && sk_path != nullptr &&
-      strstr(sk_path, "Magnetic") != nullptr) {
-    return "\xC2\xB0M";
+  if (def.kind == GaugeKind::kCompass) {
+    return (sk_path != nullptr && strstr(sk_path, "Magnetic") != nullptr)
+               ? "\xC2\xB0M"
+               : "\xC2\xB0T";
   }
   return def.unit;
 }

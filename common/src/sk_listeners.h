@@ -13,68 +13,50 @@
 // (Same approach as KEGustafsson/drive-remote-controller's
 // include/strict_sk_listeners.h.)
 //
-// Both expose the SK path in the SensESP web UI. SKListener keeps its
-// to_json()/from_json() private, which ConfigItem cannot call, and its
-// ConfigSchema() only describes listen_delay; SkPathConfig re-implements the
-// two as public overrides and the ConfigSchema() overloads at the bottom
-// describe `sk_path`, so the path is editable per unit.
+// Each also takes the path's Signal K metadata (zones, displayScale, units),
+// which SensESP's WebSocket brings in with sendMeta=all, so one subscription
+// per page carries both. The path itself is set in the page's settings card
+// (gauge_settings.h).
 
 #include <ArduinoJson.h>
 #include <math.h>
 
 #include <functional>
+#include <memory>
 
 #include "sensesp/signalk/signalk_listener.h"
+#include "sensesp/signalk/signalk_metadata_listener.h"
 #include "sensesp/signalk/signalk_value_listener.h"
 
 namespace skgauges {
 
-// Public (de)serialisation of the listener's SK path for ConfigItem, plus a
-// callback for deltas whose value is not usable.
-// `Base` must derive from sensesp::SKListener, whose sk_path is protected.
-//
-// The web UI saves a path from the HTTP server task while the event loop and
-// the WebSocket task read it, so both directions hold SKListener's own
-// (recursive) semaphore -- the lock SensESP takes around those reads.
+// Callbacks shared by the gauge listeners: a delta whose value is not
+// usable, and metadata for the path. `Base` derives from SKListener.
 template <typename Base>
-class SkPathConfig : public Base {
+class GaugeListener : public Base {
  public:
   using Base::Base;
-
-  bool to_json(JsonObject& root) override {
-    sensesp::SKListener::take_semaphore();
-    root["sk_path"] = this->sk_path;
-    sensesp::SKListener::release_semaphore();
-    return true;
-  }
-
-  bool from_json(const JsonObject& config) override {
-    if (!config["sk_path"].is<String>()) {
-      return false;
-    }
-    String path = config["sk_path"].as<String>();
-    path.trim();
-    if (path.isEmpty()) {  // Would subscribe to the server's root
-      return false;
-    }
-    sensesp::SKListener::take_semaphore();
-    this->sk_path = path;
-    sensesp::SKListener::release_semaphore();
-    return true;
-  }
-
-  // A copy of the current path, safe to call from any task.
-  String sk_path_copy() {
-    sensesp::SKListener::take_semaphore();
-    String path = this->sk_path;
-    sensesp::SKListener::release_semaphore();
-    return path;
-  }
 
   // Called for a delta whose value is null or not a number: the source is
   // saying it has no valid reading, so the gauge should stop showing one.
   void set_invalid_callback(std::function<void()> callback) {
     on_invalid_ = std::move(callback);
+  }
+
+  void set_meta_callback(
+      std::function<void(const sensesp::SKMetaView&)> callback) {
+    on_meta_ = std::move(callback);
+  }
+
+  bool wants_meta() const override { return true; }
+
+  // On the loop task, with an owned `{path, value: {...meta...}}` document.
+  void parse_meta(
+      const std::shared_ptr<const JsonDocument>& meta_doc) override {
+    if (on_meta_) {
+      on_meta_(sensesp::SKMetaView(
+          (*meta_doc)["value"].as<JsonObjectConst>(), meta_doc));
+    }
   }
 
  protected:
@@ -84,13 +66,14 @@ class SkPathConfig : public Base {
 
  private:
   std::function<void()> on_invalid_;
+  std::function<void(const sensesp::SKMetaView&)> on_meta_;
 };
 
 // Emits only for a real JSON number.
 class StrictFloatListener
-    : public SkPathConfig<sensesp::SKValueListener<float>> {
+    : public GaugeListener<sensesp::SKValueListener<float>> {
  public:
-  using SkPathConfig<sensesp::SKValueListener<float>>::SkPathConfig;
+  using GaugeListener<sensesp::SKValueListener<float>>::GaugeListener;
 
   void parse_value(const JsonObject& json) override {
     auto value = json["value"];
@@ -106,13 +89,12 @@ class StrictFloatListener
 // may be missing (NMEA 2000 PGN 127257 leaves out what the sender does not
 // measure). Calls the callback when roll is a number, with pitch NAN if it is
 // not; yaw is not used.
-class AttitudeListener : public SkPathConfig<sensesp::SKListener> {
+class AttitudeListener : public GaugeListener<sensesp::SKListener> {
  public:
   using Callback = std::function<void(float roll_rad, float pitch_rad)>;
 
-  AttitudeListener(const String& sk_path, int listen_delay,
-                   const String& config_path, Callback callback)
-      : SkPathConfig<sensesp::SKListener>(sk_path, listen_delay, config_path),
+  AttitudeListener(const String& sk_path, int listen_delay, Callback callback)
+      : GaugeListener<sensesp::SKListener>(sk_path, listen_delay),
         callback_(std::move(callback)) {}
 
   void parse_value(const JsonObject& json) override {
@@ -133,19 +115,3 @@ class AttitudeListener : public SkPathConfig<sensesp::SKListener> {
 };
 
 }  // namespace skgauges
-
-namespace sensesp {
-
-inline const String SkPathConfigSchema() {
-  return R"({"type":"object","properties":{"sk_path":{"title":"Signal K path","type":"string","description":"Signal K path this gauge listens to. Restart the device after changing it."}}})";
-}
-
-inline const String ConfigSchema(const skgauges::StrictFloatListener&) {
-  return SkPathConfigSchema();
-}
-
-inline const String ConfigSchema(const skgauges::AttitudeListener&) {
-  return SkPathConfigSchema();
-}
-
-}  // namespace sensesp

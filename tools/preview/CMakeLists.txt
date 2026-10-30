@@ -27,6 +27,8 @@ add_library(lvgl STATIC ${LVGL_SRC})
 
 add_executable(preview preview.cpp
   ${COMMON}/gauge_defs.cpp
+  ${COMMON}/gauge_resolve.cpp
+  ${COMMON}/units.cpp
   ${COMMON}/ui/draw_utils.cpp
   ${COMMON}/ui/lcd_readout.cpp
   ${COMMON}/ui/gauge_page.cpp

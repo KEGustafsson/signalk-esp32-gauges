@@ -32,8 +32,11 @@ struct GaugeValue {
   bool invalid_pending = false;
   uint32_t invalid_ms = 0;
 
+  // The page's data timeout (its settings card), kStaleAfterMs by default.
+  uint32_t stale_ms = kStaleAfterMs;
+
   bool fresh(uint32_t now_ms) const {
-    return seen && (now_ms - updated_ms) < kStaleAfterMs;
+    return seen && (now_ms - updated_ms) < stale_ms;
   }
 };
 

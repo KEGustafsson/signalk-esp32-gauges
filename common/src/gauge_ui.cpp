@@ -11,6 +11,7 @@
 
 #include "sensesp_app.h"
 #include "sensesp_base_app.h"
+#include "gauge_settings.h"
 #include "sk_data.h"
 #include "ui/gauge_page.h"
 
@@ -52,6 +53,7 @@ struct UiState {
   size_t current = 0;
   ui::GaugePage* page = nullptr;  // The visible one, owned by `built`
   std::vector<std::unique_ptr<ui::GaugePage>> built;  // Parallel to `pages`
+  std::vector<uint32_t> built_generation;  // gauge_config() generation used
   lv_timer_t* prebuild_timer = nullptr;
   int brightness_index = 0;
   lv_obj_t* status_dot = nullptr;
@@ -136,27 +138,23 @@ bool room_for_page() {
          pixels * 6 + kPsramReserve;
 }
 
-// The unit label follows the Signal K path configured in the web UI (a
-// compass on a magnetic path reads °M). Paths exist only once SkData::begin()
-// has run, after the first page is built, so it is applied again then (see
-// ui_paths_ready()) and whenever a page is shown.
-void apply_unit_label(size_t index) {
-  const size_t gauge = state->pages[index];
-  state->built[index]->set_unit_label(
-      unit_for_path(kGauges[gauge], sk_data().sk_path(gauge).c_str()));
-}
-
-// Builds page `index` (hidden) if it is not built yet.
+// Builds page `index` (hidden) if it is not built yet, or rebuilds it if its
+// definition changed since (Signal K metadata: zones, displayScale).
 void build_page(size_t index) {
-  if (state->built[index]) {
+  const size_t gauge = state->pages[index];
+  const uint32_t generation = gauge_config().generation(gauge);
+  if (state->built[index] && state->built_generation[index] == generation) {
     return;
   }
   const uint32_t start = millis();
-  const size_t gauge = state->pages[index];
-  state->built[index] =
-      ui::create_page(lv_screen_active(), kGauges[gauge], state->geometry);
+  if (state->page == state->built[index].get()) {
+    state->page = nullptr;
+  }
+  state->built[index].reset();  // Frees the old canvas before the new one
+  state->built[index] = ui::create_page(
+      lv_screen_active(), gauge_config().def(gauge), state->geometry);
   state->built[index]->set_visible(false);
-  apply_unit_label(index);
+  state->built_generation[index] = generation;
   // Page builds run on the loop under its 5 s watchdog; log how long they
   // take on the real hardware.
   ESP_LOGI("gauge_ui", "Page %s built in %u ms", kGauges[gauge].id,
@@ -181,7 +179,6 @@ void show_page(size_t index, bool announce) {
     drop_pages_except(index);  // Short of PSRAM: back to one page at a time
   }
   build_page(index);
-  apply_unit_label(index);
   state->page = state->built[index].get();
   state->page->set_visible(true);
   // Draw the current value at once, not on the next UI tick.
@@ -190,14 +187,14 @@ void show_page(size_t index, bool announce) {
     char text[48];
     snprintf(text, sizeof(text), "%u / %u\n%s",
              (unsigned)(index + 1), (unsigned)state->pages.size(),
-             kGauges[state->pages[index]].title);
+             gauge_config().def(state->pages[index]).title);
     show_overlay(text, kToastShowMs, false);
     save_prefs();
   }
 }
 
 void show_info() {
-  const GaugeDef& def = kGauges[state->pages[state->current]];
+  const GaugeDef& def = gauge_config().def(state->pages[state->current]);
   String text;
   text += state->config.unit_name;
   text += "  ";
@@ -211,7 +208,7 @@ void show_info() {
   text += "\n";
   text += def.title;
   text += ": ";
-  text += sk_data().sk_path(state->pages[state->current]);
+  text += gauge_config().sk_path(state->pages[state->current]);
   text += "\n" LV_SYMBOL_LEFT " swipe " LV_SYMBOL_RIGHT "   hold: brightness";
   show_overlay(text.c_str(), kInfoShowMs, true);
 }
@@ -302,9 +299,15 @@ void prebuild_cb(lv_timer_t* timer) {
 }
 
 void ui_timer_cb(lv_timer_t*) {
+  // Metadata for the visible page changed its definition: redraw it.
+  const size_t gauge = state->pages[state->current];
+  if (state->page != nullptr &&
+      state->built_generation[state->current] !=
+          gauge_config().generation(gauge)) {
+    show_page(state->current, false);
+  }
   if (state->page != nullptr) {
-    state->page->update(sk_data().get(state->pages[state->current]),
-                        millis());
+    state->page->update(sk_data().get(gauge), millis());
   }
 }
 
@@ -364,13 +367,7 @@ void ui_begin(const UiConfig& config) {
   const int32_t h = lv_display_get_vertical_resolution(display);
   state->geometry = {w / 2, h / 2, (w < h ? w : h) / 2};
 
-  const size_t count = kGaugeCount < kMaxGauges ? kGaugeCount : kMaxGauges;
-  const Side side = effective_side(config.side);  // As SkData subscribes
-  for (size_t i = 0; i < count; i++) {
-    if (shown_on(kGauges[i], side)) {
-      state->pages.push_back(i);
-    }
-  }
+  state->pages = gauge_config().pages(config.side);  // As SkData subscribes
   load_prefs();
   if (state->config.set_brightness) {
     state->config.set_brightness(kBrightnessLevels[state->brightness_index]);
@@ -394,21 +391,11 @@ void ui_begin(const UiConfig& config) {
   state->prefs_timer = lv_timer_create(write_prefs, kPrefsSaveDelayMs, nullptr);
   lv_timer_pause(state->prefs_timer);
   state->built.resize(state->pages.size());
+  state->built_generation.resize(state->pages.size(), 0);
   show_page(state->current, false);
   lv_timer_create(ui_timer_cb, kUiPeriodMs, nullptr);
   state->prebuild_timer =
       lv_timer_create(prebuild_cb, kPrebuildPeriodMs, nullptr);
-}
-
-void ui_paths_ready() {
-  if (state == nullptr) {
-    return;
-  }
-  for (size_t i = 0; i < state->built.size(); i++) {
-    if (state->built[i]) {
-      apply_unit_label(i);
-    }
-  }
 }
 
 void ui_show_notice(const char* text) {
