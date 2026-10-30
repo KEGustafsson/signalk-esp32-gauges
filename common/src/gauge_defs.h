@@ -67,12 +67,14 @@ struct GaugeDef {
   float offset = 0.0f;
 };
 
-// How many pages a device can have (web UI cards "Page 1".."Page 12").
+// How many pages a device can have (the web UI's "Number of pages", 1..12).
 static constexpr size_t kMaxPages = 12;
 
 // The factory definition of page `slot` (0-based) on a device built for
-// `side`, or nullptr if that page starts switched off.
+// `side`, or nullptr past the factory pages (a dial with no path).
 const GaugeDef* default_page(Side side, size_t slot);
+// How many factory pages there are: a fresh device swipes through these.
+size_t factory_page_count();
 
 // Where a page switched to `kind` starts when its factory page is another
 // style (or off): a dial reads the path in its SI unit on 0..100, the

@@ -43,7 +43,8 @@ const GaugeDef kAttitude = {
     -40.0f, 40.0f, 10.0f, 2, 1, 200,
     {{-10.0f, 10.0f, 0x2EB82E}, {10.0f, 20.0f, 0xE8C21A}, {20.0f, 40.0f, kRed}},
     3};
-// A dial switched on in the web UI: the path's value as sent (SI), on
+// A page past the factory ones, or switched to a dial: the path's value as
+// sent (SI), on
 // 0..100 until a scale is set or the server sends meta.displayScale.
 const GaugeDef kDial = {
     "dial", GaugeKind::kRadial, "Gauge", "SI", "", 0.0f, 100.0f, 20.0f, 4, 1,
@@ -74,6 +75,8 @@ const GaugeDef* default_page(Side side, size_t slot) {
   }
   return side == Side::kPort ? kPortPages[slot] : kStbdPages[slot];
 }
+
+size_t factory_page_count() { return kSidePageCount; }
 
 const GaugeDef& style_template(GaugeKind kind) {
   switch (kind) {

@@ -1,13 +1,14 @@
 #pragma once
 
 // The device's pages, set up the way SKip sets up its gauge widgets, in the
-// SensESP web UI (Configuration -> "Page 1" .. "Page 12"): each page is off
-// or one of three styles -- a steel dial, a compass card or the sea
-// horizon -- with its title, Signal K path, display unit, scale (by hand or
+// SensESP web UI (Configuration): the "Pages" card sets how many pages are
+// swiped through (1..12), and each of those has a card, "Page 1" ..
+// "Page n", with one of three styles -- a steel dial, a compass card or the
+// sea horizon -- its title, Signal K path, display unit, scale (by hand or
 // from the server's meta.displayScale), whether to draw the server's zones,
-// decimals and data timeout. The pages switched on are the swipe order.
-// Saved at /Pages/<n>; a change takes effect after a restart (the
-// subscriptions and the page list are set up at boot).
+// decimals and data timeout. Saved at /Pages/count and /Pages/<n>; a change
+// takes effect after a restart (the subscriptions and the page list are set
+// up at boot).
 //
 // GaugeConfig then holds, for every page, a snapshot of those settings taken
 // at boot, the Signal K metadata received for its path (zones, displayScale)
@@ -36,13 +37,12 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
   bool to_json(JsonObject& root) override;
   bool from_json(const JsonObject& config) override;
 
-  // The factory page, or nullptr if the page starts off.
+  // The factory page, or nullptr for a page past the factory ones.
   const GaugeDef* factory() const { return factory_; }
 
-  bool on;
   GaugeKind kind;
   String title;  // Empty: the style's default
-  String sk_path;
+  String sk_path;  // Empty: a dial that is not subscribed (dashes)
   String unit_id;
   bool manual_scale = false;
   float min;
@@ -55,6 +55,17 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
   const GaugeDef* factory_;
 };
 
+// How many pages are swiped through: Page 1 .. Page `count`.
+class PageCount : public sensesp::FileSystemSaveable {
+ public:
+  PageCount();
+
+  bool to_json(JsonObject& root) override;
+  bool from_json(const JsonObject& config) override;
+
+  int count;
+};
+
 class GaugeConfig {
  public:
   // Loads every page's settings. Mounts the filesystem first if SensESP has
@@ -63,8 +74,7 @@ class GaugeConfig {
   // Adds the web UI cards; call once SensESP's app exists.
   void add_config_items();
 
-  // The pages switched on, in swipe order (at least one: if all are off,
-  // page 1 shows its factory setting).
+  // The pages swiped through, in order: 0 .. count - 1 (at least one).
   const std::vector<size_t>& pages() const { return pages_; }
 
   const GaugeDef& def(size_t index) const { return defs_[index]; }
@@ -91,6 +101,7 @@ class GaugeConfig {
   void resolve(size_t index);
 
   Side side_ = Side::kStarboard;
+  std::shared_ptr<PageCount> page_count_;
   std::shared_ptr<GaugeSettings> settings_[kMaxPages];
   Snapshot snapshot_[kMaxPages];
   GaugeMeta meta_[kMaxPages];
@@ -105,5 +116,6 @@ GaugeConfig& gauge_config();
 }  // namespace skgauges
 
 namespace sensesp {
+const String ConfigSchema(const skgauges::PageCount& count);
 const String ConfigSchema(const skgauges::GaugeSettings& settings);
 }  // namespace sensesp

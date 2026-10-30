@@ -2,8 +2,8 @@
 
 Classic steel-style Signal K instrument gauges for Waveshare round touch
 displays. Each device shows one page at a time and you swipe between them.
-The pages are yours to define in the web UI, like gauge widgets in SKip: up
-to 12, each a steel dial (rpm, temperature, speed, any number), a compass
+The pages are yours to define in the web UI, like gauge widgets in SKip: you
+choose how many to swipe through (1–12), and each is a steel dial (rpm, temperature, speed, any number), a compass
 card or a sea-horizon heel/trim indicator, with its own title, Signal K path,
 unit and scale; the coloured zones come from the Signal K server. Data comes
 from a Signal K server through
@@ -52,28 +52,34 @@ A page is one of three styles:
 
 ### Setting up the pages
 
-The SensESP web UI (**Configuration**) has a card for each of the 12 pages,
-**Page 1** to **Page 12**, set up the way SKip sets up a gauge widget. The
-pages switched on are the swipe order. Save, then restart the device:
+**[docs/PAGES.md](docs/PAGES.md) is the full guide**: adding, removing,
+changing and reordering pages, every setting, zones on the Signal K server,
+examples and troubleshooting. In short:
 
-- **Style** -- Dial, Compass, Sea horizon, or Off to leave the page out. If
-  every page is off, page 1 shows its factory setting.
+In the SensESP web UI (**Configuration**), the **Pages** card sets the
+**Number of pages** to swipe through, 1 to 12 (6 on a fresh device). Each of
+those pages then has its own card, **Page 1** to **Page n**, in swipe order,
+set up the way SKip sets up a gauge widget. Save, then restart the device
+(a new page's card appears after the restart):
+
+- **Style** -- Dial, Compass or Sea horizon.
 - **Title** -- the text on the dial face; empty for the style's default.
-- **Signal K path** -- the path the page reads; empty for a compass or sea
-  horizon means its usual path.
+- **Signal K path** -- the path the page reads. Empty: a compass or sea
+  horizon reads its usual path; a dial shows dashes until a path is set.
 - **Display unit** (dial) -- converted from the path's Signal K (SI) unit:
   rpm/Hz, °C/°F/K, kn/km/h/mph/m/s, °, bar/kPa/psi, m/ft, %, V, A, W; or
   **SI** for the value as sent, labelled with the server's unit.
 - **Set the scale by hand**, **Scale minimum / maximum** (dial) -- off, the
   dial takes the server's `displayScale` for the path, else the default
-  range (0–100 for a page you switched on).
+  range (0–100 for a page past the factory ones).
 - **Show Signal K zones** (dial) -- see below.
 - **Decimals** -- 0–3, for the LCD readout.
 - **Data timeout [s]** -- a value older than this shows dashes (default 10).
 
 ### Factory pages
 
-A freshly flashed device shows six pages; pages 7–12 start off.
+A freshly flashed device swipes through these six; pages 7–12, once the
+number of pages reaches them, start as dials with no path.
 
 | Page | Style | Title | Signal K path | Unit | Range |
 |---|---|---|---|---|---|

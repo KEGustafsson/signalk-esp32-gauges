@@ -19,8 +19,7 @@ const char* const kPageIds[kMaxPages] = {
     "page1", "page2", "page3", "page4",  "page5",  "page6",
     "page7", "page8", "page9", "page10", "page11", "page12"};
 
-// The web UI's names for a page's style; "Off" hides the page.
-constexpr const char* kOff = "Off";
+// The web UI's names for a page's style.
 const char* style_name(GaugeKind kind) {
   switch (kind) {
     case GaugeKind::kCompass:
@@ -32,15 +31,10 @@ const char* style_name(GaugeKind kind) {
       return "Dial";
   }
 }
-bool parse_style(const String& name, bool* on, GaugeKind* kind) {
-  if (name == kOff) {
-    *on = false;
-    return true;
-  }
+bool parse_style(const String& name, GaugeKind* kind) {
   for (GaugeKind k :
        {GaugeKind::kRadial, GaugeKind::kCompass, GaugeKind::kAttitude}) {
     if (name == style_name(k)) {
-      *on = true;
       *kind = k;
       return true;
     }
@@ -81,7 +75,6 @@ GaugeSettings::GaugeSettings(size_t slot, Side side)
       factory_(default_page(side, slot)) {
   const GaugeDef& def =
       factory_ != nullptr ? *factory_ : style_template(GaugeKind::kRadial);
-  on = factory_ != nullptr;
   kind = def.kind;
   title = factory_ != nullptr ? def.title : "";
   sk_path = def.sk_path;
@@ -92,7 +85,7 @@ GaugeSettings::GaugeSettings(size_t slot, Side side)
 }
 
 bool GaugeSettings::to_json(JsonObject& root) {
-  root["style"] = on ? style_name(kind) : kOff;
+  root["style"] = style_name(kind);
   root["title"] = title;
   root["sk_path"] = sk_path;
   root["unit"] = unit_id;
@@ -108,7 +101,6 @@ bool GaugeSettings::to_json(JsonObject& root) {
 // Validates everything first and changes nothing on a bad value, so the web
 // UI reports the error. Keys a save lacks keep their current values.
 bool GaugeSettings::from_json(const JsonObject& config) {
-  bool new_on = on;
   GaugeKind new_kind = kind;
   String new_title = title;
   String new_path = sk_path;
@@ -120,7 +112,7 @@ bool GaugeSettings::from_json(const JsonObject& config) {
   int new_timeout = timeout_s;
 
   if (config["style"].is<String>() &&
-      !parse_style(config["style"].as<String>(), &new_on, &new_kind)) {
+      !parse_style(config["style"].as<String>(), &new_kind)) {
     return false;
   }
   if (config["title"].is<String>()) {
@@ -132,10 +124,10 @@ bool GaugeSettings::from_json(const JsonObject& config) {
     new_path.trim();
   }
   if (new_path.isEmpty()) {
-    // A compass or sea horizon falls back to its usual path; a dial needs
-    // one (an empty path would subscribe to the server's root).
+    // A compass or sea horizon falls back to its usual path. A dial left
+    // without one is not subscribed (an empty path would subscribe to the
+    // server's root) and shows dashes.
     new_path = base_for(factory_, new_kind).sk_path;
-    if (new_on && new_path.isEmpty()) return false;
   }
   if (config["unit"].is<String>()) {
     new_unit = config["unit"].as<String>();
@@ -164,7 +156,6 @@ bool GaugeSettings::from_json(const JsonObject& config) {
   if (config["show_zones"].is<bool>()) {
     show_zones = config["show_zones"].as<bool>();
   }
-  on = new_on;
   kind = new_kind;
   title = new_title;
   sk_path = new_path;
@@ -174,6 +165,27 @@ bool GaugeSettings::from_json(const JsonObject& config) {
   max = new_max;
   decimals = new_decimals;
   timeout_s = new_timeout;
+  return true;
+}
+
+PageCount::PageCount()
+    : sensesp::FileSystemSaveable("/Pages/count"),
+      count((int)factory_page_count()) {}
+
+bool PageCount::to_json(JsonObject& root) {
+  root["count"] = count;
+  return true;
+}
+
+bool PageCount::from_json(const JsonObject& config) {
+  if (!config["count"].is<int>()) {
+    return true;  // Nothing to change
+  }
+  const int value = config["count"].as<int>();
+  if (value < 1 || value > (int)kMaxPages) {
+    return false;
+  }
+  count = value;
   return true;
 }
 
@@ -188,17 +200,16 @@ void GaugeConfig::begin(Side side) {
   if (!SPIFFS.begin(true)) {
     ESP_LOGE(kTag, "Filesystem not mounted; pages use their defaults");
   }
+  page_count_ = std::make_shared<PageCount>();
+  page_count_->load();
+  // Only the pages swiped through are loaded: each load costs a SPIFFS
+  // lookup at boot, before touch answers.
   pages_.clear();
-  for (size_t i = 0; i < kMaxPages; i++) {
+  for (size_t i = 0; i < (size_t)page_count_->count && i < kMaxPages; i++) {
     settings_[i] = std::make_shared<GaugeSettings>(i, side);
     settings_[i]->load();
     take_snapshot(i, *settings_[i]);
-    if (settings_[i]->on) pages_.push_back(i);
-  }
-  if (pages_.empty()) {  // Every page switched off: page 1 as from the factory
-    ESP_LOGW(kTag, "Every page is off; showing page 1's factory setting");
-    take_snapshot(0, GaugeSettings(0, side));
-    pages_.push_back(0);
+    pages_.push_back(i);
   }
 }
 
@@ -223,17 +234,23 @@ void GaugeConfig::take_snapshot(size_t index, const GaugeSettings& s) {
 }
 
 void GaugeConfig::add_config_items() {
-  for (size_t i = 0; i < kMaxPages; i++) {
+  sensesp::ConfigItem(page_count_)
+      ->set_title("Pages")
+      ->set_description(
+          "How many pages to swipe through: Page 1 up to this one, in order. "
+          "Each page is set up in its own card below.")
+      ->set_requires_restart(true)
+      ->set_sort_order(99);
+  for (size_t i = 0; i < pages_.size(); i++) {
     const GaugeDef* factory = settings_[i]->factory();
     String description =
-        "Like a SKip gauge. Style Off leaves the page out of the swipe "
-        "order. Zones come from the Signal K server's metadata for the path "
-        "(meta.zones). Factory setting: ";
+        "Like a SKip gauge. Zones come from the Signal K server's metadata "
+        "for the path (meta.zones). Factory setting: ";
     if (factory != nullptr) {
       description += String(style_name(factory->kind)) + " \"" +
                      factory->title + "\" on " + factory->sk_path + ".";
     } else {
-      description += "off.";
+      description += "a dial with no path.";
     }
     sensesp::ConfigItem(settings_[i])
         ->set_title(String("Page ") + (int)(i + 1))
@@ -296,6 +313,10 @@ void GaugeConfig::resolve(size_t index) {
 
 namespace sensesp {
 
+const String ConfigSchema(const skgauges::PageCount&) {
+  return R"J({"type":"object","properties":{"count":{"title":"Number of pages","type":"integer","minimum":1,"maximum":12,"description":"Pages swiped through, from Page 1."}}})J";
+}
+
 const String ConfigSchema(const skgauges::GaugeSettings&) {
   String units;
   for (size_t i = 0; i < skgauges::kDisplayUnitCount; i++) {
@@ -304,9 +325,9 @@ const String ConfigSchema(const skgauges::GaugeSettings&) {
   }
   // A select is an array schema in SensESP's web UI; its value is a string.
   String schema = R"J({"type":"object","properties":{)J";
-  schema += R"J("style":{"title":"Style","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Off","Dial","Compass","Sea horizon"]},"description":"Dial: rpm, temperature, speed, any number. Compass: a heading. Sea horizon: navigation.attitude (heel and trim). Off: not shown."},)J";
+  schema += R"J("style":{"title":"Style","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Dial","Compass","Sea horizon"]},"description":"Dial: rpm, temperature, speed, any number. Compass: a heading. Sea horizon: navigation.attitude (heel and trim)."},)J";
   schema += R"J("title":{"title":"Title","type":"string","description":"Text on the dial face; empty for the style's default."},)J";
-  schema += R"J("sk_path":{"title":"Signal K path","type":"string","description":"Empty for a compass or sea horizon: its usual path."},)J";
+  schema += R"J("sk_path":{"title":"Signal K path","type":"string","description":"Empty: a compass or sea horizon reads its usual path; a dial shows dashes."},)J";
   schema += R"J("unit":{"title":"Display unit (dial)","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":[)J" +
             units + R"J(]},"description":"Converted from the path's Signal K (SI) unit; SI shows the value as sent."},)J";
   schema += R"J("manual_scale":{"title":"Set the scale by hand (dial)","type":"boolean","description":"Off: the server's displayScale for the path, else the default range."},)J";

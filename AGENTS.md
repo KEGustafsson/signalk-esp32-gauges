@@ -46,9 +46,10 @@ If a task would require breaking one of these, stop and flag it.
 
 - **`common/src/`** -- the shared PlatformIO library (`SignalKGauges`), linked
   into both projects with `symlink://../common`.
-  - Pages are user-defined: `kMaxPages` (12) web UI cards, each Off or a
-    style (dial, compass, sea horizon) with title, path, unit, scale,
-    decimals and timeout, like a SKip gauge widget.
+  - Pages are user-defined: a "Pages" card (`PageCount`, how many to swipe
+    through, up to `kMaxPages` = 12) and a card per page with its style
+    (dial, compass, sea horizon), title, path, unit, scale, decimals and
+    timeout, like a SKip gauge widget.
   - `gauge_defs.cpp` holds the factory pages (by side) and the style
     templates: SK paths, display units, ranges, ticks. Never hard-code a path
     or range anywhere else. Zones are not in it: dials draw the server's

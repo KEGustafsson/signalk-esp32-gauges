@@ -71,6 +71,9 @@ void SkData::begin() {
     const GaugeDef& def = gauge_config().def(i);
     GaugeValue* slot = &values_[i];
     slot->stale_ms = gauge_config().stale_ms(i);
+    if (def.sk_path == nullptr || def.sk_path[0] == '\0') {
+      continue;  // A dial with no path yet: nothing to read, it shows dashes
+    }
     const String path = def.sk_path;
     const float scale = def.scale;
     const float offset = def.offset;

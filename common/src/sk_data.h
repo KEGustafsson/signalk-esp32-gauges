@@ -23,7 +23,7 @@ namespace skgauges {
 
 class SkData {
  public:
-  // Subscribes to the SK path of every page switched on. Call after
+  // Subscribes to the SK path of every page swiped through. Call after
   // SensESPAppBuilder's get_app() and gauge_config().begin().
   void begin();
 
