@@ -174,8 +174,14 @@ bool wifi_configured() {
 
 void gauge_app_begin(const GaugeAppConfig& config) {
   // UI first, so the gauge is on screen while WiFi and Signal K connect.
+  // Touch only answers once setup() returns and the loop runs, so the boot
+  // milestones are logged to show where that time goes.
+  // The display itself was started in main.cpp before this.
+  ESP_LOGI("boot", "Display ready, building the gauge at %u ms",
+           (unsigned)millis());
   ui_begin({config.side, config.unit_name, config.set_brightness});
   lv_timer_handler();
+  ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());
 
   sensesp::SensESPAppBuilder builder;
   builder.set_hostname(config.hostname)
@@ -207,15 +213,32 @@ void gauge_app_begin(const GaugeAppConfig& config) {
     builder.set_admin_user(SECRET_ADMIN_USER, SECRET_ADMIN_PASSWORD);
   }
   sensesp::sensesp_app = builder.get_app();
+  ESP_LOGI("boot", "SensESP set up at %u ms", (unsigned)millis());
   apply_web_ui_login();
 
   sk_data().begin(config.side);
+  ui_paths_ready();
   start_loop_watchdog();
+  ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
+           (unsigned)millis());
 }
 
 void gauge_app_loop() {
+  // Anything that holds the loop this long makes touch feel dead: log it,
+  // with the side that held it.
+  constexpr uint32_t kStallMs = 150;
+  uint32_t start = millis();
   sensesp::event_loop()->tick();
+  uint32_t took = millis() - start;
+  if (took >= kStallMs) {
+    ESP_LOGW("loop", "SensESP held the loop for %u ms", (unsigned)took);
+  }
+  start = millis();
   const uint32_t wait_ms = lv_timer_handler();
+  took = millis() - start;
+  if (took >= kStallMs) {
+    ESP_LOGW("loop", "LVGL held the loop for %u ms", (unsigned)took);
+  }
   // Sleep until the next LVGL timer is due, but at most 5 ms so SensESP's
   // event loop keeps ticking often.
   delay(wait_ms == 0 ? 1 : (wait_ms < 5 ? wait_ms : 5));

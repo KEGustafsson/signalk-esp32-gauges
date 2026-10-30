@@ -1,0 +1,12 @@
+# 16 MB flash: Arduino's default_16MB.csv layout (two 6.25 MB app slots for
+# OTA) with the filesystem cut to 1 MB. SensESP keeps only a few KB of
+# settings there, and every settings lookup at boot walks the whole SPIFFS
+# partition, so the default 3.4 MB held the loop (and touch) longer than
+# needed. The flash after it is left unused.
+# Name,   Type, SubType,  Offset,   Size
+nvs,      data, nvs,      0x9000,   0x5000
+otadata,  data, ota,      0xe000,   0x2000
+app0,     app,  ota_0,    0x10000,  0x640000
+app1,     app,  ota_1,    0x650000, 0x640000
+spiffs,   data, spiffs,   0xc90000, 0x100000
+coredump, data, coredump, 0xFF0000, 0x10000

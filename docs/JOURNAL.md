@@ -182,3 +182,28 @@ ESP32_Display_Panel 1.0.4 fills a partial DSI host config with
 `esp_lcd_new_dsi_bus()` aborts. `start_board()` now replaces the partial host
 config with a full one using `MIPI_DSI_PHY_PLLREF_CLK_SRC_DEFAULT` (only when
 `CONFIG_ESP_REV_MIN_FULL >= 300`). Not verified on hardware.
+
+## 2026-10-30 — Touch late after boot; responsiveness
+
+Reported on hardware: the gauge appears at boot, but touch takes a long time
+to react. Cause (from the code; to be confirmed with the new boot log):
+the gauge is drawn before SensESP starts, and touch only answers once
+`setup()` returns. Inside `get_app()` SensESP mounts SPIFFS and loads every
+setting; a setting never saved costs two or three `exists()` misses, each an
+`fopen` plus a `stat` that walk the lookup page of every SPIFFS block. With
+a ~16 MB filesystem (4") that is ~4000 flash reads per walk, dozens of walks
+per boot; 3.4 MB on the 2.1".
+
+- Filesystem cut to 1 MB on both boards (`partitions_32MB.csv`; new
+  `partitions_16MB.csv` for the 2.1"). Takes effect with a USB flash and
+  resets SensESP's settings once (README "Boot time").
+- Pages are kept once built; the others are built in the background (one
+  per 250 ms tick, from 5 s after boot, only after 1.5 s without a touch,
+  only with PSRAM to spare, else back to one page at a time), so a swipe
+  only unhides a page. Host: a page shown again after switching is
+  pixel-identical to a fresh build; ASan/UBSan clean.
+- Boot milestones (`boot:`) and loop stalls >= 150 ms (`loop:`, SensESP or
+  LVGL side) are logged, to confirm the cause on the units.
+
+Measured on the host (x86): building a page takes 2-6 ms; expect tens to
+hundreds of ms on the boards -- the `Page ... built in` log line says.

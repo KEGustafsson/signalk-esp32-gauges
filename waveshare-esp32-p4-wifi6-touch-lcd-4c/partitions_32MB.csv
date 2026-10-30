@@ -1,11 +1,15 @@
-# 32 MB flash: two ~8 MB app slots for OTA, ~16 MB filesystem for SensESP.
-# Both app slots end at or below 16 MB (0x1000000), as a precaution: the
-# precompiled Arduino libraries are built for 24-bit flash mapping. The
-# filesystem is plain data access and may sit above 16 MB.
+# 32 MB flash: two ~8 MB app slots for OTA and a 1 MB filesystem for
+# SensESP's settings (a few KB). Both app slots end at or below 16 MB
+# (0x1000000), as a precaution: the precompiled Arduino libraries are built
+# for 24-bit flash mapping.
+# The filesystem is kept small on purpose: every settings lookup SensESP
+# makes at boot walks the whole SPIFFS partition, so a 16 MB one held the
+# loop (and touch) for seconds after the gauge appeared. The flash above it
+# is left unused.
 # Name,   Type, SubType,  Offset,    Size
 nvs,      data, nvs,      0x9000,    0x5000
 otadata,  data, ota,      0xe000,    0x2000
 app0,     app,  ota_0,    0x10000,   0x7F0000
 app1,     app,  ota_1,    0x800000,  0x800000
-spiffs,   data, spiffs,   0x1000000, 0xFF0000
+spiffs,   data, spiffs,   0x1000000, 0x100000
 coredump, data, coredump, 0x1FF0000, 0x10000
