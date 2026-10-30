@@ -15,6 +15,9 @@ namespace {
 using esp_panel::board::Board;
 using esp_panel::board::BoardConfig;
 using esp_panel::drivers::BusI2C;
+#if CONFIG_IDF_TARGET_ESP32P4 && CONFIG_ESP_REV_MIN_FULL >= 300
+using esp_panel::drivers::BusDSI;
+#endif
 
 constexpr const char* kTag = "board";
 constexpr const char* kPrefsNamespace = "skgauges";
@@ -85,6 +88,28 @@ Board* start_board(uint8_t alternate_touch_address) {
     // and init() skips the touch when it holds none.
     const_cast<BoardConfig&>(board->getConfig()).touch.reset();
   }
+#if CONFIG_IDF_TARGET_ESP32P4 && CONFIG_ESP_REV_MIN_FULL >= 300
+  // ESP32_Display_Panel 1.0.4 completes a partial DSI host config with
+  // MIPI_DSI_PHY_CLK_SRC_DEFAULT, which ESP-IDF 5.5 keeps as the pre-v3
+  // PLL_F20M; v3 silicon has no such PHY PLL reference and
+  // esp_lcd_new_dsi_bus() aborts. Hand the bus a full config with the v3
+  // default instead.
+  if (board->getConfig().lcd.has_value()) {
+    auto* dsi = std::get_if<BusDSI::Config>(
+        &const_cast<BoardConfig&>(board->getConfig()).lcd->bus_config);
+    const auto* partial =
+        dsi ? std::get_if<BusDSI::HostPartialConfig>(&dsi->host) : nullptr;
+    if (partial) {
+      const BusDSI::HostPartialConfig lanes = *partial;
+      dsi->host = BusDSI::HostFullConfig{
+          .bus_id = BusDSI::HOST_ID_DEFAULT,
+          .num_data_lanes = static_cast<uint8_t>(lanes.num_data_lanes),
+          .phy_clk_src = MIPI_DSI_PHY_PLLREF_CLK_SRC_DEFAULT,
+          .lane_bit_rate_mbps = static_cast<float>(lanes.lane_bit_rate_mbps),
+      };
+    }
+  }
+#endif
   bool ok = board->init();
   if (ok && with_touch && plan[attempt] != kDefaultAddress) {
     static_cast<BusI2C*>(board->getTouch()->getBus())
