@@ -1,0 +1,231 @@
+name: CI
+
+# Everything in this repository that can be checked without the hardware.
+#
+# Nothing here proves a gauge WORKS on the boat -- that needs the first
+# power-up checklists in each board folder's README. What it does prove is that
+# both boards' firmware still compiles against its configured dependencies
+# (SensESP tracks its main branch, so upstream changes surface here first),
+# that the shared gauge UI still renders every page at both panel sizes, and
+# that the committed tree carries no usable OTA credential.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same ref. Never cancel main:
+# its runs are the record of what was actually verified on the trunk.
+# On main every commit gets its own group, so a queued run is not dropped
+# either.
+concurrency:
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # One job per board, built as its starboard unit. The port envs differ only
+  # in -D flags (side, hostname, address) and the *_usb envs only in the upload
+  # method, so the starboard build proves the code compiles for both sides.
+  # fail-fast is off so a break shows for every board it hits.
+  # ---------------------------------------------------------------------------
+  firmware-build:
+    name: Build ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: waveshare-esp32-p4-wifi6-touch-lcd-4c
+            env: p4_stbd
+          - project: waveshare-esp32-s3-touch-lcd-2.1
+            env: s3_stbd
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    env:
+      PLATFORMIO_BUILD_CACHE_DIR: ${{ github.workspace }}/.pio-build-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No `cache: pip`: there is no requirements file, PlatformIO is installed
+      # ad hoc below. The cache that matters is ~/.platformio.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      # Keyed on platformio.ini, which names the platform and library sources.
+      # Per-env keys keep the jobs from racing to write one entry.
+      - name: Cache PlatformIO
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
+          restore-keys: pio-${{ matrix.env }}-${{ runner.os }}-
+
+      # Compiled objects (Arduino core, LVGL, SensESP, the gauge code), reused
+      # through PlatformIO's build cache. Its entries are keyed by the content
+      # of each compile, so a changed source -- including a new SensESP commit
+      # on its main branch -- just recompiles that file. A GitHub cache entry
+      # cannot be overwritten, so every run saves under its own key and the
+      # next run restores the newest one by prefix. PlatformIO never prunes
+      # the cache, so it starts afresh each ISO week instead of growing.
+      - name: Cache week
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache compiled objects
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.pio-build-cache
+          key: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ steps.week.outputs.week }}-${{ github.run_id }}
+          restore-keys: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ steps.week.outputs.week }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      # include/secrets.h is untracked, so the firmware builds from
+      # secrets.example.h here, as on any clean checkout.
+      - name: Build
+        run: pio run -e ${{ matrix.env }}
+
+      # Separate from the build so a compile failure reports as one. A firmware
+      # creeping toward its OTA slot size should show up here, not at an upload
+      # failure on the boat.
+      - name: Report flash/RAM usage
+        run: pio run -e ${{ matrix.env }} -t size
+
+  # ---------------------------------------------------------------------------
+  # The shared gauge UI on the host: tools/preview compiles common/src/ui with
+  # LVGL 9.3 and the firmware's own lv_conf.h, then renders every page at 480
+  # and 720 px. A crash, an LVGL assert (which spins, hence the timeouts) or a
+  # failed write fails the job; the images
+  # are kept as an artifact so a visual change can be looked at in review.
+  # ---------------------------------------------------------------------------
+  gauge-preview:
+    name: Gauge preview (host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Configure
+        run: cmake -S tools/preview -B build/preview -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build/preview -j
+
+      - name: Render every page at both panel sizes
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # An LVGL assert halts (spins) on the host: cap it.
+          timeout 120 build/preview/preview 480
+          timeout 120 build/preview/preview 720
+
+      - name: Contact sheets
+        run: |
+          pip install pillow
+          python tools/preview/contact_sheet.py out/480 out/preview-480.png
+          python tools/preview/contact_sheet.py out/720 out/preview-720.png
+          python tools/preview/contact_sheet.py out/stale480 out/preview-stale-480.png
+
+      - name: Upload renders
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gauge-preview
+          path: out/preview-*.png
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # The scripts and the credential rules. ota_auth.py only runs at upload time,
+  # so a syntax error in it would otherwise first show up on the boat.
+  # ---------------------------------------------------------------------------
+  scripts:
+    name: Scripts and credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Byte-compile the scripts
+        run: python -m compileall -q scripts tools/preview
+
+      # No secrets.h may be committed anywhere, and the committed example must
+      # not carry a usable password: a build without secrets.h falls back to
+      # it, and would otherwise accept OTA uploads (or web UI / access point
+      # logins) with a published password.
+      - name: No committed credentials
+        run: |
+          set -euo pipefail
+          if [ -n "$(git ls-files ':(glob,icase)**/secrets.h*')" ]; then
+            echo "::error::a secrets.h is committed; it must stay gitignored"
+            exit 1
+          fi
+          for key in SECRET_OTA_PASSWORD SECRET_ADMIN_PASSWORD SECRET_AP_PASSWORD; do
+            # Named once, as exactly one empty literal: "" "x" would
+            # concatenate to "x", and a second #define would override it.
+            if [ "$(grep -cw "$key" include/secrets.example.h)" -ne 1 ] ||
+                ! grep -qE "^#define[[:space:]]+$key[[:space:]]+\"\"[[:space:]]*(//.*)?$" \
+                include/secrets.example.h; then
+              echo "::error::include/secrets.example.h must keep $key empty"
+              exit 1
+            fi
+          done
+          # espota takes the password as --auth / -a (also -apw, -a=pw), so no
+          # upload_flags at all; and no secret through a -D build flag.
+          if git grep -qE -e '^[[:space:]]*upload_flags' -e '--auth' \
+              -e 'SECRET_[A-Z_]*PASSWORD' -- '*platformio.ini'; then
+            echo "::error::an OTA password (or upload_flags) is written into a platformio.ini; scripts/ota_auth.py injects it from secrets.h"
+            exit 1
+          fi
+          # A filled-in password in any C/C++ file (a renamed copy, or one of
+          # the template's WiFi passwords): every SECRET_*PASSWORD define must
+          # be exactly "" -- anything else ("" "x", a value) is a credential,
+          # or could hide one. Backslash-newline continuations are joined
+          # first, and every #define counts whatever #if it sits in. Only file
+          # names are printed, never the value.
+          filled=""
+          while IFS= read -r -d '' file; do
+            bad=$(sed -e ':a' -e '/\\$/{N;s/\\\n//;ba}' -- "$file" \
+                | grep -E '#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*([^A-Za-z0-9_]|$)' \
+                | grep -vE '^[[:space:]]*#[[:space:]]*define[[:space:]]+SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]*[[:space:]]+""[[:space:]]*(//.*)?$' \
+                || true)
+            if [ -n "$bad" ]; then
+              filled="$filled $file"
+            fi
+          done < <(git ls-files -z -- '*.h' '*.hpp' '*.c' '*.cpp' '*.ino')
+          if [ -n "$filled" ]; then
+            echo "::error::a SECRET_*PASSWORD with a value is committed in:$filled"
+            exit 1
+          fi
+          # The template once more through the C preprocessor itself: what
+          # the firmware actually gets, after comments, concatenation of
+          # lines and #if (the scan above also covers inactive branches).
+          expanded=$(cpp -dM -P include/secrets.example.h \
+              | grep -E '^#define SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]* ' || true)
+          if [ -z "$expanded" ] ||
+              printf '%s\n' "$expanded" | grep -qvE '^#define SECRET_[A-Z0-9_]*PASSWORD[A-Z0-9_]* ""$'; then
+            echo "::error::include/secrets.example.h: every SECRET_*PASSWORD must expand to \"\""
+            exit 1
+          fi
+          echo "no committed credentials"
