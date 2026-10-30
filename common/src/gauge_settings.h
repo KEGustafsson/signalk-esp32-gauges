@@ -1,12 +1,14 @@
 #pragma once
 
-// Each gauge page is set up the way SKip sets up a gauge widget, in the
-// SensESP web UI (Configuration -> one card per page, e.g.
-// "PRT Engine (port_rpm)"): shown or not, label, Signal K path, display
-// unit, scale (from the server's meta.displayScale, or by hand), decimals,
-// whether to draw the server's zones, and the data timeout. Saved at
-// /Gauges/<id>; a change takes effect after a restart (the subscription and
-// the page list are set up at boot).
+// The device's pages, set up the way SKip sets up its gauge widgets, in the
+// SensESP web UI (Configuration): the "Pages" card sets how many pages are
+// swiped through (1..12), and each of those has a card, "Page 1" ..
+// "Page n", with one of three styles -- a steel dial, a compass card or the
+// sea horizon -- its title, Signal K path, display unit, scale (by hand or
+// from the server's meta.displayScale), whether to draw the server's zones,
+// decimals and data timeout. Saved at /Pages/count and /Pages/<n>; a change
+// takes effect after a restart (the subscriptions and the page list are set
+// up at boot).
 //
 // GaugeConfig then holds, for every page, a snapshot of those settings taken
 // at boot, the Signal K metadata received for its path (zones, displayScale)
@@ -29,16 +31,21 @@ namespace skgauges {
 
 class GaugeSettings : public sensesp::FileSystemSaveable {
  public:
-  explicit GaugeSettings(size_t index);
+  // Page `slot` (0-based) with the factory settings of a `side` device.
+  GaugeSettings(size_t slot, Side side);
 
   bool to_json(JsonObject& root) override;
   bool from_json(const JsonObject& config) override;
 
-  const GaugeDef& base() const { return kGauges[index_]; }
+  // The factory page, or nullptr for a page past the factory ones.
+  const GaugeDef* factory() const { return factory_; }
+  // Call after the boot load: from then on, a save that changes the style
+  // resets the fields it left untouched to the new style's defaults.
+  void mark_loaded() { loaded_ = true; }
 
-  bool shown;
-  String title;
-  String sk_path;
+  GaugeKind kind;
+  String title;  // Empty: the style's default
+  String sk_path;  // Empty: a dial that is not subscribed (dashes)
   String unit_id;
   bool manual_scale = false;
   float min;
@@ -48,20 +55,31 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
   int timeout_s;
 
  private:
-  size_t index_;
+  const GaugeDef* factory_;
+  bool loaded_ = false;
+};
+
+// How many pages are swiped through: Page 1 .. Page `count`.
+class PageCount : public sensesp::FileSystemSaveable {
+ public:
+  PageCount();
+
+  bool to_json(JsonObject& root) override;
+  bool from_json(const JsonObject& config) override;
+
+  int count;
 };
 
 class GaugeConfig {
  public:
   // Loads every page's settings. Mounts the filesystem first if SensESP has
   // not yet (the first page is drawn before SensESP starts).
-  void begin();
+  void begin(Side side);
   // Adds the web UI cards; call once SensESP's app exists.
   void add_config_items();
 
-  // The pages this unit shows, in swipe order: those switched on and meant
-  // for this side -- or, if that leaves none, every page for this side.
-  std::vector<size_t> pages(Side unit_side) const;
+  // The pages swiped through, in order: 0 .. count - 1 (at least one).
+  const std::vector<size_t>& pages() const { return pages_; }
 
   const GaugeDef& def(size_t index) const { return defs_[index]; }
   // Changes whenever def(index) does (metadata arrived), so a page drawn
@@ -76,21 +94,25 @@ class GaugeConfig {
 
  private:
   struct Snapshot {
-    bool shown = true;
     String title;
     String sk_path;
     String unit_id;
     GaugeOptions options;
+    GaugeDef base = {};
   };
 
+  void take_snapshot(size_t index, const GaugeSettings& settings);
   void resolve(size_t index);
 
-  std::shared_ptr<GaugeSettings> settings_[kMaxGauges];
-  Snapshot snapshot_[kMaxGauges];
-  GaugeMeta meta_[kMaxGauges];
-  GaugeDef defs_[kMaxGauges] = {};
-  uint32_t generation_[kMaxGauges] = {};
-  uint32_t stale_ms_[kMaxGauges] = {};
+  Side side_ = Side::kStarboard;
+  std::shared_ptr<PageCount> page_count_;
+  std::shared_ptr<GaugeSettings> settings_[kMaxPages];
+  Snapshot snapshot_[kMaxPages];
+  GaugeMeta meta_[kMaxPages];
+  GaugeDef defs_[kMaxPages] = {};
+  uint32_t generation_[kMaxPages] = {};
+  uint32_t stale_ms_[kMaxPages] = {};
+  std::vector<size_t> pages_;
 };
 
 GaugeConfig& gauge_config();
@@ -98,5 +120,6 @@ GaugeConfig& gauge_config();
 }  // namespace skgauges
 
 namespace sensesp {
+const String ConfigSchema(const skgauges::PageCount& count);
 const String ConfigSchema(const skgauges::GaugeSettings& settings);
 }  // namespace sensesp

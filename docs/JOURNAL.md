@@ -230,3 +230,53 @@ Verified: ASan/UBSan host test of the resolver (rpm, °C/°F, compass °M,
 attitude bands); both boards build; preview rendered with sample server
 zones and looked at. Not verified: on hardware, and against a live server's
 metadata.
+
+## 2026-10-30 — Generic device docs
+
+The README, AGENTS.md, board READMEs, the build-flash skill and the
+platformio.ini comments now name devices only by size and side (4" / 2.1",
+starboard / port): no unit numbers and no boat-specific IP addresses.
+`secrets.example.h` defaults each device's OTA address to its mDNS name
+(`gauge-4c-stbd.local` ...) and leaves the static-IP gateway and DNS empty;
+a real `secrets.h` sets IPs where needed. Both boards build from the
+template; credential checks pass.
+
+## 2026-10-30 — User-defined pages
+
+Asked for: the number of pages, and each page's title, path, range and
+zones, user-defined like SKip, instead of a fixed set of gauges plus spares.
+
+- The fixed page table is gone. The web UI's "Pages" card sets how many
+  pages to swipe through (1-12, `/Pages/count`, default 6); each has a card
+  ("Page 1".."Page n", `/Pages/<n>`) with one of three styles -- Dial,
+  Compass, Sea horizon -- and title, path, display unit, scale (by hand /
+  server displayScale), zones on/off, decimals and data timeout.
+- The side (env) only seeds the factory pages: its engine's rpm, speed,
+  heading, coolant, oil, sea horizon; pages 7-12 start as dials with no
+  path (not subscribed, dashes). A page switched
+  to another style starts from that style's template (a dial on 0..100 in
+  the new "SI" unit: the value as sent, labelled with the server's
+  meta.units).
+- Preview renders the factory pages plus two example user dials (depth with
+  a server displayScale, battery in SI/V with a hand-set scale).
+
+Verified: both boards build; the schema assembles to valid JSON; preview
+rendered and looked at. Not verified: the web UI cards on a device.
+
+Follow-up the same day: the user picks how many pages to swipe through.
+The "Off" style is gone; the "Pages" card (`/Pages/count`, 1-12, default =
+the six factory pages) decides, and only those pages' cards are shown and
+loaded at boot. Pages past the factory ones start as dials with no path
+(not subscribed, dashes). `docs/PAGES.md` is the end-user guide to adding,
+removing, changing and reordering pages. Both boards build; preview
+rendered.
+
+Review fix (CodeRabbit): a page no longer falls back on its slot's factory
+definition. Every page starts from its style's template and takes its unit
+and range from its card (Scale minimum / maximum are the dial's range unless
+the server sends displayScale or the scale is set by hand); ticks are
+recomputed from the range (the same as the factory ticks for every factory
+dial). So settings copied between cards give the same page, a cleared dial
+path stays empty, and a style change resets to the style's defaults. A unit
+changed on its own converts the range (`convert_range()`, host-tested:
+0-120 °C -> 0-250 °F, 0-3000 rpm -> 0-50 Hz).

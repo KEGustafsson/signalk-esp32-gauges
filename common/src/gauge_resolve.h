@@ -1,11 +1,11 @@
 #pragma once
 
-// Turns a page's table defaults, its web UI settings and the Signal K
+// Turns a page's defaults (gauge_defs.h), its web UI settings and the Signal K
 // server's metadata for its path into the definition the page is drawn from
 // -- the way SKip's steel gauge combines its widget options with meta:
 //  - display unit: the one set in the web UI;
 //  - scale: set by hand, else the server's meta.displayScale, else the
-//    table default (converted to the display unit);
+//    default (converted to the display unit);
 //  - zones: the server's meta.zones for the path, coloured by state as in
 //    SKip (normal is not drawn), unless the web UI says to ignore them.
 // Host-safe (no Arduino), so the preview runs exactly this code.
@@ -13,6 +13,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <string>
 #include <vector>
 
 #include "gauge_defs.h"
@@ -34,6 +35,7 @@ struct GaugeMeta {
   float scale_lower = 0.0f;
   float scale_upper = 0.0f;
   std::vector<SiZone> zones;
+  std::string units;  // meta.units, e.g. "Hz"; labels an "SI" (as sent) dial
 };
 
 // What the web UI sets (gauge_settings.h). Strings must outlive the result.
@@ -44,7 +46,7 @@ struct GaugeOptions {
   bool manual_scale = false;
   float min = 0.0f;
   float max = 0.0f;
-  int decimals = -1;  // -1: the table's
+  int decimals = -1;  // -1: the default's
   bool show_zones = true;
 };
 
@@ -61,7 +63,16 @@ float nice_step(float min, float max, uint8_t* minor_per_major);
 // e.g. 32..248 F -> 0..250).
 void nice_range(float* min, float* max);
 
-// The effective definition of `base` with `options` and `meta` applied.
+// Converts a range given in display unit `from_id` to `to_id` (rounded out to
+// a tidy scale), for a page whose unit is changed; "SI" (as sent) counts as
+// the other unit's SI unit. Units of different quantities give 0..100.
+// Unknown ids leave the range as it is.
+void convert_range(const char* from_id, const char* to_id, float* min,
+                   float* max);
+
+// The effective definition of `base` with `options` and `meta` applied. The
+// result points into all three (an "SI" dial's unit label is meta.units), so
+// they must outlive it.
 GaugeDef resolve_gauge(const GaugeDef& base, const GaugeOptions& options,
                        const GaugeMeta& meta);
 

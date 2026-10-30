@@ -12,13 +12,17 @@ struct DisplayUnit {
   const char* id;     // Saved in the settings and shown in the web UI's
                       // unit list, e.g. "rpm", "\xC2\xB0" "C"
   const char* label;  // Shown on the dial, e.g. "rpm", "\xC2\xB0" "C"
-  const char* si;     // Signal K unit it converts from, e.g. "Hz"
+  const char* si;     // Signal K unit it converts from, e.g. "Hz"; "" for
+                      // "SI" (any unit, shown as sent)
   float scale;
   float offset;
 };
 
 extern const DisplayUnit kDisplayUnits[];
 extern const size_t kDisplayUnitCount;
+
+// True for the "SI" unit: no conversion, labelled from the server.
+inline bool is_as_sent(const DisplayUnit& unit) { return unit.si[0] == '\0'; }
 
 // The unit with this id, or nullptr.
 const DisplayUnit* find_display_unit(const char* id);

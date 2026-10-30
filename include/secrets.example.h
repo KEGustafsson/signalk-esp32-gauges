@@ -6,7 +6,7 @@
 // `secrets.h` is gitignored and never committed. It holds everything specific
 // to this boat: the credentials, which are compiled straight into the firmware
 // (a binary built from a real one carries the WiFi password and the OTA
-// password), and the addresses of the four gauges.
+// password), and the address of each gauge.
 //
 // One file serves both firmware projects (waveshare-esp32-p4-wifi6-touch-lcd-4c
 // and waveshare-esp32-s3-touch-lcd-2.1): their platformio.ini puts this
@@ -44,24 +44,25 @@
 
 // The address of each gauge. scripts/ota_auth.py uploads to it; the suffix is
 // the PlatformIO environment name in upper case: env:p4_stbd -> ..._P4_STBD.
-// An IP or an mDNS name both work for uploads. With SECRET_USE_STATIC_IP
-// below, each gauge also configures its own entry as its static WiFi address.
-#define SECRET_OTA_HOST_P4_STBD "192.168.220.130"  // 4" #1, starboard
-#define SECRET_OTA_HOST_P4_PORT "192.168.220.131"  // 4" #2, port
-#define SECRET_OTA_HOST_S3_STBD "192.168.220.132"  // 2.1" #1, starboard
-#define SECRET_OTA_HOST_S3_PORT "192.168.220.133"  // 2.1" #2, port
+// The defaults are the gauges' mDNS names (their hostname + ".local"); put an
+// IP address here instead if your computer does not resolve .local names.
+// With SECRET_USE_STATIC_IP below, each gauge also configures its own entry
+// as its static WiFi address, so it must then be an IP address.
+#define SECRET_OTA_HOST_P4_STBD "gauge-4c-stbd.local"  // 4", starboard
+#define SECRET_OTA_HOST_P4_PORT "gauge-4c-port.local"  // 4", port
+#define SECRET_OTA_HOST_S3_STBD "gauge-21-stbd.local"  // 2.1", starboard
+#define SECRET_OTA_HOST_S3_PORT "gauge-21-port.local"  // 2.1", port
 
-// 0: the gauges get their address by DHCP (reserve the addresses above in the
-//    router so OTA keeps finding them).
-// 1: each gauge sets its SECRET_OTA_HOST_* address as a static IP on every
-//    WiFi network below (all of them -- so only use this when they share the
-//    boat's subnet), with this netmask, gateway and DNS server.
+// 0: the gauges get their address by DHCP.
+// 1: each gauge sets its SECRET_OTA_HOST_* address (an IP) as a static IP on
+//    every WiFi network below (all of them -- so only use this when they
+//    share the boat's subnet), with this netmask, gateway and DNS server.
 #define SECRET_USE_STATIC_IP 0
 #define SECRET_NETMASK "255.255.255.0"
-#define SECRET_GATEWAY "192.168.220.1"
-#define SECRET_DNS "192.168.220.1"
+#define SECRET_GATEWAY ""
+#define SECRET_DNS ""
 
-// The boat's signalk-server. Compiled into all four gauges as the default,
+// The boat's signalk-server. Compiled into every gauge as the default,
 // and still overridable per device through SensESP's web config UI. An IP or
 // an mDNS name both work. Leave the address empty to let SensESP find the
 // server by mDNS.

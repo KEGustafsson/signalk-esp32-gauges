@@ -17,7 +17,6 @@
 namespace skgauges {
 
 struct UiConfig {
-  Side side;               // Which engine's pages this unit shows
   const char* unit_name;   // Shown in the info overlay, e.g. "4\" STBD"
   std::function<void(int percent)> set_brightness;
 };
