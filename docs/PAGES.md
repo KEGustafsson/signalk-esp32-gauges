@@ -11,6 +11,7 @@ reflashed.
 - [Remove a page](#remove-a-page)
 - [Change a page](#change-a-page)
 - [Reorder pages](#reorder-pages)
+- [Reset a page](#reset-a-page)
 - [The settings of a page](#the-settings-of-a-page)
 - [Zones and scale from the Signal K server](#zones-and-scale-from-the-signal-k-server)
 - [Examples](#examples)
@@ -40,6 +41,14 @@ Every card has its own **Save** button. Page settings take effect after a
 restart: once you have saved, a **Restart** button appears at the top of the
 web UI. You can save several cards first and restart once.
 
+**Reload the web UI page** (the browser's reload) after a save that changed
+more than you typed — a **Style** change, a **Display unit** change that
+converted the scale, a **Reset** or a **Swap** — before saving that card (or,
+after a swap, the other one) again. The card still shows what it held
+before, and the device refuses a save from it ("Invalid JSON payload") so it
+cannot undo the change. A plain change of a title, path or scale can be
+saved again without reloading.
+
 ## Add a page
 
 1. In the **Pages** card, raise **Number of pages** by one (up to 12) and
@@ -60,9 +69,11 @@ Pages are swiped through in card order, Page 1 to Page n, so the
 
 - **The last page:** lower **Number of pages** by one, **Save**,
   **Restart**.
-- **A page in the middle:** move every later page up one card first (see
+- **A page in the middle:** swap it with the last page (see
   [Reorder pages](#reorder-pages)), so the page you no longer want ends up
-  last; then lower the number.
+  last, then lower the number. To keep the order of the others, swap it one
+  step at a time towards the end instead, reloading the web UI page after
+  each swap.
 
 A removed page's settings are kept on the device: raise the number again
 and it comes back as it was.
@@ -86,15 +97,33 @@ else gives 0–100; set the scale you want in the same save. When the path
 changes in the same save (a new page, for example), the scale is left as it
 is — set it to suit the new path.
 
+A card shows the settings of the page's style as last saved: a compass or
+sea horizon has no unit, scale or zone settings. After changing the
+**Style**, **Save** and reload the web UI page to see the new style's
+settings (a dial's unit and scale appear then).
+
 A card holds everything its page shows, so the page does not depend on which
 card it is in: settings copied from one card to another give the same page.
 
 ## Reorder pages
 
-The order is the card order, so pages are reordered by copying settings
-between cards: to swap Page 2 and Page 4, note the settings of both, then
-enter Page 4's settings into the Page 2 card and Page 2's into the Page 4
-card. **Save** both and **Restart** once.
+The order is the card order. To move a page, swap it with another: in its
+card, set **Swap with page** to the other page's number and **Save**. The
+two pages change places, with any other change you made in the same save.
+Reload the web UI page (both cards now show the other page), then
+**Restart** to see the new order.
+
+For example, to put Page 5 first: in the Page 5 card set **Swap with page**
+to 1, **Save**, reload, **Restart**. Page 1 is now what was Page 5, and Page 5 what
+was Page 1.
+
+## Reset a page
+
+To put one page back to its factory setting (the table under
+[Factory pages](#factory-pages); a page past the factory six becomes a dial
+with no path): tick **Reset to factory settings** in its card, **Save**,
+reload the web UI page, **Restart**. Other changes made in the same save
+are ignored.
 
 ## The settings of a page
 
@@ -109,6 +138,8 @@ card. **Save** both and **Restart** once.
 | **Show Signal K zones** | dial | Draws the coloured zones the Signal K server holds for the path. Off: no zones. |
 | **Decimals** | all | Digits after the decimal point in the LCD readout, 0–3. |
 | **Data timeout [s]** | all | How old a value may be before the page shows dashes (default 10 s). A slow source, e.g. a tank sender every 30 s, needs a longer timeout. |
+| **Reset to factory settings** | all | Tick and save: the page goes back to its factory setting. |
+| **Swap with page** | all | A page number and save: this page and that one change places. 0: no swap. |
 
 Signal K sends every value in an SI unit. A dial converts it to the display
 unit you pick; the unit must measure the same thing as the path:
@@ -228,10 +259,9 @@ device was built for (`port` or `starboard`):
 | 5 | Dial | Oil | `propulsion.<side>.oilTemperature` | °C | 0–120 |
 | 6 | Sea horizon | HEEL | `navigation.attitude` | ° | heel ±40 |
 
-Pages 7–12 start as dials with no path. To put a page back to its factory
-setting, enter the values from this table in its card. Erasing the device's
-flash (see the main README) resets every page, and every other setting,
-at once.
+Pages 7–12 start as dials with no path. **Reset to factory settings** in a
+page's card puts that page back to this table. Erasing the device's flash
+(see the main README) resets every page, and every other setting, at once.
 
 ## Troubleshooting
 
@@ -242,4 +272,5 @@ at once.
 | The needle sits at the end of the scale | The value is outside the range: widen the scale, or check the display unit (e.g. rpm chosen for a path that is not in Hz). |
 | A new page card is missing | Raise **Number of pages**, save, and restart: the cards appear after the restart. |
 | A change did nothing | Page settings apply after **Restart**. |
-| The web UI refuses a save | A setting is out of range: the scale minimum must be below its maximum; decimals are 0–3; the data timeout is 1–600 s. |
+| The web UI refuses a save ("Invalid JSON payload") | Reload the web UI page and try again: the card was out of date after a style change, reset or swap. If it still refuses, a setting is out of range: the scale minimum must be below its maximum; decimals are 0–3; the data timeout is 1–600 s. The device's serial log says which (`Page N not saved: ...`; `it could not be written` means the device's storage is full or failing, and the page keeps its last saved setting). |
+| After a power cut, every page is back to its factory setting and saves are refused | The power went off during a save, and the device could not put the pages back (its storage is failing). Restart it: once a restart recovers the save, your pages come back. If it keeps happening, the device's flash is worn or damaged. |

@@ -67,8 +67,17 @@ examples.
   flip `ESP_PANEL_BOARD_BACKLIGHT_ON_LEVEL` in
   `include/esp_panel_board_custom_conf.h`; Waveshare's BSP drives this pin
   inverted.
-- If WiFi never connects, check the boot log for esp-hosted errors: the
-  ESP32-C6 firmware must be compatible with the esp-hosted version in
-  Arduino-ESP32 3.3.11. Waveshare's documentation covers updating the C6.
+- The ESP32-C6 must run the ESP-Hosted firmware of Arduino-ESP32 3.3.11
+  (2.12.11). A boot log with `Slave firmware version: 0.0.0` or `Version on
+  Host is NEWER than version on co-processor` needs `tools/c6-update` once:
+  with an older C6 firmware WiFi connects, but the C6 does not answer some
+  requests (the first board brought up shipped with such a firmware).
+- Internal DMA-capable RAM belongs to the ESP-Hosted link: it allocates its
+  SDIO buffers there while data flows. With the LVGL draw buffer in internal
+  RAM, 9 KB was left once WiFi was up and the Signal K connection took the
+  rest; the link then stalled for good (every request to the C6 unanswered,
+  no network traffic) and the loop watchdog restarted the unit every few
+  seconds after it reached Signal K. The draw buffer is in PSRAM for this
+  reason (`common/src/lvgl_port.cpp`).
 - Tap shows the IP address; it should match the one your router gave the
   device (or the static address in `secrets.h`).

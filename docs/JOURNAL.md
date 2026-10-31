@@ -280,3 +280,97 @@ dial). So settings copied between cards give the same page, a cleared dial
 path stays empty, and a style change resets to the style's defaults. A unit
 changed on its own converts the range (`convert_range()`, host-tested:
 0-120 °C -> 0-250 °F, 0-3000 rpm -> 0-50 Hz).
+
+## 2026-10-31 — Tests, card actions, bring-up guide
+
+Asked for: every area of the self-assessment raised to 9.
+
+- The logic that needs no board moved into host-safe units, used by the
+  firmware and unit-tested: `value_gate.*` (replay window after a
+  reconnect, `null` grace, staleness, `millis()` wrap -- from `sk_data.cpp`),
+  `sk_parse.h` (only a JSON number is a reading -- from `sk_listeners.h`),
+  `page_rules.*` (what a page card holds, the save rules, the card's schema
+  -- from `gauge_settings.cpp`). `tests/`: 36 tests over these and the
+  resolver, units and factory pages, with ASan/UBSan and -Werror, against the
+  firmware's ArduinoJson 7.4.3; a mutation check (replay guard and the
+  number check broken on purpose) fails 26 checks. New CI job
+  "Unit tests (host)".
+- Page cards: **Reset to factory settings** and **Swap with page** (one-shot
+  actions; swap is the reordering), and a card shows only its style's
+  fields (the schema is built on every request).
+- Boot log: a hardware summary (chip, silicon revision, flash, PSRAM), the
+  page count and filesystem use, and which touch address answered.
+  `docs/BRINGUP.md`: first power-up step by step, with the log to expect.
+
+Verified: both boards build; tests pass; preview rendered. Not verified: on
+hardware (next: flashing through the user's computer).
+
+Review fixes (independent review): SensESP's web UI keeps a card's form
+until the page is reloaded and sends all of it with every save, so a second
+save after a swap, reset or style change could undo it (a page could be
+lost). Each card now carries a hidden revision (`_rev`, random at boot),
+moved on by a reset, a swap (both cards) or a save the rules adjusted; a
+save from an older form is refused (`page_save_action()`, tested). A plain
+save leaves it, so a card can be saved twice without a reload. Also: the
+touch log line prints the address that answered (was 0x00 for the board
+file's default), PSRAM is the chip size rounded to the MB. A page card's
+file is replaced all or nothing (`card_store.*`, host-tested; CodeRabbit):
+SensESP's `FileSystemSaveable::save()` removes the old file first and reports
+success whatever the write did. Now the new contents go to a staging file
+(`/pgnew<n>`) and are read back, the old file moves to a backup (`/pgold<n>`,
+empty if there was none), the staging file moves into place, and the backups
+go. A marker file (`/pgtx`) is written before any old file moves and removed
+only once every new file is in place (or every card is back): while it is
+there, the boot's `recover_cards()` puts every card back to its backup, so a
+power cut, or a rollback that itself failed, is finished at the next boot
+(and further saves are refused until then). If the boot cannot put them
+back either, the pages use their factory settings rather than a half-made
+save, and the log says so. A web UI save is written
+by `from_json()` itself, so a failed write refuses the save (and puts the
+card back); a swap writes both cards in one replace. The tests fail every
+step and every pair of steps (reads included, so a rollback fails too), and
+cut the power at every step, with and without a failure before it; a swap
+always ends both old or both new after the boot.
+
+## 2026-10-31 — First hardware: the 4" board
+
+The first board on a real device: a 4" (ESP32-P4 rev 3.2, GT911 touch at
+0x14), flashed over USB from the user's PC through its CH343 UART (the boot
+log comes out there too), on the boat's WiFi with a real Signal K server.
+
+Display, touch, the boot log, WiFi (DHCP), the Signal K access request and
+the subscription all worked first time. Then the unit restarted by its loop
+watchdog a few seconds after every Signal K connection. Found from the core
+dumps (read back from the coredump partition, decoded with the P4 gdb):
+
+- The loop was waiting on an ESP-Hosted RPC to the C6 (SensESP's status
+  page asks `WiFi.SSID()` and `RSSI()` every 5 s, on the loop) that was
+  never answered. The RPC timeout is 5 s, the watchdog's too.
+- The C6 ran factory ESP-Hosted firmware that does not report its version
+  (`0.0.0`); `tools/c6-update` (new: the core's `ESP_HostedOTA`, over WiFi)
+  brought it to 2.12.11, `Versions Match!`. The restarts stayed.
+- The cause: internal DMA-capable RAM. The 720 x 72 LVGL draw buffer
+  (101 KB) was in internal RAM (326 KB free when it is taken, before WiFi);
+  once WiFi was up 9 KB was left, and the Signal K connection took the rest.
+  ESP-Hosted could no longer allocate its SDIO buffers, the link stalled for
+  good (every RPC unanswered, no traffic) and the watchdog fired. The 4"
+  now puts the draw buffer in PSRAM (`lvgl_port_init(..., true)`): 98 KB of
+  DMA RAM stays free with Signal K data flowing, no RPC lost, no restart.
+  A "heap" line once a minute logs it.
+- A path without a unit in its metadata (`navigation.attitude`) was read as
+  the unit "null": SensESP's `SKMetaView::units` uses `as<String>()`. Its
+  zones and scale were dropped as a unit mismatch, and an SI dial would have
+  been labelled "null". The unit is now read from the raw metadata
+  (`sk_meta_units()`, tested).
+
+Also: a shared PlatformIO build cache (`build_cache_dir`, `.pio-build-cache/`
+at the root, as in CI). A per-file setting is passed in code, not as a
+global `-D` flag: a new flag changes every file's command line, so nothing
+comes from the cache. `tests/` builds without sanitizers on MinGW
+(`-DSANITIZE=OFF`). `docs/BRINGUP.md`: the C6 check and the log lines that
+are expected (SensESP's status LED pin, `NO_AP_FOUND` for one of several
+networks).
+
+Verified on the 4": boot, touch address, WiFi, Signal K connection and
+metadata, 4 minutes connected with flat heap. Not yet: readings against
+another instrument, stale/recovery behaviour, OTA, the 2.1".

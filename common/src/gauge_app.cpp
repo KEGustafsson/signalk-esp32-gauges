@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include <SPIFFS.h>
+#include <esp_psram.h>
 #include <lvgl.h>
 
 #include <memory>
@@ -178,10 +180,24 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   // Touch only answers once setup() returns and the loop runs, so the boot
   // milestones are logged to show where that time goes.
   // The display itself was started in main.cpp before this.
+  // What the board is, for the first power-up checklists (README).
+  ESP_LOGI("boot", "%s (%s): %s rev %u.%02u, %u MHz, flash %u MB, PSRAM %u MB "
+           "(%u KB free), built " __DATE__ " " __TIME__,
+           config.unit_name, config.hostname, ESP.getChipModel(),
+           (unsigned)(ESP.getChipRevision() / 100),
+           (unsigned)(ESP.getChipRevision() % 100),
+           (unsigned)ESP.getCpuFreqMHz(),
+           (unsigned)(ESP.getFlashChipSize() >> 20),
+           (unsigned)((esp_psram_get_size() + (1u << 19)) >> 20),
+           (unsigned)(ESP.getFreePsram() >> 10));
   ESP_LOGI("boot", "Display ready, building the gauge at %u ms",
            (unsigned)millis());
   // The page settings (web UI) decide what the first page looks like.
   gauge_config().begin(config.side);
+  ESP_LOGI("boot", "%u pages; filesystem %u of %u KB used",
+           (unsigned)gauge_config().pages().size(),
+           (unsigned)(SPIFFS.usedBytes() >> 10),
+           (unsigned)(SPIFFS.totalBytes() >> 10));
   ui_begin({config.unit_name, config.set_brightness});
   lv_timer_handler();
   ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());
@@ -221,6 +237,14 @@ void gauge_app_begin(const GaugeAppConfig& config) {
 
   gauge_config().add_config_items();
   sk_data().begin();
+  // Internal DMA RAM is what WiFi runs out of first (on the 4" its link to
+  // the C6 stalls for good when it does): log it once a minute.
+  sensesp::event_loop()->onRepeat(60000, []() {
+    ESP_LOGI("heap", "DMA RAM %u KB free (largest block %u KB), PSRAM %u KB",
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_DMA) >> 10),
+             (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_DMA) >> 10),
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >> 10));
+  });
   start_loop_watchdog();
   ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
            (unsigned)millis());

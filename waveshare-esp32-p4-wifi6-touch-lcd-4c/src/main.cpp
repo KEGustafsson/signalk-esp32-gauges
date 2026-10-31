@@ -33,7 +33,8 @@ void setup() {
   sensesp::SetupLogging(ESP_LOG_INFO);
 
   board = skgauges::start_board(kGt911BackupAddress);
-  skgauges::lvgl_port_init(board, LVGL_BUFFER_LINES);
+  // Draw buffer in PSRAM: internal DMA RAM is for the WiFi link to the C6.
+  skgauges::lvgl_port_init(board, LVGL_BUFFER_LINES, true);
 
   skgauges::gauge_app_begin({
       GAUGE_HOSTNAME,

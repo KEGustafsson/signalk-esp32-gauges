@@ -8,19 +8,11 @@
 #include "sensesp/system/lambda_consumer.h"
 #include "sensesp_app.h"
 #include "sk_listeners.h"
+#include "value_gate.h"
 
 namespace skgauges {
 
 namespace {
-
-// After a (re)connect, signalk-server replays the last value it holds for
-// each path -- one per $source, however old -- in a burst, and SensESP drops
-// the delta timestamps. Everything a path receives within this window after
-// its first sample on a new connection is treated as replay and ignored.
-constexpr uint32_t kReplayWindowMs = 1000;
-// A null/non-numeric delta blanks the gauge unless another source delivered
-// a real value within this time (several sources can publish one path).
-constexpr uint32_t kInvalidGraceMs = 2000;
 
 float wrap360(float deg) {
   deg = fmodf(deg, 360.0f);
@@ -48,19 +40,7 @@ void SkData::begin() {
   sensesp::event_loop()->onRepeat(1000, [this]() {
     const uint32_t now = millis();
     for (GaugeValue& slot : values_) {
-      if (slot.seen && !slot.fresh(now)) {
-        slot.seen = false;
-      }
-      if (slot.invalid_pending &&
-          now - slot.invalid_ms >= kInvalidGraceMs) {
-        slot.invalid_pending = false;
-        slot.seen = false;
-      }
-      // Close a window no later sample closed (a path that went quiet), so
-      // its signed compare never meets the 24.8-day wrap.
-      if (slot.replaying && (int32_t)(now - slot.replay_until_ms) >= 0) {
-        slot.replaying = false;
-      }
+      gate_sweep(&slot, now);
     }
   });
 
@@ -115,63 +95,17 @@ void SkData::begin() {
 }
 
 void SkData::store(GaugeValue* slot, float value, float value2) {
-  // JSON cannot carry NaN/Inf, but a huge exponent parses to a finite float
-  // that overflows once scaled -- so check the converted values.
-  if (!isfinite(value) || (!isnan(value2) && !isfinite(value2))) {
-    invalid(slot);
-    return;
-  }
-  // Replay guard. is_connected() follows the WebSocket task directly, so
-  // nothing counts while the link is down. A new connection is one SensESP
-  // built (its client generation changes when it tears the old client down)
-  // or one the WebSocket library re-established on the same client
-  // (conn_epoch_ moved: any connection state change). The first sample per
-  // path on a new connection opens the replay window.
   auto ws = sensesp::sensesp_app->get_ws_client();
-  if (!ws->is_connected()) {
-    return;
-  }
-  const uint32_t now = millis();
-  const uint32_t gen = ws->client_generation();
-  if (!slot->conn_known || slot->conn_gen != gen ||
-      slot->conn_epoch != conn_epoch_) {
-    slot->conn_known = true;
-    slot->conn_gen = gen;
-    slot->conn_epoch = conn_epoch_;
-    slot->replaying = true;
-    slot->replay_until_ms = now + kReplayWindowMs;
-    return;
-  }
-  if (slot->replaying) {
-    // Compared only inside the window, so a long-lived connection never
-    // meets the signed wrap of this difference (24.8 days).
-    if ((int32_t)(now - slot->replay_until_ms) < 0) {
-      return;
-    }
-    slot->replaying = false;
-  }
-  slot->value = value;
-  slot->value2 = value2;
-  slot->updated_ms = now;
-  slot->seen = true;
-  slot->invalid_pending = false;
+  Connection link;
+  // is_connected() follows the WebSocket task directly, so nothing counts
+  // while the link is down.
+  link.up = ws->is_connected();
+  link.generation = ws->client_generation();
+  link.epoch = conn_epoch_;
+  gate_sample(slot, value, value2, millis(), link);
 }
 
-void SkData::invalid(GaugeValue* slot) {
-  const uint32_t now = millis();
-  if (!slot->seen || now - slot->updated_ms >= kInvalidGraceMs) {
-    slot->seen = false;
-    slot->invalid_pending = false;
-    return;
-  }
-  // A valid value arrived moments ago, perhaps from another source of the
-  // same path: blank only if none follows within the grace time.
-  if (!slot->invalid_pending) {
-    slot->invalid_pending = true;
-    slot->invalid_ms = now;
-  }
-}
-
+void SkData::invalid(GaugeValue* slot) { gate_invalid(slot, millis()); }
 
 bool SkData::server_connected() const {
   if (sensesp::sensesp_app == nullptr) {

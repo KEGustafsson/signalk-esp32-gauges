@@ -27,6 +27,7 @@
 #include "sensesp/signalk/signalk_listener.h"
 #include "sensesp/signalk/signalk_metadata_listener.h"
 #include "sensesp/signalk/signalk_value_listener.h"
+#include "sk_parse.h"
 
 namespace skgauges {
 
@@ -76,12 +77,12 @@ class StrictFloatListener
   using GaugeListener<sensesp::SKValueListener<float>>::GaugeListener;
 
   void parse_value(const JsonObject& json) override {
-    auto value = json["value"];
-    if (!value.is<float>()) {
+    float value;
+    if (!sk_number(json["value"], &value)) {
       invalid();
       return;
     }
-    this->emit(value.as<float>());
+    this->emit(value);
   }
 };
 
@@ -98,15 +99,14 @@ class AttitudeListener : public GaugeListener<sensesp::SKListener> {
         callback_(std::move(callback)) {}
 
   void parse_value(const JsonObject& json) override {
-    JsonVariantConst value = json["value"];
-    if (!value["roll"].is<float>()) {
+    float roll;
+    float pitch;
+    if (!sk_attitude(json["value"], &roll, &pitch)) {
       invalid();
       return;
     }
-    const float pitch =
-        value["pitch"].is<float>() ? value["pitch"].as<float>() : NAN;
     if (callback_) {
-      callback_(value["roll"].as<float>(), pitch);
+      callback_(roll, pitch);
     }
   }
 
