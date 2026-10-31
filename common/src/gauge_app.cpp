@@ -237,6 +237,14 @@ void gauge_app_begin(const GaugeAppConfig& config) {
 
   gauge_config().add_config_items();
   sk_data().begin();
+  // Internal DMA RAM is what WiFi runs out of first (on the 4" its link to
+  // the C6 stalls for good when it does): log it once a minute.
+  sensesp::event_loop()->onRepeat(60000, []() {
+    ESP_LOGI("heap", "DMA RAM %u KB free (largest block %u KB), PSRAM %u KB",
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_DMA) >> 10),
+             (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_DMA) >> 10),
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >> 10));
+  });
   start_loop_watchdog();
   ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
            (unsigned)millis());

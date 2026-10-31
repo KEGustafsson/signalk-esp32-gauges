@@ -9,11 +9,13 @@ The shared library's logic that needs no board, run on a PC:
 | `test_page_rules.cpp` | What a page card holds, the rules a save follows (style change, unit change, empty path, validation) and the card's schema (`page_rules`) |
 | `test_value_gate.cpp` | The replay window after a (re)connect, `null` handling, staleness and `millis()` wraparound (`value_gate`) |
 | `test_card_store.cpp` | A card's file replaced all or nothing: with a failure at any one or two steps (a failed rollback too), and a power cut at every step, then the boot's recovery, a swap ends with both cards old or both new (`card_store`) |
-| `test_sk_parse.cpp` | Only a real JSON number is a reading; attitude parsing (`sk_parse`), against the firmware's ArduinoJson |
+| `test_sk_parse.cpp` | Only a real JSON number is a reading; attitude parsing; a path's unit from its metadata (a missing one is no unit, not `"null"`) (`sk_parse`), against the firmware's ArduinoJson |
 
 ```bash
 cmake -S tests -B build/tests && cmake --build build/tests -j && build/tests/gauge_tests
 ```
 
 Built with `-Wall -Wextra -Werror` and AddressSanitizer + UndefinedBehaviorSanitizer.
+On Windows with MinGW, which has no sanitizers, configure with
+`-G "MinGW Makefiles" -DSANITIZE=OFF`.
 CI runs them on every push to `main` and every pull request.

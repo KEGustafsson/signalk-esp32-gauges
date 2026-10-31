@@ -140,11 +140,21 @@ A logic change in the host-safe files is not done until `tests/` covers it.
 - 4" touch: GT911 at 0x5D, or 0x14 on some boards. 4" backlight is driven
   inverted (`ON_LEVEL 0`).
 - ESP32-P4 silicon: `board = esp32-p4_r3` (v3.x); pre-v3 needs `esp32-p4`.
+- 4" WiFi is an ESP32-C6 over SDIO (ESP-Hosted). Its buffers come from
+  internal DMA-capable RAM while data flows; when that runs out the link
+  stalls for good and the loop watchdog restarts the unit. Keep large
+  buffers (LVGL's included) in PSRAM on the 4"; the boot log's `heap` line
+  shows what is left. The C6 needs ESP-Hosted 2.12.11 (`tools/c6-update`).
+- PlatformIO's build cache keys each object on its full command line: a
+  new global `-D` flag recompiles everything. Pass a per-file setting in
+  code instead.
 
 ## Hardware status
 
-**No device has been flashed yet.** Everything is build- and
-host-verified only. Follow `docs/BRINGUP.md` and the first power-up
+**4" starboard: brought up** (2026-10-31, `docs/JOURNAL.md`): boot, touch,
+WiFi, Signal K connection and metadata verified, minutes of stable running.
+Readings against another instrument, stale/recovery behaviour, OTA and the
+2.1" are not verified yet. Follow `docs/BRINGUP.md` and the first power-up
 checklists in each board folder's README before trusting a reading.
 
 ## Journal

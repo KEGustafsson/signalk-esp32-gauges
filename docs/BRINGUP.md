@@ -29,7 +29,7 @@ The default build is for revision 3.0 or later (`board = esp32-p4_r3`), and
 an older chip can refuse it before any log appears:
 
 ```bash
-pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32p4 chip-id
+pio pkg exec -p tool-esptoolpy -- esptool --chip esp32p4 chip-id
 ```
 
 It prints `Chip type: ESP32-P4 (revision v3.x)`. Below v3.0, set
@@ -60,7 +60,7 @@ In this order, within a few seconds (times in ms since start):
 | Line | Means | If it does not appear |
 |---|---|---|
 | `board: Display and touch started (touch at 0x..)` | The panel and the touch controller answered, at that I2C address (the 4"'s GT911: 0x5D, or 0x14 on some boards) | `Display board start failed (attempt n), restarting` repeating: a display fault. `Display started, without touch`: the touch controller did not answer (board README) |
-| `boot: 4in STBD (gauge-4c-stbd): ESP32-P4 rev 3.01, 360 MHz, flash 32 MB, PSRAM 32 MB (... KB free), built ...` | Chip, silicon revision, memory | On the 4": see the revision check in step 2 |
+| `boot: 4in STBD (gauge-4c-stbd): ESP32-P4 rev 3.02, 400 MHz, flash 32 MB, PSRAM 32 MB (... KB free), built ...` | Chip, silicon revision, memory | On the 4": see the revision check in step 2 |
 | `boot: Display ready, building the gauge at ... ms` | | |
 | `boot: 6 pages; filesystem ... of ... KB used` | The page cards were loaded | `Filesystem not mounted`: the partition table did not take; flash over USB again |
 | `gauge_ui: Page page1 built in ... ms` | The first page is drawn | |
@@ -71,6 +71,25 @@ In this order, within a few seconds (times in ms since start):
 Then, as the network comes up: SensESP's WiFi and WebSocket lines, and for
 each page `gauges: pageN: metadata applied (...)` once the server sends the
 path's metadata.
+
+**4" only: the WiFi co-processor.** Right after `Gauge on screen` the log
+reports the ESP32-C6's ESP-Hosted firmware. `Slave firmware version: 0.0.0`
+(or `Version on Host is NEWER than version on co-processor`) means the C6
+runs an older firmware than the P4 expects: WiFi connects, but the C6 does
+not answer some of the P4's requests. Update the C6 once with
+`tools/c6-update` (its README), then flash the gauge again. Afterwards the
+log says `Versions Match!`.
+
+Expected, not a fault:
+
+- `ARDUINO: Invalid pin: 255`, `Pin 255 is already attached ...` and
+  `No free timers available for freq=2000 ...`: SensESP's status LED class
+  tries a GPIO at start-up; the gauge draws the status dot on the screen
+  instead and never uses that pin.
+- `W (...) ARDUINO: SPIFFS Already Mounted!`: the gauge mounts the
+  filesystem before SensESP does.
+- `Reason: 201 - NO_AP_FOUND` for one network of several: SensESP tries the
+  networks in `secrets.h` in turn (the 4"'s C6 is 2.4 GHz only).
 
 Warnings worth knowing:
 

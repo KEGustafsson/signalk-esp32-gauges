@@ -36,6 +36,11 @@ add_executable(gauge_tests
   ${COMMON}/value_gate.cpp)
 target_include_directories(gauge_tests PRIVATE ${COMMON}
                            ${arduinojson_SOURCE_DIR}/src)
-target_compile_options(gauge_tests PRIVATE -Wall -Wextra -Werror
-                       -fsanitize=address,undefined -fno-sanitize-recover=all)
-target_link_options(gauge_tests PRIVATE -fsanitize=address,undefined)
+target_compile_options(gauge_tests PRIVATE -Wall -Wextra -Werror)
+# Off only where the toolchain has no sanitizers (MinGW on Windows).
+option(SANITIZE "Build with AddressSanitizer and UBSan" ON)
+if(SANITIZE)
+  target_compile_options(gauge_tests PRIVATE
+                         -fsanitize=address,undefined -fno-sanitize-recover=all)
+  target_link_options(gauge_tests PRIVATE -fsanitize=address,undefined)
+endif()

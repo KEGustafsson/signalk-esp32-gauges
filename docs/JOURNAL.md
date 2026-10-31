@@ -331,3 +331,46 @@ card back); a swap writes both cards in one replace. The tests fail every
 step and every pair of steps (reads included, so a rollback fails too), and
 cut the power at every step, with and without a failure before it; a swap
 always ends both old or both new after the boot.
+
+## 2026-10-31 — First hardware: the 4" board
+
+The first board on a real device: a 4" (ESP32-P4 rev 3.2, GT911 touch at
+0x14), flashed over USB from the user's PC through its CH343 UART (the boot
+log comes out there too), on the boat's WiFi with a real Signal K server.
+
+Display, touch, the boot log, WiFi (DHCP), the Signal K access request and
+the subscription all worked first time. Then the unit restarted by its loop
+watchdog a few seconds after every Signal K connection. Found from the core
+dumps (read back from the coredump partition, decoded with the P4 gdb):
+
+- The loop was waiting on an ESP-Hosted RPC to the C6 (SensESP's status
+  page asks `WiFi.SSID()` and `RSSI()` every 5 s, on the loop) that was
+  never answered. The RPC timeout is 5 s, the watchdog's too.
+- The C6 ran factory ESP-Hosted firmware that does not report its version
+  (`0.0.0`); `tools/c6-update` (new: the core's `ESP_HostedOTA`, over WiFi)
+  brought it to 2.12.11, `Versions Match!`. The restarts stayed.
+- The cause: internal DMA-capable RAM. The 720 x 72 LVGL draw buffer
+  (101 KB) was in internal RAM (326 KB free when it is taken, before WiFi);
+  once WiFi was up 9 KB was left, and the Signal K connection took the rest.
+  ESP-Hosted could no longer allocate its SDIO buffers, the link stalled for
+  good (every RPC unanswered, no traffic) and the watchdog fired. The 4"
+  now puts the draw buffer in PSRAM (`lvgl_port_init(..., true)`): 98 KB of
+  DMA RAM stays free with Signal K data flowing, no RPC lost, no restart.
+  A "heap" line once a minute logs it.
+- A path without a unit in its metadata (`navigation.attitude`) was read as
+  the unit "null": SensESP's `SKMetaView::units` uses `as<String>()`. Its
+  zones and scale were dropped as a unit mismatch, and an SI dial would have
+  been labelled "null". The unit is now read from the raw metadata
+  (`sk_meta_units()`, tested).
+
+Also: a shared PlatformIO build cache (`build_cache_dir`, `.pio-build-cache/`
+at the root, as in CI). A per-file setting is passed in code, not as a
+global `-D` flag: a new flag changes every file's command line, so nothing
+comes from the cache. `tests/` builds without sanitizers on MinGW
+(`-DSANITIZE=OFF`). `docs/BRINGUP.md`: the C6 check and the log lines that
+are expected (SensESP's status LED pin, `NO_AP_FOUND` for one of several
+networks).
+
+Verified on the 4": boot, touch address, WiFi, Signal K connection and
+metadata, 4 minutes connected with flat heap. Not yet: readings against
+another instrument, stale/recovery behaviour, OTA, the 2.1".

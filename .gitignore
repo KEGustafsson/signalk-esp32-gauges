@@ -5,6 +5,7 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+.vscode
 compile_commands.json
 
 # Boat-specific credentials and addresses -- never committed.
@@ -21,5 +22,5 @@ out/
 # Python bytecode (scripts/, tools/preview/)
 __pycache__/
 
-# PlatformIO build cache used by CI
+# PlatformIO build cache (build_cache_dir in each platformio.ini; CI too)
 .pio-build-cache/

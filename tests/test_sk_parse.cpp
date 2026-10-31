@@ -63,3 +63,21 @@ TEST(attitude_needs_roll) {
   CHECK(!sk_attitude(parse("{\"value\":null}")["value"], &roll, &pitch));
   CHECK(!sk_attitude(parse("{\"value\":0.5}")["value"], &roll, &pitch));
 }
+
+TEST(meta_units_only_from_a_string) {
+  CHECK(sk_meta_units(parse("{\"value\":{\"units\":\"Hz\"}}")["value"]) ==
+        "Hz");
+  // What SensESP's as<String>() would read as "null" (seen from a real
+  // server for navigation.attitude), or as "12"/"true".
+  const char* no_units[] = {
+      "{\"value\":{\"description\":\"Vessel attitude\"}}",
+      "{\"value\":{\"units\":null}}",
+      "{\"value\":{\"units\":12}}",
+      "{\"value\":{\"units\":true}}",
+      "{\"value\":null}",
+      "{}",
+  };
+  for (const char* json : no_units) {
+    CHECK(sk_meta_units(parse(json)["value"]).empty());
+  }
+}

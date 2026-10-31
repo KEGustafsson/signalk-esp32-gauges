@@ -9,6 +9,8 @@
 #include <ArduinoJson.h>
 #include <math.h>
 
+#include <string>
+
 namespace skgauges {
 
 // A numeric value: true and *out set, or false for null, a string, a
@@ -33,6 +35,15 @@ inline bool sk_attitude(JsonVariantConst value, float* roll, float* pitch) {
     *pitch = NAN;
   }
   return true;
+}
+
+// The unit of a path from its metadata object (a meta delta's `value`), or
+// "" when the server gives none. SensESP's SKMetaView::units reads it with
+// as<String>(), which turns a missing unit into the text "null" -- a unit
+// that matches nothing (navigation.attitude has none).
+inline std::string sk_meta_units(JsonVariantConst meta) {
+  JsonVariantConst units = meta["units"];
+  return units.is<const char*>() ? units.as<const char*>() : "";
 }
 
 }  // namespace skgauges

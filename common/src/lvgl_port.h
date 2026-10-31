@@ -22,7 +22,9 @@ class Board;
 namespace skgauges {
 
 // buffer_lines: height of the LVGL draw buffer in pixel rows.
+// buffer_in_psram: never put the draw buffer in internal RAM (the 4": its
+// WiFi link needs the internal DMA RAM, lvgl_port.cpp).
 lv_display_t* lvgl_port_init(esp_panel::board::Board* board,
-                             int buffer_lines);
+                             int buffer_lines, bool buffer_in_psram = false);
 
 }  // namespace skgauges

@@ -8,6 +8,7 @@
 #include "card_store.h"
 #include "sensesp/system/hash.h"
 #include "sensesp/ui/config_item.h"
+#include "sk_parse.h"
 #include "units.h"
 
 namespace skgauges {
@@ -417,6 +418,8 @@ void GaugeConfig::add_config_items() {
 void GaugeConfig::set_meta(size_t index, const sensesp::SKMetaView& view) {
   GaugeMeta meta;
   if (view.raw) {
+    // Not view.units: that reads a missing unit as "null" (sk_meta_units()).
+    meta.units = sk_meta_units((*view.raw)["value"]);
     JsonVariantConst scale = (*view.raw)["value"]["displayScale"];
     if (scale["lower"].is<float>() && scale["upper"].is<float>()) {
       meta.has_scale = true;
@@ -433,17 +436,16 @@ void GaugeConfig::set_meta(size_t index, const sensesp::SKMetaView& view) {
     zone.color = zone_state_color(z.state.c_str());
     meta.zones.push_back(zone);
   }
-  meta.units = view.units.c_str();
 
   // Zones and scale are in the path's unit; converted as if they were in
   // another, they would mark the wrong part of the dial. Drop them.
   const DisplayUnit* unit = find_display_unit(defs_[index].unit_id);
-  if (!view.units.isEmpty() && unit != nullptr && !is_as_sent(*unit) &&
-      view.units != unit->si) {
+  if (!meta.units.empty() && unit != nullptr && !is_as_sent(*unit) &&
+      meta.units != unit->si) {
     ESP_LOGW(kTag,
              "%s: the server gives %s in %s, the gauge converts from %s; "
              "its zones and scale are not used",
-             defs_[index].id, sk_path(index), view.units.c_str(), unit->si);
+             defs_[index].id, sk_path(index), meta.units.c_str(), unit->si);
     meta = GaugeMeta();
   }
 
