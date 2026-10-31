@@ -304,3 +304,14 @@ Asked for: every area of the self-assessment raised to 9.
 
 Verified: both boards build; tests pass; preview rendered. Not verified: on
 hardware (next: flashing through the user's computer).
+
+Review fixes (independent review): SensESP's web UI keeps a card's form
+until the page is reloaded and sends all of it with every save, so a second
+save after a swap, reset or style change could undo it (a page could be
+lost). Each card now carries a hidden revision (`_rev`, random at boot),
+moved on by a reset, a swap (both cards) or a save the rules adjusted; a
+save from an older form is refused (`page_save_action()`, tested). A plain
+save leaves it, so a card can be saved twice without a reload. Also: the
+touch log line prints the address that answered (was 0x00 for the board
+file's default), PSRAM is the chip size rounded to the MB, a failed write of
+the other card in a swap is logged.

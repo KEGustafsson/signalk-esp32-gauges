@@ -28,6 +28,8 @@ struct PageFields {
   int timeout_s = (int)(kStaleAfterMs / 1000);
 };
 
+bool same_fields(const PageFields& a, const PageFields& b);
+
 constexpr int kMinTimeoutS = 1;
 constexpr int kMaxTimeoutS = 600;
 
@@ -60,6 +62,23 @@ enum class PageCheck {
 // An empty path becomes the style's usual one (a dial's is empty).
 PageCheck finish_page_save(const PageFields& current, PageFields* next,
                            bool from_web);
+
+// What a save of a card does. SensESP's web UI keeps a card's form as it was
+// loaded and sends all of it with every Save, until the browser page is
+// reloaded -- so a form loaded before a reset, a swap or a save the rules
+// adjusted (a style change, a converted range) would undo it. Each card
+// carries a revision the form sends back (a hidden `_rev`), moved on by
+// exactly those changes; a web save from an older form is refused. A plain
+// save leaves it, so a card can be saved again without a reload.
+enum class PageAction {
+  kSave,     // Apply the save (and, on the boot load, nothing else)
+  kReset,    // Back to the factory setting
+  kSwap,     // Apply the save, then swap with page `swap_with`
+  kStale,    // Refused: the form is out of date (reload the page)
+  kBadSwap,  // Refused: no such page to swap with
+};
+PageAction page_save_action(bool from_web, bool form_current, bool reset,
+                            int swap_with, size_t slot, size_t page_count);
 
 // The card's JSON schema for SensESP's web UI: the fields of `kind` only (a
 // dial's unit, scale and zones are not shown for a compass or sea horizon),

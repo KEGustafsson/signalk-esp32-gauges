@@ -184,3 +184,42 @@ TEST(schema_is_valid_json_with_the_style_fields) {
     }
   }
 }
+
+TEST(save_actions) {
+  // The boot load is always a plain load; actions are never stored.
+  CHECK(page_save_action(false, false, true, 3, 0, 6) == PageAction::kSave);
+  // A web save from an out-of-date form is refused, whatever it asks.
+  CHECK(page_save_action(true, false, false, 0, 0, 6) == PageAction::kStale);
+  CHECK(page_save_action(true, false, true, 0, 0, 6) == PageAction::kStale);
+  CHECK(page_save_action(true, false, false, 2, 0, 6) == PageAction::kStale);
+  // Reset wins over a swap in the same save.
+  CHECK(page_save_action(true, true, true, 2, 0, 6) == PageAction::kReset);
+  CHECK(page_save_action(true, true, false, 2, 0, 6) == PageAction::kSwap);
+  CHECK(page_save_action(true, true, false, 6, 0, 6) == PageAction::kSwap);
+  CHECK(page_save_action(true, true, false, 7, 0, 6) == PageAction::kBadSwap);
+  // With itself, 0 or below: a plain save.
+  CHECK(page_save_action(true, true, false, 1, 0, 6) == PageAction::kSave);
+  CHECK(page_save_action(true, true, false, 0, 0, 6) == PageAction::kSave);
+  CHECK(page_save_action(true, true, false, -2, 0, 6) == PageAction::kSave);
+}
+
+TEST(only_adjusted_saves_change_the_form) {
+  // same_fields tells a save the rules adjusted (the form must reload) from
+  // a plain one (the card can be saved again).
+  const PageFields current = coolant();
+  PageFields next = current;
+  next.title = "Engine water";
+  PageFields submitted = next;
+  CHECK(finish_page_save(current, &next, true) == PageCheck::kOk);
+  CHECK(same_fields(submitted, next));
+  next = current;
+  next.kind = GaugeKind::kCompass;  // Style change: path and title reset
+  submitted = next;
+  CHECK(finish_page_save(current, &next, true) == PageCheck::kOk);
+  CHECK(!same_fields(submitted, next));
+  next = current;
+  next.unit_id = "\xC2\xB0" "F";  // Range converted
+  submitted = next;
+  CHECK(finish_page_save(current, &next, true) == PageCheck::kOk);
+  CHECK(!same_fields(submitted, next));
+}

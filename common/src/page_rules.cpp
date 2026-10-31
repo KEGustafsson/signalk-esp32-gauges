@@ -8,6 +8,13 @@
 
 namespace skgauges {
 
+bool same_fields(const PageFields& a, const PageFields& b) {
+  return a.kind == b.kind && a.title == b.title && a.sk_path == b.sk_path &&
+         a.unit_id == b.unit_id && a.manual_scale == b.manual_scale &&
+         a.min == b.min && a.max == b.max && a.decimals == b.decimals &&
+         a.show_zones == b.show_zones && a.timeout_s == b.timeout_s;
+}
+
 PageFields factory_fields(const GaugeDef* factory) {
   const GaugeDef& def =
       factory != nullptr ? *factory : style_template(GaugeKind::kRadial);
@@ -87,6 +94,24 @@ PageCheck finish_page_save(const PageFields& current, PageFields* next,
   return PageCheck::kOk;
 }
 
+PageAction page_save_action(bool from_web, bool form_current, bool reset,
+                            int swap_with, size_t slot, size_t page_count) {
+  if (!from_web) {
+    return PageAction::kSave;  // The boot load: actions are never stored
+  }
+  if (!form_current) {
+    return PageAction::kStale;
+  }
+  if (reset) {
+    return PageAction::kReset;
+  }
+  if (swap_with > 0 && (size_t)swap_with != slot + 1) {
+    return (size_t)swap_with <= page_count ? PageAction::kSwap
+                                           : PageAction::kBadSwap;
+  }
+  return PageAction::kSave;
+}
+
 std::string page_schema(GaugeKind kind, size_t page_count) {
   std::string units;
   for (size_t i = 0; i < kDisplayUnitCount; i++) {
@@ -109,10 +134,10 @@ std::string page_schema(GaugeKind kind, size_t page_count) {
   }
   s += R"J("decimals":{"title":"Decimals","type":"integer","minimum":0,"maximum":3},)J";
   s += R"J("timeout_s":{"title":"Data timeout [s]","type":"integer","minimum":1,"maximum":600,"description":"A value older than this shows dashes."},)J";
-  s += R"J("reset":{"title":"Reset to factory settings","type":"boolean","description":"Tick and save: this page goes back to its factory setting (other changes in the same save are ignored)."},)J";
+  s += R"J("reset":{"title":"Reset to factory settings","type":"boolean","description":"Tick and save: this page goes back to its factory setting (other changes in the same save are ignored). Reload the page before saving this card again."},)J";
   s += R"J("swap_with":{"title":"Swap with page","type":"integer","minimum":0,"maximum":)J" +
        std::to_string(page_count) +
-       R"J(,"description":"A page number and save: the two pages change places (with this save's changes). 0: no swap."})J";
+       R"J(,"description":"A page number and save: the two pages change places (with this save's changes). Reload the page before saving either card again. 0: no swap."})J";
   s += "}}";
   return s;
 }

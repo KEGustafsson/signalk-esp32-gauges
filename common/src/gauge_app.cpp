@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <SPIFFS.h>
+#include <esp_psram.h>
 #include <lvgl.h>
 
 #include <memory>
@@ -187,7 +188,7 @@ void gauge_app_begin(const GaugeAppConfig& config) {
            (unsigned)(ESP.getChipRevision() % 100),
            (unsigned)ESP.getCpuFreqMHz(),
            (unsigned)(ESP.getFlashChipSize() >> 20),
-           (unsigned)(ESP.getPsramSize() >> 20),
+           (unsigned)((esp_psram_get_size() + (1u << 19)) >> 20),
            (unsigned)(ESP.getFreePsram() >> 10));
   ESP_LOGI("boot", "Display ready, building the gauge at %u ms",
            (unsigned)millis());

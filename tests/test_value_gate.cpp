@@ -85,10 +85,11 @@ TEST(null_blanks_unless_another_source_confirms) {
   gate_sweep(&slot, 50100 + kInvalidGraceMs + 10);
   CHECK(slot.seen);
   // Nobody confirms: blank after the grace time.
-  gate_invalid(&slot, 51000);
-  gate_sweep(&slot, 51000 + kInvalidGraceMs - 1);
+  CHECK(gate_sample(&slot, 4, NAN, 53000, up()));
+  gate_invalid(&slot, 53100);
+  gate_sweep(&slot, 53100 + kInvalidGraceMs - 1);
   CHECK(slot.seen);
-  gate_sweep(&slot, 51000 + kInvalidGraceMs);
+  gate_sweep(&slot, 53100 + kInvalidGraceMs);
   CHECK(!slot.seen);
   // No recent value at all: blank at once.
   slot = live(50000, up());
@@ -121,7 +122,9 @@ TEST(millis_wraparound) {
   CHECK(slot.fresh(before_wrap + 0x200u));  // Wrapped, 512 ms later
   gate_sweep(&slot, before_wrap + 10000u);
   CHECK(!slot.seen);
-  CHECK(!slot.fresh(before_wrap + 0xFFFFFF00u));  // ~49.7 days later
+  // Unswept, a value ~24.8 days old is not fresh either.
+  GaugeValue unswept = live(before_wrap, up());
+  CHECK(!unswept.fresh(before_wrap + 0x7FFFFFFFu));
   // A replay window spanning the wrap still closes.
   GaugeValue fresh_slot;
   CHECK(!gate_sample(&fresh_slot, 1, NAN, 0xFFFFFE00u, up()));

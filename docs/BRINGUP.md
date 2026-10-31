@@ -45,7 +45,7 @@ In this order, within a few seconds (times in ms since start):
 
 | Line | Means | If it does not appear |
 |---|---|---|
-| `board: Display and touch started (touch at 0x5D)` | The panel and the touch controller answered | `Display board start failed (attempt n), restarting` repeating: a display fault. `Display started, without touch`: touch did not answer at either address (board README) |
+| `board: Display and touch started (touch at 0x..)` | The panel and the touch controller answered, at that I2C address (the 4"'s GT911: 0x5D, or 0x14 on some boards) | `Display board start failed (attempt n), restarting` repeating: a display fault. `Display started, without touch`: the touch controller did not answer (board README) |
 | `boot: 4in STBD (gauge-4c-stbd): ESP32-P4 rev 3.01, 360 MHz, flash 32 MB, PSRAM 32 MB (... KB free), built ...` | Chip, silicon revision, memory | On the 4": rev below 3.00 needs `board = esp32-p4` in `platformio.ini` |
 | `boot: Display ready, building the gauge at ... ms` | | |
 | `boot: 6 pages; filesystem ... of ... KB used` | The page cards were loaded | `Filesystem not mounted`: the partition table did not take; flash over USB again |
@@ -66,7 +66,8 @@ Warnings worth knowing:
 - `gauges: pageN: the server gives ... in ..., the gauge converts from ...`:
   the page's display unit does not match the path's unit; its zones and
   scale are not used (`docs/PAGES.md`).
-- `Page N not saved: ...`: a web UI save was refused, with the reason.
+- `Page N not saved: ...`: a web UI save was refused, with the reason (an
+  out-of-date form: reload the web UI page; `docs/PAGES.md`).
 
 ## 4. On the screen
 

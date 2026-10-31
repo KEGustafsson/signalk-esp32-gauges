@@ -52,6 +52,11 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
   size_t slot_;
   const GaugeDef* factory_;
   bool loaded_ = false;
+  // The revision a form loaded now carries (page_rules.h, PageAction): from
+  // a random start each boot, so a form loaded before a restart is out of
+  // date too, and moved on by a reset, a swap (both cards) or a save the
+  // rules adjusted.
+  uint32_t rev_;
 };
 
 // How many pages are swiped through: Page 1 .. Page `count`.

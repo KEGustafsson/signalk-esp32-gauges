@@ -1,6 +1,7 @@
 #include "gauge_settings.h"
 
 #include <SPIFFS.h>
+#include <esp_random.h>
 #include <esp_log.h>
 #include <math.h>
 
@@ -71,7 +72,8 @@ GaugeSettings::GaugeSettings(size_t slot, Side side)
     : sensesp::FileSystemSaveable(String("/Pages/") + (int)(slot + 1)),
       fields(factory_fields(default_page(side, slot))),
       slot_(slot),
-      factory_(default_page(side, slot)) {}
+      factory_(default_page(side, slot)),
+      rev_(esp_random()) {}
 
 bool GaugeSettings::to_json(JsonObject& root) {
   root["style"] = page_style_name(fields.kind);
@@ -86,21 +88,40 @@ bool GaugeSettings::to_json(JsonObject& root) {
   root["timeout_s"] = fields.timeout_s;
   root["reset"] = false;  // One-shot actions, never stored
   root["swap_with"] = 0;
+  root["_rev"] = rev_;  // Hidden in the web UI, sent back with a save
   return true;
 }
 
 bool GaugeSettings::from_json(const JsonObject& config) {
-  if (loaded_ && config["reset"].is<bool>() && config["reset"].as<bool>()) {
+  const unsigned page = (unsigned)(slot_ + 1);
+  const bool form_current =
+      config["_rev"].is<uint32_t>() && config["_rev"].as<uint32_t>() == rev_;
+  const bool reset = config["reset"].is<bool>() && config["reset"].as<bool>();
+  const int swap = config["swap_with"].is<int>() ? config["swap_with"].as<int>()
+                                                 : 0;
+  const PageAction action = page_save_action(
+      loaded_, form_current, reset, swap, slot_, gauge_config().pages().size());
+  if (action == PageAction::kStale) {
+    ESP_LOGW(kTag,
+             "Page %u not saved: the form is out of date; reload the page",
+             page);
+    return false;
+  }
+  if (action == PageAction::kBadSwap) {
+    ESP_LOGW(kTag, "Page %u not saved: no page %d to swap with", page, swap);
+    return false;
+  }
+  if (action == PageAction::kReset) {
     fields = factory_fields(factory_);
-    ESP_LOGI(kTag, "Page %u reset to its factory setting",
-             (unsigned)(slot_ + 1));
+    rev_++;
+    ESP_LOGI(kTag, "Page %u reset to its factory setting", page);
     return true;
   }
 
   PageFields next = fields;
   if (config["style"].is<const char*>() &&
       !parse_page_style(config["style"].as<const char*>(), &next.kind)) {
-    ESP_LOGW(kTag, "Page %u: unknown style", (unsigned)(slot_ + 1));
+    ESP_LOGW(kTag, "Page %u not saved: unknown style", page);
     return false;
   }
   next.title = json_string(config["title"], next.title);
@@ -118,33 +139,37 @@ bool GaugeSettings::from_json(const JsonObject& config) {
   if (config["timeout_s"].is<int>()) {
     next.timeout_s = config["timeout_s"].as<int>();
   }
+  const PageFields submitted = next;
   const PageCheck check = finish_page_save(fields, &next, loaded_);
   if (check != PageCheck::kOk) {
-    ESP_LOGW(kTag, "Page %u not saved: %s", (unsigned)(slot_ + 1),
-             check_text(check));
+    ESP_LOGW(kTag, "Page %u not saved: %s", page, check_text(check));
     return false;
   }
 
-  // Swap: this page (with this save's changes) goes to the other card and
-  // the other card's page comes here. The web UI saves this card after
-  // from_json(); the other one is saved here. Both are only touched by the
-  // web UI's handlers after boot.
-  const int swap = config["swap_with"].is<int>() ? config["swap_with"].as<int>()
-                                                 : 0;
-  if (loaded_ && swap > 0 && (size_t)swap != slot_ + 1) {
+  if (action == PageAction::kSwap) {
+    // This page (with this save's changes) goes to the other card and the
+    // other card's page comes here. The web UI saves this card after
+    // from_json(); the other one is saved here. Only the web UI's handlers
+    // touch the cards after boot.
     GaugeSettings* other = gauge_config().card((size_t)swap - 1);
     if (other == nullptr) {
-      ESP_LOGW(kTag, "Page %u: no page %d to swap with",
-               (unsigned)(slot_ + 1), swap);
+      ESP_LOGW(kTag, "Page %u not saved: no page %d to swap with", page, swap);
       return false;
     }
     fields = other->fields;
     other->fields = next;
-    other->save();
-    ESP_LOGI(kTag, "Pages %u and %d swapped", (unsigned)(slot_ + 1), swap);
+    other->rev_++;  // Both open forms now show the other page
+    if (!other->save()) {
+      ESP_LOGE(kTag, "Page %d could not be written; check both pages", swap);
+    }
+    rev_++;
+    ESP_LOGI(kTag, "Pages %u and %d swapped", page, swap);
     return true;
   }
   fields = next;
+  if (!same_fields(submitted, next)) {
+    rev_++;  // The rules changed what the form shows: it must reload
+  }
   return true;
 }
 
