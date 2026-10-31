@@ -41,10 +41,12 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
   `partitions_16MB.csv`: Arduino's `default_16MB.csv` (two 6.25 MB OTA
   slots) with the filesystem cut from 3.4 MB to 1 MB, which boots faster
   (see "Boot time" in the top-level README).
-- Serial is the CH343 UART (`ARDUINO_USB_CDC_ON_BOOT=0`), 115200 baud:
-  `pio device monitor`. On the board brought up, the USB-C port is the
-  S3's own USB (Serial/JTAG, a "USB Serial Device"); flashing and the log
-  both work there.
+- The log (`ESP_LOGx`) goes to UART0 at 115200 baud and, as the core's
+  secondary console (`CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG`), to
+  the S3's own USB Serial/JTAG: `pio device monitor` on either.
+  `ARDUINO_USB_CDC_ON_BOOT=0` only keeps Arduino's `Serial` on UART0. On
+  the board brought up, the USB-C port is the S3's own USB (a "USB Serial
+  Device"); flashing and the log both work there.
 - LVGL renders into one 480×40-pixel buffer in internal RAM (PSRAM if that
   is short) and copies it into the panel's PSRAM frame buffer, which the
   panel reads all the time. `common/src/board_start.cpp` sets the pixel

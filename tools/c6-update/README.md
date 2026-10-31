@@ -21,7 +21,9 @@ This sketch updates the C6 once, over WiFi: it joins the first network from
 `ESP_HostedOTA` uses) into PSRAM, and checks it against the size and
 SHA-256 pinned in `src/main.cpp` before anything is written to the C6. The
 core's own `updateEspHostedSlave()` is not used: it skips the server's
-certificate check and writes whatever it is served. An image that does not
+certificate check and writes whatever it is served. This tool's download
+skips the certificate check too, so the server is not authenticated; what
+the C6 gets is, by the pinned SHA-256 of the image. An image that does not
 match is refused, and the C6 keeps its firmware. The new image is activated
 only after it is complete, so an interrupted update leaves the old one in
 place; just run it again.
