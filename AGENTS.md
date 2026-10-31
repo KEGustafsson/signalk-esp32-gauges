@@ -122,8 +122,11 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   data line on the 2.1" board.
 - Page settings are a `FileSystemSaveable` (`GaugeSettings`, `/Pages/<n>`)
   with its own `ConfigSchema`; listeners are not `ConfigItem`s. Listeners
-  derive from `GaugeListener` (`sk_listeners.h`), which opts in to metadata
-  (`wants_meta()`) and hands it to `GaugeConfig::set_meta()`.
+  derive from `GaugeListener` (`sk_listeners.h`); each page also has a
+  `sensesp::SKMetadataListener` on its path that hands metadata to
+  `GaugeConfig::set_meta()`. SensESP gives values only to listeners whose
+  `wants_meta()` is false: never make a value listener want metadata (it
+  then receives none -- seen on the first hardware run).
 - Logging is `ESP_LOGI/W/E(tag, ...)`. The one exception is LVGL's own log
   callback in `lvgl_port.cpp`, which prints LVGL's preformatted lines.
 - If unsure of an API, read the fetched source under
@@ -151,10 +154,10 @@ A logic change in the host-safe files is not done until `tests/` covers it.
 
 ## Hardware status
 
-**4" starboard: brought up** (2026-10-31, `docs/JOURNAL.md`): boot, touch,
-WiFi, Signal K connection and metadata verified, minutes of stable running.
-Readings against another instrument, stale/recovery behaviour, OTA and the
-2.1" are not verified yet. Follow `docs/BRINGUP.md` and the first power-up
+**4" and 2.1" starboard: brought up** (2026-10-31 / 11-01,
+`docs/JOURNAL.md`): boot, touch, WiFi, Signal K, live readings with the
+server's zones on all six pages. Readings against another instrument,
+stale/recovery behaviour on hardware and OTA are not verified yet. Follow `docs/BRINGUP.md` and the first power-up
 checklists in each board folder's README before trusting a reading.
 
 ## Journal

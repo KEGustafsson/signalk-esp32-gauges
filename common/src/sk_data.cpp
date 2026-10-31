@@ -58,9 +58,18 @@ void SkData::begin() {
     const float scale = def.scale;
     const float offset = def.offset;
     auto on_invalid = [this, slot]() { invalid(slot); };
-    auto on_meta = [i](const sensesp::SKMetaView& meta) {
-      gauge_config().set_meta(i, meta);
-    };
+
+    // Metadata through its own listener: SensESP gives values only to
+    // listeners that do not want metadata (sk_listeners.h). Same listen
+    // delay, so the merged subscription keeps the value's rate.
+    auto meta_listener = std::make_shared<sensesp::SKMetadataListener>(
+        path, def.listen_delay_ms);
+    meta_listener->connect_to(
+        new sensesp::LambdaConsumer<sensesp::SKMetaView>(
+            [i](const sensesp::SKMetaView& meta) {
+              gauge_config().set_meta(i, meta);
+            }));
+    listeners_.push_back(meta_listener);
 
     if (def.kind == GaugeKind::kAttitude) {
       auto listener = std::make_shared<AttitudeListener>(
@@ -70,7 +79,6 @@ void SkData::begin() {
                   pitch_rad * scale + offset);
           });
       listener->set_invalid_callback(on_invalid);
-      listener->set_meta_callback(on_meta);
       listeners_.push_back(listener);
       continue;
     }
@@ -79,7 +87,6 @@ void SkData::begin() {
         std::make_shared<StrictFloatListener>(path, def.listen_delay_ms);
     const bool is_angle = def.kind == GaugeKind::kCompass;
     listener->set_invalid_callback(on_invalid);
-    listener->set_meta_callback(on_meta);
     listener->connect_to(new sensesp::LambdaConsumer<float>(
         [this, slot, scale, offset, is_angle](float raw) {
           // A heading beyond two turns is garbage, not a bearing to wrap.
@@ -102,7 +109,14 @@ void SkData::store(GaugeValue* slot, float value, float value2) {
   link.up = ws->is_connected();
   link.generation = ws->client_generation();
   link.epoch = conn_epoch_;
-  gate_sample(slot, value, value2, millis(), link);
+  const size_t index = (size_t)(slot - values_);
+  if (gate_sample(slot, value, value2, millis(), link) && !logged_[index]) {
+    // Once per page and boot: proof that readings reach it.
+    logged_[index] = true;
+    ESP_LOGI("gauges", "%s: first reading %.4g (%s)",
+             gauge_config().def(index).id, value,
+             gauge_config().def(index).sk_path);
+  }
 }
 
 void SkData::invalid(GaugeValue* slot) { gate_invalid(slot, millis()); }

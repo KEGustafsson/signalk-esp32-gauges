@@ -24,6 +24,10 @@ constexpr const char* kPrefsNamespace = "skgauges";
 constexpr const char* kTouchAddressKey = "touch_addr";
 constexpr uint8_t kDefaultAddress = 0;  // The board file's address
 constexpr uint32_t kRtcMagic = 0x5D14A5C3;
+#if CONFIG_IDF_TARGET_ESP32S3
+constexpr int kRgbPclkHz = 12 * 1000 * 1000;
+constexpr int kRgbBounceLines = 20;
+#endif
 
 // Survive esp_restart() but not power loss; the magic tells real values
 // from power-on garbage.
@@ -55,7 +59,16 @@ void save_touch_address(uint8_t address) {
 }  // namespace
 
 Board* start_board(uint8_t alternate_touch_address) {
-  if (rtc_magic != kRtcMagic) {
+  // Only a start that failed moves on to the next option: a crash, a
+  // watchdog or our own restart below. A power-on, a reset button or a USB
+  // reset during the start (flashing, a brief power dip) starts over -- the
+  // 2.1", which has one touch option, otherwise came up without touch after
+  // a single interrupted boot.
+  const esp_reset_reason_t why = esp_reset_reason();
+  const bool start_failed = why == ESP_RST_PANIC || why == ESP_RST_INT_WDT ||
+                            why == ESP_RST_TASK_WDT || why == ESP_RST_WDT ||
+                            why == ESP_RST_SW;
+  if (rtc_magic != kRtcMagic || !start_failed) {
     rtc_magic = kRtcMagic;
     rtc_attempt = 0;
   }
@@ -107,6 +120,24 @@ Board* start_board(uint8_t alternate_touch_address) {
           .phy_clk_src = MIPI_DSI_PHY_PLLREF_CLK_SRC_DEFAULT,
           .lane_bit_rate_mbps = static_cast<float>(lanes.lane_bit_rate_mbps),
       };
+    }
+  }
+#endif
+#if CONFIG_IDF_TARGET_ESP32S3
+  // RGB panel (the 2.1"): it streams the frame buffer from PSRAM all the
+  // time, and with the board file's 16 MHz and 10-line bounce buffer the
+  // picture flickered with noise (PSRAM shared with LVGL and WiFi). A slower
+  // pixel clock (44 Hz refresh) and a deeper bounce buffer give it slack.
+  if (board->getConfig().lcd.has_value()) {
+    auto* rgb = std::get_if<esp_panel::drivers::BusRGB::Config>(
+        &const_cast<BoardConfig&>(board->getConfig()).lcd->bus_config);
+    auto* refresh =
+        rgb ? std::get_if<esp_panel::drivers::BusRGB::RefreshPanelPartialConfig>(
+                  &rgb->refresh_panel)
+            : nullptr;
+    if (refresh) {
+      refresh->pclk_hz = kRgbPclkHz;
+      refresh->bounce_buffer_size_px = refresh->h_res * kRgbBounceLines;
     }
   }
 #endif

@@ -113,8 +113,8 @@ Warnings worth knowing:
 1. The first page appears with **dashes** in the LCD: nothing from Signal K
    yet. This is right.
 2. Swipe left and right: every page comes up; a short toast names it.
-3. Tap: the info box shows the device, its IP address, the Signal K
-   connection state and the page's path. Tap again to close.
+3. Swipe down: the info box shows the device, its IP address, the Signal K
+   connection state and the page's path. Swipe up or tap to close.
 4. Long press: the backlight steps 100 → 60 → 30 → 10 %.
 5. The small dot at the bottom of the bezel is the status: it turns blue,
    with a brief blink each second, once connected to Signal K.

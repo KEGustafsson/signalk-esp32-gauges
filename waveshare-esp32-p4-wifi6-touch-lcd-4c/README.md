@@ -19,7 +19,7 @@ Arduino examples ([ESP32-P4-WIFI6-Touch-LCD-XC](https://github.com/waveshareteam
 | MCU | ESP32-P4 (dual-core RISC-V up to 360/400 MHz), 32 MB PSRAM, 32 MB flash | yes |
 | Wireless | ESP32-C6-MINI-1 over SDIO (esp-hosted): WiFi 6 2.4 GHz, BLE 5 | WiFi, through Arduino's `WiFi.h` |
 | Display | 4" round IPS 720×720, JD9365, 2-lane MIPI-DSI at 1500 Mbps/lane, 80 MHz DPI clock, reset GPIO27, DSI PHY on LDO channel 3 | yes |
-| Touch | GT9271 (GT911-compatible) on I2C SDA 7 / SCL 8, address 0x5D (0x14 alternative), reset/INT not routed | swipe / tap / hold |
+| Touch | GT9271 (GT911-compatible) on I2C SDA 7 / SCL 8, address 0x5D (0x14 alternative), reset/INT not routed | swipe / hold |
 | Backlight | GPIO26, LEDC PWM, active low | brightness (long press) |
 | Audio | ES8311 codec + NS4150B amplifier (speaker), ES7210 mic ADC; I2S MCLK 13, SCLK 12, LRCK 10, DOUT 9, DIN 11, PA enable GPIO53 | not used |
 | microSD | 4-bit SDIO: D0–D3 GPIO39–42, CLK 43, CMD 44 | not used |
@@ -79,5 +79,5 @@ examples.
   no network traffic) and the loop watchdog restarted the unit every few
   seconds after it reached Signal K. The draw buffer is in PSRAM for this
   reason (`common/src/lvgl_port.cpp`).
-- Tap shows the IP address; it should match the one your router gave the
+- A swipe down shows the IP address; it should match the one your router gave the
   device (or the static address in `secrets.h`).

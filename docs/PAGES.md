@@ -31,7 +31,7 @@ reflashed.
 1. Make sure your phone or computer is on the same network as the device.
 2. Open the device in a browser by its name, `http://<hostname>.local/` —
    for example `http://gauge-4c-stbd.local/`. If the name does not work,
-   tap the device's screen: the info box shows its IP address, and
+   swipe down on the device's screen: the info box shows its IP address, and
    `http://<that address>/` works too.
 3. Log in if asked (the admin user and password from `secrets.h`).
 4. Go to **Configuration**. Near the top is the **Pages** card, then one
@@ -81,7 +81,7 @@ and it comes back as it was.
 ## Change a page
 
 Open its **Page n** card, change what you need, **Save**, **Restart**. To
-see which page is which, tap the device's screen on that page: the info box
+see which page is which, swipe down on that page: the info box
 shows the Signal K path it reads.
 
 Changing the **Style** starts the page from that style's defaults: the
@@ -134,7 +134,7 @@ are ignored.
 | **Signal K path** | all | The path the page reads, e.g. `propulsion.port.revolutions`. Empty: a compass reads `navigation.headingTrue`, a sea horizon `navigation.attitude`; a dial shows dashes. The Signal K server's **Data Browser** lists every path your boat has. |
 | **Display unit** | dial | The unit shown on the dial, converted from the Signal K unit of the path (see the table below). **SI** shows the value exactly as Signal K sends it and labels it with the server's unit. |
 | **Set the scale by hand** | dial | Off: the dial's range comes from the Signal K server (`displayScale`) when it sends one, else from **Scale minimum / maximum**. On: always **Scale minimum / maximum**. |
-| **Scale minimum / maximum** | dial | The dial's range in the display unit, e.g. 0 and 3000 for rpm. The tick marks follow the range. |
+| **Scale minimum / maximum** | dial | The dial's range in the display unit, e.g. 0 and 3000 for rpm. The tick marks follow the range. From 1000 on, the scale is numbered in hundreds (0, 5 ... 30, the unit reads "rpm x100"; from 10000 in thousands); the LCD still shows the full value. |
 | **Show Signal K zones** | dial | Draws the coloured zones the Signal K server holds for the path. Off: no zones. |
 | **Decimals** | all | Digits after the decimal point in the LCD readout, 0–3. |
 | **Data timeout [s]** | all | How old a value may be before the page shows dashes (default 10 s). A slow source, e.g. a tank sender every 30 s, needs a longer timeout. |

@@ -106,6 +106,18 @@ void convert_range(const char* from_id, const char* to_id, float* min,
   *max = 100.0f;
 }
 
+float label_divisor(float min, float max) {
+  const float span = fmaxf(fabsf(min), fabsf(max));
+  if (!isfinite(span) || span < 1000.0f) {
+    return 1.0f;
+  }
+  float divisor = 100.0f;
+  while (span / divisor >= 100.0f && divisor < 1e9f) {
+    divisor *= 10.0f;
+  }
+  return divisor;
+}
+
 GaugeDef resolve_gauge(const GaugeDef& base, const GaugeOptions& options,
                        const GaugeMeta& meta) {
   GaugeDef def = base;
@@ -178,6 +190,7 @@ GaugeDef resolve_gauge(const GaugeDef& base, const GaugeOptions& options,
   if (!(unit == base_unit && near(min, base.min) && near(max, base.max))) {
     def.major_step = nice_step(min, max, &def.minor_per_major);
   }
+  def.label_divisor = label_divisor(min, max);
 
   // Zones from the server, in the display unit, clipped to the dial.
   def.zone_count = 0;

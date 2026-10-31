@@ -49,7 +49,7 @@ If an OTA upload fails:
    Serial/JTAG on the USB-C port).
 2. Interpret the output: display init, WiFi, Signal K connection, crashes
    (`esp32_exception_decoder` symbolises backtraces).
-3. On the screen: the gauge appears with dashes; tap shows the IP and the
+3. On the screen: the gauge appears with dashes; a swipe down shows the IP and the
    Signal K state; the bezel dot is SensESP's status LED.
 4. A unit without WiFi credentials in `secrets.h` raises SensESP's access
    point named after its hostname (password `SECRET_AP_PASSWORD`, or

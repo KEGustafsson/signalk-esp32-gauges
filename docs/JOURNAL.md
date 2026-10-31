@@ -385,3 +385,42 @@ is refused. A `c6_update_pre_v3` env covers pre-v3 P4 silicon. The SPIFFS
 `read()` behind the card saves fails on a short read (an early stop read as
 an empty backup would have meant "no file"). `gauge_app.cpp` includes
 `esp_heap_caps.h` itself.
+
+## 2026-11-01 — Live data, the 2.1", the dial look from the boat
+
+Both boards on the boat's network with a real Signal K server.
+
+- **No page showed a value.** SensESP (main) gives value deltas only to
+  listeners whose `wants_meta()` is false; the gauge listeners wanted both
+  and so got only metadata. Each page now has a `SKMetadataListener` next to
+  its value listener (SensESP merges them into one subscription entry). The
+  boot log says `pageN: first reading ...` once per page.
+- This boat's engines are `propulsion.stb_engine` / `prt_engine`, coolant is
+  `coolantTemperature`: the engine pages were set to them in each device's
+  page cards (a boat setting, not a factory default).
+- **The 2.1"** (ESP32-S3 rev 0.2, CST820 touch at 0x15, on its native USB):
+  first flash, boot, Signal K, all six pages live with the server's zones;
+  50 KB DMA RAM free with WiFi up (draw buffer 37 KB in internal RAM).
+- **Dial look**, from the user on the real screens: scale numbers closer to
+  the ticks (0.625 R); from 1000 on numbered in hundreds with the unit
+  "rpm x100" (`label_divisor()`, tested; thousands from 10000); the LCD is a
+  plain number on the grey-green panel instead of seven segments, in
+  fixed-width digit cells so a changing value does not shift, scaled above
+  the largest font on the 4"; the degree sign sits with the digits (heel,
+  trim, compass "291° T").
+- **2.1" flicker**: constant flicker with noise on the real panel (its
+  frame buffer is read from PSRAM all the time, shared with LVGL and WiFi).
+  `start_board()` now sets the RGB pixel clock to 12 MHz (44 Hz) and the
+  bounce buffer to 20 lines instead of the board file's 16 MHz and 10; the
+  user confirmed it gone. DMA RAM left with WiFi up: 27 KB (was 50).
+- **Touch lost after an interrupted boot**: `start_board()` counted each
+  attempt before trying it, so a reset during the start (here: flashing,
+  then a reset to read the log) counted as a failed start, and the 2.1"
+  (one touch option) came up without touch. Now only a crash, a watchdog or
+  our own restart moves on to the next option.
+- **Info box on a swipe down** (swipe up or tap closes it): a tap opened it
+  whenever a short sideways swipe was read as one.
+
+Not yet: readings against another instrument, stale/recovery on hardware,
+OTA. Both devices first try a 5 GHz-only network from `secrets.h` at every boot
+(about 20 s): neither chip has 5 GHz.

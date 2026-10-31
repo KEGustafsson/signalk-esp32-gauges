@@ -66,6 +66,29 @@ TEST(nice_step_divides_the_range) {
   CHECK(minor == 4);
 }
 
+TEST(big_scales_are_numbered_in_hundreds) {
+  CHECK(label_divisor(0, 120) == 1.0f);
+  CHECK(label_divisor(0, 999) == 1.0f);
+  CHECK(label_divisor(0, 1000) == 100.0f);   // 0 .. 10 "x100"
+  CHECK(label_divisor(0, 3000) == 100.0f);   // 0, 5 ... 30
+  CHECK(label_divisor(0, 9900) == 100.0f);   // Under 100
+  CHECK(label_divisor(0, 10000) == 1000.0f);  // 0 .. 10 "x1000"
+  CHECK(label_divisor(-2000, 500) == 100.0f);  // By the larger end
+  CHECK(label_divisor(NAN, 10) == 1.0f);
+  // The tachometer factory page, and a dial whose range the server sets.
+  CHECK(resolve_gauge(factory(Side::kPort, 0), GaugeOptions(), GaugeMeta())
+            .label_divisor == 100.0f);
+  GaugeMeta meta;
+  meta.has_scale = true;
+  meta.scale_lower = 0;
+  meta.scale_upper = 20;  // Hz: 0..1200 rpm
+  CHECK(resolve_gauge(factory(Side::kPort, 0), GaugeOptions(), meta)
+            .label_divisor == 100.0f);
+  // Only dials number their scale this way.
+  CHECK(resolve_gauge(factory(Side::kPort, 2), GaugeOptions(), GaugeMeta())
+            .label_divisor == 1.0f);
+}
+
 TEST(nice_range_rounds_outward) {
   float lo = 32, hi = 248;
   nice_range(&lo, &hi);

@@ -1,6 +1,7 @@
 #include "draw_utils.h"
 
 #include <math.h>
+#include <string.h>
 
 namespace skgauges {
 namespace ui {
@@ -205,8 +206,77 @@ void draw_text(lv_layer_t* layer, const char* text, const lv_font_t* font,
   lv_draw_label(layer, &dsc, &area);
 }
 
-TextImage::TextImage(const char* text, const lv_font_t* font,
-                     uint32_t color) {
+namespace {
+
+// The code point at text[*i] (UTF-8), advancing *i past it.
+uint32_t next_code_point(const char* text, size_t* i) {
+  const uint8_t c = (uint8_t)text[*i];
+  int extra = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+  uint32_t cp = extra == 0 ? c : (c & (0x3F >> extra));
+  (*i)++;
+  for (; extra > 0 && text[*i] != '\0'; extra--, (*i)++) {
+    cp = (cp << 6) | ((uint8_t)text[*i] & 0x3F);
+  }
+  return cp;
+}
+
+}  // namespace
+
+TextImage::TextImage(const char* text, const lv_font_t* font, uint32_t color,
+                     bool tabular_digits) {
+  if (tabular_digits) {
+    // Lay the characters out one by one: digits centred in equal cells.
+    int32_t cell = 0;
+    for (uint32_t d = '0'; d <= '9'; d++) {
+      const int32_t w = lv_font_get_glyph_width(font, d, 0);
+      if (w > cell) cell = w;
+    }
+    struct Glyph {
+      size_t start, len;
+      int32_t x, w;
+    };
+    Glyph glyphs[24];
+    size_t count = 0;
+    int32_t x = 0;
+    for (size_t i = 0; text[i] != '\0' && count < 24;) {
+      const size_t start = i;
+      const uint32_t cp = next_code_point(text, &i);
+      const int32_t w = lv_font_get_glyph_width(font, cp, 0);
+      const bool digit = cp >= '0' && cp <= '9';
+      const int32_t advance = digit ? cell : w;
+      glyphs[count++] = {start, i - start, x + (advance - w) / 2, w};
+      x += advance;
+    }
+    const int32_t h = lv_font_get_line_height(font);
+    if (x <= 0 || h <= 0) {
+      return;
+    }
+    const int32_t pad = 2;
+    buf_ = lv_draw_buf_create(x + 2 * pad, h + 2 * pad,
+                              LV_COLOR_FORMAT_ARGB8888, 0);
+    if (buf_ == nullptr) {
+      return;
+    }
+    lv_draw_buf_clear(buf_, nullptr);
+    lv_layer_t layer;
+    init_offscreen_layer(&layer, buf_);
+    for (size_t g = 0; g < count; g++) {
+      char one[5] = {};
+      memcpy(one, text + glyphs[g].start, glyphs[g].len < 4 ? glyphs[g].len : 4);
+      lv_draw_label_dsc_t dsc;
+      lv_draw_label_dsc_init(&dsc);
+      dsc.text = one;
+      dsc.text_local = 1;  // Copied: drawn when the layer is finished
+      dsc.font = font;
+      dsc.color = lv_color_hex(color);
+      lv_area_t area = {pad + glyphs[g].x, pad,
+                        pad + glyphs[g].x + glyphs[g].w + 1, pad + h};
+      lv_draw_label(&layer, &dsc, &area);
+    }
+    finish_offscreen_layer(&layer);
+    return;
+  }
+
   lv_point_t size;
   lv_text_get_size(&size, text, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
   if (size.x <= 0 || size.y <= 0) {
@@ -247,7 +317,7 @@ float TextImage::radius() const {
 }
 
 void TextImage::draw(lv_layer_t* layer, float cx, float cy,
-                     float rotation_deg, lv_opa_t opa) const {
+                     float rotation_deg, lv_opa_t opa, float scale) const {
   if (buf_ == nullptr) {
     return;
   }
@@ -257,6 +327,7 @@ void TextImage::draw(lv_layer_t* layer, float cx, float cy,
   lv_draw_image_dsc_init(&dsc);
   dsc.src = buf_;
   dsc.rotation = (int32_t)lroundf(rotation_deg * 10.0f);
+  dsc.scale_x = dsc.scale_y = (int32_t)lroundf(LV_SCALE_NONE * scale);
   dsc.pivot.x = w / 2;
   dsc.pivot.y = h / 2;
   dsc.antialias = 1;
