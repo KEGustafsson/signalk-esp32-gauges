@@ -112,6 +112,7 @@ class SpiffsCardFs : public CardFs {
   bool read(const std::string& path, std::string* text) override {
     File in = SPIFFS.open(path.c_str(), "r");
     if (!in) return false;
+    const size_t size = in.size();
     text->clear();
     uint8_t buffer[128];
     while (in.available()) {
@@ -120,7 +121,9 @@ class SpiffsCardFs : public CardFs {
       text->append(reinterpret_cast<const char*>(buffer), (size_t)got);
     }
     in.close();
-    return true;
+    // A read that stopped early must not pass for a shorter file: an empty
+    // backup means "no file" to card_store.cpp.
+    return text->size() == size;
   }
 };
 

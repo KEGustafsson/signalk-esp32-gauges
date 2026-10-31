@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <SPIFFS.h>
+#include <esp_heap_caps.h>
 #include <esp_psram.h>
 #include <lvgl.h>
 

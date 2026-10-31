@@ -374,3 +374,14 @@ networks).
 Verified on the 4": boot, touch address, WiFi, Signal K connection and
 metadata, 4 minutes connected with flat heap. Not yet: readings against
 another instrument, stale/recovery behaviour, OTA, the 2.1".
+
+Review fixes (CodeRabbit, on the 4" bring-up commit): `tools/c6-update` no
+longer uses the core's `updateEspHostedSlave()`, which skips the server's
+certificate check and writes whatever it is served to the C6. It downloads
+the image into PSRAM and checks it against a pinned size and SHA-256 (2.12.11:
+1226800 bytes, `5b05e153...d709cb`, the same from espressif.github.io and
+raw.githubusercontent.com) before writing it; a version with no pinned image
+is refused. A `c6_update_pre_v3` env covers pre-v3 P4 silicon. The SPIFFS
+`read()` behind the card saves fails on a short read (an early stop read as
+an empty backup would have meant "no file"). `gauge_app.cpp` includes
+`esp_heap_caps.h` itself.
