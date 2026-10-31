@@ -148,20 +148,39 @@ bool GaugeSettings::from_json(const JsonObject& config) {
 
   if (action == PageAction::kSwap) {
     // This page (with this save's changes) goes to the other card and the
-    // other card's page comes here. The web UI saves this card after
-    // from_json(); the other one is saved here. Only the web UI's handlers
-    // touch the cards after boot.
+    // other card's page comes here. Only the web UI's handlers touch the
+    // cards after boot.
     GaugeSettings* other = gauge_config().card((size_t)swap - 1);
     if (other == nullptr) {
       ESP_LOGW(kTag, "Page %u not saved: no page %d to swap with", page, swap);
       return false;
     }
-    fields = other->fields;
+    // Both cards are written here, the other first, and put back if either
+    // write fails, so a full or failing filesystem never leaves one page on
+    // both cards (and the other page lost) after a restart. (The web UI
+    // writes this card once more after from_json(): the same contents.)
+    const PageFields mine = fields;
+    const PageFields theirs = other->fields;
     other->fields = next;
-    other->rev_++;  // Both open forms now show the other page
     if (!other->save()) {
-      ESP_LOGE(kTag, "Page %d could not be written; check both pages", swap);
+      other->fields = theirs;
+      ESP_LOGE(kTag, "Pages %u and %d not swapped: page %d could not be written",
+               page, swap, swap);
+      return false;
     }
+    fields = theirs;
+    if (!save()) {
+      fields = mine;
+      other->fields = theirs;
+      if (!other->save()) {
+        ESP_LOGE(kTag, "Page %d could not be restored; check both pages",
+                 swap);
+      }
+      ESP_LOGE(kTag, "Pages %u and %d not swapped: page %u could not be written",
+               page, swap, page);
+      return false;
+    }
+    other->rev_++;  // Both open forms now show the other page
     rev_++;
     ESP_LOGI(kTag, "Pages %u and %d swapped", page, swap);
     return true;

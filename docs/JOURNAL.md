@@ -313,5 +313,7 @@ moved on by a reset, a swap (both cards) or a save the rules adjusted; a
 save from an older form is refused (`page_save_action()`, tested). A plain
 save leaves it, so a card can be saved twice without a reload. Also: the
 touch log line prints the address that answered (was 0x00 for the board
-file's default), PSRAM is the chip size rounded to the MB, a failed write of
-the other card in a swap is logged.
+file's default), PSRAM is the chip size rounded to the MB. A swap writes
+both cards itself, the other first, and puts both back if either write
+fails (CodeRabbit's merge-risk note): a failing filesystem no longer leaves
+one page on both cards after a restart.
