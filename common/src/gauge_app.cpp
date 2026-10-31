@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include <SPIFFS.h>
 #include <lvgl.h>
 
 #include <memory>
@@ -178,10 +179,24 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   // Touch only answers once setup() returns and the loop runs, so the boot
   // milestones are logged to show where that time goes.
   // The display itself was started in main.cpp before this.
+  // What the board is, for the first power-up checklists (README).
+  ESP_LOGI("boot", "%s (%s): %s rev %u.%02u, %u MHz, flash %u MB, PSRAM %u MB "
+           "(%u KB free), built " __DATE__ " " __TIME__,
+           config.unit_name, config.hostname, ESP.getChipModel(),
+           (unsigned)(ESP.getChipRevision() / 100),
+           (unsigned)(ESP.getChipRevision() % 100),
+           (unsigned)ESP.getCpuFreqMHz(),
+           (unsigned)(ESP.getFlashChipSize() >> 20),
+           (unsigned)(ESP.getPsramSize() >> 20),
+           (unsigned)(ESP.getFreePsram() >> 10));
   ESP_LOGI("boot", "Display ready, building the gauge at %u ms",
            (unsigned)millis());
   // The page settings (web UI) decide what the first page looks like.
   gauge_config().begin(config.side);
+  ESP_LOGI("boot", "%u pages; filesystem %u of %u KB used",
+           (unsigned)gauge_config().pages().size(),
+           (unsigned)(SPIFFS.usedBytes() >> 10),
+           (unsigned)(SPIFFS.totalBytes() >> 10));
   ui_begin({config.unit_name, config.set_brightness});
   lv_timer_handler();
   ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());

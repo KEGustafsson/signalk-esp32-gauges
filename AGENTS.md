@@ -27,8 +27,9 @@ are about never showing a wrong number with confidence.
 1. **Never present unconfirmable data as live.** A value older than the
    page's data timeout (default `kStaleAfterMs`) shows dashes and parks the needle; a non-numeric delta
    (`null` from a source that lost its data) is dropped, never coerced to 0.
-   `sk_listeners.h` exists for exactly this -- do not swap it for the stock
-   `SKValueListener<float>`.
+   `sk_listeners.h` (with `sk_parse.h`) exists for exactly this -- do not swap
+   it for the stock `SKValueListener<float>`. The rules live in `sk_parse.h`
+   and `value_gate.h` and are unit-tested (`tests/`); keep them there.
 2. **Signal K retains the last value of a path forever.** A value that stops
    updating is not proof the source is alive; staleness is judged on arrival
    time (`GaugeValue::updated_ms`), never on the value.
@@ -57,8 +58,13 @@ If a task would require breaking one of these, stop and flag it.
   - `gauge_settings.*` -- the page cards (`GaugeSettings`, `/Pages/<n>`) and
     `GaugeConfig`, which holds the boot snapshot of the settings, the
     metadata received and the resolved `GaugeDef` each page is drawn from.
-    `gauge_resolve.*` and `units.*` (host-safe, used by the preview) turn
-    defaults + settings + metadata into that `GaugeDef`.
+  - Host-safe logic, unit-tested in `tests/` (no Arduino, no SensESP):
+    `page_rules.*` (what a card holds, the rules a save follows, the card's
+    schema), `gauge_resolve.*` and `units.*` (settings + metadata ->
+    `GaugeDef`, also used by the preview), `value_gate.*` (replay window,
+    `null` grace, staleness) and `sk_parse.h` (only a JSON number is a
+    reading). Put new logic of this kind there, with a test, rather than in
+    the Arduino glue.
   - `ui/` -- pure LVGL drawing. No Arduino, no SensESP: it must keep compiling
     on the host for `tools/preview`, which CI runs.
   - `sk_data.*`, `sk_listeners.h`, `status_led.h`, `gauge_app.*`, `gauge_ui.*`,
@@ -73,6 +79,9 @@ If a task would require breaking one of these, stop and flag it.
   `scripts/ota_quiet.py` (post:) drops the builder's espota `--debug`, which
   would print the password into the upload log.
 - **`tools/preview/`** -- renders every page on the host from `common/src/ui`.
+- **`tests/`** -- host unit tests (`tests/README.md`).
+- **`docs/`** -- `PAGES.md` (end-user guide to the pages), `BRINGUP.md`
+  (first power-up of a device), `JOURNAL.md`.
 
 ## Commands
 
@@ -82,17 +91,19 @@ cd waveshare-esp32-s3-touch-lcd-2.1 && pio run -e s3_stbd_usb -t upload  # first
 cd waveshare-esp32-s3-touch-lcd-2.1 && pio run -e s3_stbd -t upload      # OTA
 cmake -S tools/preview -B build/preview && cmake --build build/preview -j
 mkdir -p out && build/preview/preview 480 && build/preview/preview 720
+cmake -S tests -B build/tests && cmake --build build/tests -j && build/tests/gauge_tests
 ```
 
 Building one env per board is enough to prove the code compiles: the port and
 starboard envs differ only in `-D` flags, and the `_usb` envs only in the
 upload method. CI (`.github/workflows/ci.yml`) builds the starboard unit of
-each board (`p4_stbd`, `s3_stbd`), renders
+each board (`p4_stbd`, `s3_stbd`), runs the host unit tests, renders
 the preview at both sizes, and checks the scripts and credential rules on every
 push to `main` and every pull request. Run the relevant check locally anyway:
 CI is the backstop, not the first place to find out.
 
 A UI change is not done until the preview has been rendered and looked at.
+A logic change in the host-safe files is not done until `tests/` covers it.
 
 ## SensESP v3 API rules
 
@@ -131,8 +142,8 @@ A UI change is not done until the preview has been rendered and looked at.
 ## Hardware status
 
 **No device has been flashed yet.** Everything is build- and
-host-verified only. Work through the first power-up checklists in each board
-folder's README before trusting a reading.
+host-verified only. Follow `docs/BRINGUP.md` and the first power-up
+checklists in each board folder's README before trusting a reading.
 
 ## Journal
 

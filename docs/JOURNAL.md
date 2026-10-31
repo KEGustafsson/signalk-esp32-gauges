@@ -280,3 +280,27 @@ dial). So settings copied between cards give the same page, a cleared dial
 path stays empty, and a style change resets to the style's defaults. A unit
 changed on its own converts the range (`convert_range()`, host-tested:
 0-120 °C -> 0-250 °F, 0-3000 rpm -> 0-50 Hz).
+
+## 2026-10-31 — Tests, card actions, bring-up guide
+
+Asked for: every area of the self-assessment raised to 9.
+
+- The logic that needs no board moved into host-safe units, used by the
+  firmware and unit-tested: `value_gate.*` (replay window after a
+  reconnect, `null` grace, staleness, `millis()` wrap -- from `sk_data.cpp`),
+  `sk_parse.h` (only a JSON number is a reading -- from `sk_listeners.h`),
+  `page_rules.*` (what a page card holds, the save rules, the card's schema
+  -- from `gauge_settings.cpp`). `tests/`: 36 tests over these and the
+  resolver, units and factory pages, with ASan/UBSan and -Werror, against the
+  firmware's ArduinoJson 7.4.3; a mutation check (replay guard and the
+  number check broken on purpose) fails 26 checks. New CI job
+  "Unit tests (host)".
+- Page cards: **Reset to factory settings** and **Swap with page** (one-shot
+  actions; swap is the reordering), and a card shows only its style's
+  fields (the schema is built on every request).
+- Boot log: a hardware summary (chip, silicon revision, flash, PSRAM), the
+  page count and filesystem use, and which touch address answered.
+  `docs/BRINGUP.md`: first power-up step by step, with the log to expect.
+
+Verified: both boards build; tests pass; preview rendered. Not verified: on
+hardware (next: flashing through the user's computer).

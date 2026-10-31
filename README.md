@@ -76,6 +76,9 @@ set up the way SKip sets up a gauge widget. Save, then restart the device
 - **Show Signal K zones** (dial) -- see below.
 - **Decimals** -- 0–3, for the LCD readout.
 - **Data timeout [s]** -- a value older than this shows dashes (default 10).
+- **Reset to factory settings**, **Swap with page** -- one-shot actions: put
+  the page back to its factory setting, or swap it with another page to
+  reorder.
 
 ### Factory pages
 
@@ -275,8 +278,18 @@ screen update restarts the device.
 ## Status
 
 The firmware compiles for both boards, but it has not yet been run on the
-hardware. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) builds both
-boards (as their starboard devices), renders every gauge page on the host, and checks that no credential
-is committed, on every pull request and every push to `main`. Working rules for contributors
-(and AI agents) are in [AGENTS.md](AGENTS.md). Things to check on first power-up are listed in each board folder's
-README.
+hardware. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), on
+every pull request and every push to `main`:
+
+- builds both boards (as their starboard devices);
+- runs the host unit tests ([`tests/`](tests/)) with AddressSanitizer and
+  UndefinedBehaviorSanitizer: unit conversion and scales, the factory pages,
+  the page cards' rules, and what a page accepts from Signal K and when it
+  stops trusting it;
+- renders every gauge page on the host ([`tools/preview`](tools/preview/));
+- checks the scripts and that no credential is committed.
+
+[docs/BRINGUP.md](docs/BRINGUP.md) walks through the first power-up of a
+device, with the serial log to expect; the board-specific checks are in each
+board folder's README. Working rules for contributors (and AI agents) are in
+[AGENTS.md](AGENTS.md).

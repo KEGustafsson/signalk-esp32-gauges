@@ -124,6 +124,12 @@ Board* start_board(uint8_t alternate_touch_address) {
     esp_restart();
   }
   rtc_attempt = 0;
+  if (with_touch) {
+    ESP_LOGI(kTag, "Display and touch started (touch at 0x%02X)",
+             (unsigned)plan[attempt]);
+  } else {
+    ESP_LOGI(kTag, "Display started, without touch");
+  }
   if (with_touch && alternate_touch_address != 0 && plan[attempt] != stored) {
     save_touch_address(plan[attempt]);
   }

@@ -3,12 +3,10 @@
 // The device's pages, set up the way SKip sets up its gauge widgets, in the
 // SensESP web UI (Configuration): the "Pages" card sets how many pages are
 // swiped through (1..12), and each of those has a card, "Page 1" ..
-// "Page n", with one of three styles -- a steel dial, a compass card or the
-// sea horizon -- its title, Signal K path, display unit, scale (by hand or
-// from the server's meta.displayScale), whether to draw the server's zones,
-// decimals and data timeout. Saved at /Pages/count and /Pages/<n>; a change
-// takes effect after a restart (the subscriptions and the page list are set
-// up at boot).
+// "Page n" (page_rules.h: what it holds and how a save of it is treated),
+// with one-shot actions to reset it to its factory setting or swap it with
+// another page. Saved at /Pages/count and /Pages/<n>; a change takes effect
+// after a restart (the subscriptions and the page list are set up at boot).
 //
 // GaugeConfig then holds, for every page, a snapshot of those settings taken
 // at boot, the Signal K metadata received for its path (zones, displayScale)
@@ -24,6 +22,7 @@
 
 #include "gauge_defs.h"
 #include "gauge_resolve.h"
+#include "page_rules.h"
 #include "sensesp/signalk/signalk_metadata_listener.h"
 #include "sensesp/system/saveable.h"
 
@@ -35,26 +34,22 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
   GaugeSettings(size_t slot, Side side);
 
   bool to_json(JsonObject& root) override;
+  // Parses a save (the web UI's, or the boot load) and applies the rules in
+  // page_rules.h; also carries out the card's one-shot actions (reset to
+  // factory, swap with another page). Changes nothing on a bad value.
   bool from_json(const JsonObject& config) override;
 
   // The factory page, or nullptr for a page past the factory ones.
   const GaugeDef* factory() const { return factory_; }
-  // Call after the boot load: from then on, a save that changes the style
-  // resets the fields it left untouched to the new style's defaults.
+  size_t slot() const { return slot_; }
+  // Call after the boot load: from then on a save is the web UI's, so a
+  // style change resets the fields it left untouched (page_rules.h).
   void mark_loaded() { loaded_ = true; }
 
-  GaugeKind kind;
-  String title;  // Empty: the style's default
-  String sk_path;  // Empty: a dial that is not subscribed (dashes)
-  String unit_id;
-  bool manual_scale = false;
-  float min;
-  float max;
-  int decimals;
-  bool show_zones = true;
-  int timeout_s;
+  PageFields fields;
 
  private:
+  size_t slot_;
   const GaugeDef* factory_;
   bool loaded_ = false;
 };
@@ -91,6 +86,12 @@ class GaugeConfig {
 
   // Metadata from the server for page `index`'s path.
   void set_meta(size_t index, const sensesp::SKMetaView& meta);
+
+  // The card of page `index` (0-based) if it is swiped through, else
+  // nullptr. Only the web UI's handlers use the cards after boot.
+  GaugeSettings* card(size_t index) const {
+    return index < pages_.size() ? settings_[index].get() : nullptr;
+  }
 
  private:
   struct Snapshot {

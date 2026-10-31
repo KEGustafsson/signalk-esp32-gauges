@@ -151,6 +151,30 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
+  # The shared library's logic that needs no board, on the host with
+  # AddressSanitizer and UndefinedBehaviorSanitizer: value conversion and
+  # scales, the factory pages, the page cards' rules and schema, and what a
+  # page accepts from Signal K and when it stops trusting it (tests/).
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: Unit tests (host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: cmake -S tests -B build/tests -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build/tests -j
+
+      - name: Run
+        run: timeout 120 build/tests/gauge_tests
+
+  # ---------------------------------------------------------------------------
   # The scripts and the credential rules. ota_auth.py only runs at upload time,
   # so a syntax error in it would otherwise first show up on the boat.
   # ---------------------------------------------------------------------------
