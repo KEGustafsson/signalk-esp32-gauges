@@ -323,7 +323,9 @@ go. A marker file (`/pgtx`) is written before any old file moves and removed
 only once every new file is in place (or every card is back): while it is
 there, the boot's `recover_cards()` puts every card back to its backup, so a
 power cut, or a rollback that itself failed, is finished at the next boot
-(and further saves are refused until then). A web UI save is written
+(and further saves are refused until then). If the boot cannot put them
+back either, the pages use their factory settings rather than a half-made
+save, and the log says so. A web UI save is written
 by `from_json()` itself, so a failed write refuses the save (and puts the
 card back); a swap writes both cards in one replace. The tests fail every
 step and every pair of steps (reads included, so a rollback fails too), and

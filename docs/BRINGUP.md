@@ -86,6 +86,8 @@ Warnings worth knowing:
   saved setting.
 - `An interrupted page save was finished or undone`: the power went off
   during a save; every page is as it was before that save, or after it.
+  `... could not be undone`: the storage is failing; the pages show their
+  factory settings and saves are refused until a restart recovers it.
 
 ## 4. On the screen
 

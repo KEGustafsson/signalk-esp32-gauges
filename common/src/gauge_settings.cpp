@@ -328,8 +328,19 @@ void GaugeConfig::begin(Side side) {
   CardFiles files[kMaxPages];
   for (size_t i = 0; i < kMaxPages; i++) files[i] = card_files(i);
   SpiffsCardFs fs;
+  // If it could not be undone (the marker is still there), the cards may
+  // hold a half-made save, such as one page on two cards: they keep their
+  // factory settings until a later boot has put them back.
+  bool cards_unsure = false;
   if (!recover_cards(fs, kSaveMarker, files, kMaxPages)) {
-    ESP_LOGW(kTag, "An interrupted page save was finished or undone");
+    cards_unsure = fs.exists(kSaveMarker);
+    if (cards_unsure) {
+      ESP_LOGE(kTag, "An interrupted page save could not be undone: the pages "
+               "use their factory settings, and page saves are refused, until "
+               "a restart recovers it");
+    } else {
+      ESP_LOGW(kTag, "An interrupted page save was finished or undone");
+    }
   }
   page_count_ = std::make_shared<PageCount>();
   page_count_->load();
@@ -338,7 +349,7 @@ void GaugeConfig::begin(Side side) {
   pages_.clear();
   for (size_t i = 0; i < (size_t)page_count_->count && i < kMaxPages; i++) {
     settings_[i] = std::make_shared<GaugeSettings>(i, side);
-    settings_[i]->load();
+    if (!cards_unsure) settings_[i]->load();
     settings_[i]->mark_loaded();
     take_snapshot(i, *settings_[i]);
     pages_.push_back(i);
