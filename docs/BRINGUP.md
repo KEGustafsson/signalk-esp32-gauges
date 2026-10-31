@@ -24,6 +24,17 @@ one; the 2.1" is `waveshare-esp32-s3-touch-lcd-2.1` and `s3_stbd_usb`):
 cd waveshare-esp32-p4-wifi6-touch-lcd-4c
 ```
 
+**4" only, before the first flash:** check the ESP32-P4's silicon revision.
+The default build is for revision 3.0 or later (`board = esp32-p4_r3`), and
+an older chip can refuse it before any log appears:
+
+```bash
+pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32p4 chip-id
+```
+
+It prints `Chip type: ESP32-P4 (revision v3.x)`. Below v3.0, set
+`board = esp32-p4` in `platformio.ini` before flashing.
+
 ```bash
 pio run -e p4_stbd_usb -t erase
 ```
@@ -36,8 +47,11 @@ pio run -e p4_stbd_usb -t upload
 pio device monitor -e p4_stbd_usb
 ```
 
-Erasing first is only needed the first time (or to start clean): it clears
-every saved setting, the Signal K access token included.
+Once the monitor is connected, press the board's **RESET** button so the
+log starts from power-on (opening the monitor does not always restart the
+device, and the first lines would be missed). Erasing first is only needed
+the first time (or to start clean): it clears every saved setting, the
+Signal K access token included.
 
 ## 3. What the log should say
 
@@ -46,7 +60,7 @@ In this order, within a few seconds (times in ms since start):
 | Line | Means | If it does not appear |
 |---|---|---|
 | `board: Display and touch started (touch at 0x..)` | The panel and the touch controller answered, at that I2C address (the 4"'s GT911: 0x5D, or 0x14 on some boards) | `Display board start failed (attempt n), restarting` repeating: a display fault. `Display started, without touch`: the touch controller did not answer (board README) |
-| `boot: 4in STBD (gauge-4c-stbd): ESP32-P4 rev 3.01, 360 MHz, flash 32 MB, PSRAM 32 MB (... KB free), built ...` | Chip, silicon revision, memory | On the 4": rev below 3.00 needs `board = esp32-p4` in `platformio.ini` |
+| `boot: 4in STBD (gauge-4c-stbd): ESP32-P4 rev 3.01, 360 MHz, flash 32 MB, PSRAM 32 MB (... KB free), built ...` | Chip, silicon revision, memory | On the 4": see the revision check in step 2 |
 | `boot: Display ready, building the gauge at ... ms` | | |
 | `boot: 6 pages; filesystem ... of ... KB used` | The page cards were loaded | `Filesystem not mounted`: the partition table did not take; flash over USB again |
 | `gauge_ui: Page page1 built in ... ms` | The first page is drawn | |
@@ -92,7 +106,9 @@ For each page, compare the value with the Signal K server's Data Browser
 (converted to the page's unit), then:
 
 - Stop the source of one path (or unplug it): within the page's data
-  timeout (10 s) the page shows dashes and the needle parks.
+  timeout (10 s) its LCD readout shows dashes, and a dial parks its needle,
+  the compass card stays at its last heading but dimmed, the sea horizon's
+  boat levels off, dimmed.
 - Restart the Signal K server: after it comes back, the pages show values
   again; values the server replays on reconnect are not shown as live.
 - If the path has zones on the server, they are drawn on the dial.
