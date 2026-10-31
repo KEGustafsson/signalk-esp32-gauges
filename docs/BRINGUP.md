@@ -81,7 +81,11 @@ Warnings worth knowing:
   the page's display unit does not match the path's unit; its zones and
   scale are not used (`docs/PAGES.md`).
 - `Page N not saved: ...`: a web UI save was refused, with the reason (an
-  out-of-date form: reload the web UI page; `docs/PAGES.md`).
+  out-of-date form: reload the web UI page; `docs/PAGES.md`). `it could not
+  be written`: the filesystem is full or failing; the page keeps its last
+  saved setting.
+- `An interrupted page save was finished or undone`: the power went off
+  during a save; every page is as it was before that save, or after it.
 
 ## 4. On the screen
 

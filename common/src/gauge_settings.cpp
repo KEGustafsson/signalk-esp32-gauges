@@ -5,6 +5,7 @@
 #include <esp_log.h>
 #include <math.h>
 
+#include "card_store.h"
 #include "sensesp/system/hash.h"
 #include "sensesp/ui/config_item.h"
 #include "units.h"
@@ -67,10 +68,61 @@ bool same_meta(const GaugeMeta& a, const GaugeMeta& b) {
   return true;
 }
 
+String card_config_path(size_t slot) {
+  return String("/Pages/") + (int)(slot + 1);
+}
+
+// Page `slot`'s file (where FileSystemSaveable::load() looks for it), and
+// the staging and backup files a replace uses (card_store.h). Short: SPIFFS
+// names are at most 31 characters.
+CardFiles card_files(size_t slot) {
+  CardFiles files;
+  files.path =
+      (String("/") + sensesp::Base64Sha1(card_config_path(slot))).c_str();
+  files.staging = (String("/pgnew") + (unsigned)slot).c_str();
+  files.backup = (String("/pgold") + (unsigned)slot).c_str();
+  return files;
+}
+
+class SpiffsCardFs : public CardFs {
+ public:
+  bool exists(const std::string& path) override {
+    return SPIFFS.exists(path.c_str());
+  }
+  bool remove(const std::string& path) override {
+    return SPIFFS.remove(path.c_str());
+  }
+  bool rename(const std::string& from, const std::string& to) override {
+    return !SPIFFS.exists(to.c_str()) &&
+           SPIFFS.rename(from.c_str(), to.c_str());
+  }
+  bool write(const std::string& path, const std::string& text) override {
+    File out = SPIFFS.open(path.c_str(), "w");
+    if (!out) return false;
+    const size_t written =
+        out.write(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+    out.close();
+    return written == text.size();
+  }
+  bool read(const std::string& path, std::string* text) override {
+    File in = SPIFFS.open(path.c_str(), "r");
+    if (!in) return false;
+    text->clear();
+    uint8_t buffer[128];
+    while (in.available()) {
+      const int got = in.read(buffer, sizeof(buffer));
+      if (got <= 0) break;
+      text->append(reinterpret_cast<const char*>(buffer), (size_t)got);
+    }
+    in.close();
+    return true;
+  }
+};
+
 }  // namespace
 
 GaugeSettings::GaugeSettings(size_t slot, Side side)
-    : sensesp::FileSystemSaveable(String("/Pages/") + (int)(slot + 1)),
+    : sensesp::FileSystemSaveable(card_config_path(slot)),
       fields(factory_fields(default_page(side, slot))),
       slot_(slot),
       factory_(default_page(side, slot)),
@@ -113,8 +165,15 @@ bool GaugeSettings::from_json(const JsonObject& config) {
     return false;
   }
   if (action == PageAction::kReset) {
+    const PageFields before = fields;
     fields = factory_fields(factory_);
     rev_++;
+    if (!persist(nullptr)) {
+      fields = before;
+      rev_--;
+      ESP_LOGE(kTag, "Page %u not reset: it could not be written", page);
+      return false;
+    }
     ESP_LOGI(kTag, "Page %u reset to its factory setting", page);
     return true;
   }
@@ -156,85 +215,74 @@ bool GaugeSettings::from_json(const JsonObject& config) {
       ESP_LOGW(kTag, "Page %u not saved: no page %d to swap with", page, swap);
       return false;
     }
-    // Both cards are staged (written and checked) before either replaces
-    // its file, and nothing changes if either cannot be written, so a full
-    // or failing filesystem never leaves one page on both cards (and the
-    // other lost) after a restart. (The web UI writes this card once more
-    // after from_json(): the same contents.)
+    // Both cards are written all or nothing (card_store.h): a full or
+    // failing filesystem never leaves one page on both cards, or one lost.
     const PageFields mine = fields;
     const PageFields theirs = other->fields;
     fields = theirs;
     other->fields = next;
-    if (!stage() || !other->stage()) {
+    rev_++;  // Both open forms now show the other page
+    other->rev_++;
+    if (!persist(other)) {
       fields = mine;
       other->fields = theirs;
-      discard_staged();
-      other->discard_staged();
+      rev_--;
+      other->rev_--;
       ESP_LOGE(kTag, "Pages %u and %d not swapped: could not be written", page,
                swap);
       return false;
     }
-    if (!other->commit() || !commit()) {
-      ESP_LOGE(kTag, "Pages %u and %d: a file could not be replaced; check both "
-               "pages", page, swap);
-    }
-    other->rev_++;  // Both open forms now show the other page
-    rev_++;
     ESP_LOGI(kTag, "Pages %u and %d swapped", page, swap);
     return true;
   }
+  const PageFields before = fields;
+  const uint32_t before_rev = rev_;
   fields = next;
   if (!same_fields(submitted, next)) {
     rev_++;  // The rules changed what the form shows: it must reload
   }
-  return true;
-}
-
-String GaugeSettings::staging_path() const {
-  // Short: SPIFFS names are at most 31 characters.
-  return String("/pgnew") + String((unsigned)slot_);
-}
-
-bool GaugeSettings::stage() {
-  JsonDocument doc;
-  JsonObject obj = doc.to<JsonObject>();
-  if (!to_json(obj)) return false;
-  String text;
-  serializeJson(obj, text);
-  const String path = staging_path();
-  discard_staged();
-  File out = SPIFFS.open(path, "w");
-  if (!out) return false;
-  const size_t written = out.print(text);
-  out.close();
-  File in = SPIFFS.open(path, "r");
-  const size_t size = in ? in.size() : 0;
-  if (in) in.close();
-  if (written != text.length() || size != text.length()) {
-    discard_staged();
+  if (!persist(nullptr)) {
+    fields = before;
+    rev_ = before_rev;
+    ESP_LOGE(kTag, "Page %u not saved: it could not be written", page);
     return false;
   }
   return true;
 }
 
-bool GaugeSettings::commit() {
-  // SPIFFS cannot rename onto an existing file, so the old one goes first;
-  // the staged copy is complete by now.
-  String old_file;
-  if (find_config_file(config_path_, old_file)) SPIFFS.remove(old_file);
-  return SPIFFS.rename(staging_path(),
-                       String("/") + sensesp::Base64Sha1(config_path_));
+bool GaugeSettings::persist(GaugeSettings* other) {
+  if (!loaded_) return true;  // The boot load: nothing to write
+  GaugeSettings* cards[2] = {this, other};
+  return write_cards(cards, other != nullptr ? 2 : 1);
 }
 
-void GaugeSettings::discard_staged() {
-  const String path = staging_path();
-  if (SPIFFS.exists(path)) SPIFFS.remove(path);
+bool GaugeSettings::write_cards(GaugeSettings* const* cards, size_t n) {
+  CardFiles files[2];
+  std::string texts[2];
+  if (n > 2) return false;
+  for (size_t i = 0; i < n; i++) {
+    files[i] = card_files(cards[i]->slot_);
+    JsonDocument doc;
+    JsonObject obj = doc.to<JsonObject>();
+    cards[i]->to_json(obj);
+    serializeJson(obj, texts[i]);
+  }
+  SpiffsCardFs fs;
+  if (!replace_cards(fs, files, texts, n)) return false;
+  for (size_t i = 0; i < n; i++) cards[i]->written_ = texts[i];
+  return true;
 }
 
 bool GaugeSettings::save() {
-  if (stage() && commit()) return true;
-  discard_staged();
-  ESP_LOGE(kTag, "Page %u could not be written; it keeps its last saved "
+  JsonDocument doc;
+  JsonObject obj = doc.to<JsonObject>();
+  to_json(obj);
+  std::string text;
+  serializeJson(obj, text);
+  if (text == written_) return true;  // from_json() has just written it
+  GaugeSettings* card = this;
+  if (write_cards(&card, 1)) return true;
+  ESP_LOGE(kTag, "Page %u could not be written; its file keeps the last saved "
            "setting", (unsigned)slot_ + 1);
   return false;
 }
@@ -270,6 +318,14 @@ void GaugeConfig::begin(Side side) {
   // SensESP mounts the same filesystem later; mounting again is a no-op.
   if (!SPIFFS.begin(true)) {
     ESP_LOGE(kTag, "Filesystem not mounted; pages use their defaults");
+  }
+  // A save a power cut interrupted is finished or undone (card_store.h)
+  // before any card is loaded.
+  CardFiles files[kMaxPages];
+  for (size_t i = 0; i < kMaxPages; i++) files[i] = card_files(i);
+  SpiffsCardFs fs;
+  if (!recover_cards(fs, files, kMaxPages)) {
+    ESP_LOGW(kTag, "An interrupted page save was finished or undone");
   }
   page_count_ = std::make_shared<PageCount>();
   page_count_->load();

@@ -1,7 +1,8 @@
 # Host unit tests for the shared library's logic that does not need a board:
 # value conversion and scales (gauge_resolve, units), the factory pages, the
 # page card's rules and schema (page_rules), what a page accepts from Signal
-# K and when it stops trusting it (value_gate, sk_parse). CI runs them with
+# K and when it stops trusting it (value_gate, sk_parse), and how a card's
+# file is replaced (card_store). CI runs them with
 # AddressSanitizer and UndefinedBehaviorSanitizer. See tests/README.md.
 cmake_minimum_required(VERSION 3.16)
 project(gauge_tests CXX)
@@ -26,6 +27,8 @@ add_executable(gauge_tests
   test_page_rules.cpp
   test_value_gate.cpp
   test_sk_parse.cpp
+  test_card_store.cpp
+  ${COMMON}/card_store.cpp
   ${COMMON}/gauge_defs.cpp
   ${COMMON}/gauge_resolve.cpp
   ${COMMON}/units.cpp

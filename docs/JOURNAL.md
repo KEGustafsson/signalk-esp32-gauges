@@ -314,9 +314,14 @@ save from an older form is refused (`page_save_action()`, tested). A plain
 save leaves it, so a card can be saved twice without a reload. Also: the
 touch log line prints the address that answered (was 0x00 for the board
 file's default), PSRAM is the chip size rounded to the MB. A page card's
-save is checked: SensESP's `FileSystemSaveable::save()` removes the old file
-first and reports success whatever the write did, so a card is now written
-to a staging file (`/pgnew<n>`), checked by size, and only then put in place
-of the old one; a failed save keeps the last good setting. A swap stages
-both cards before replacing either, so a full or failing filesystem never
-leaves one page on both cards (CodeRabbit).
+file is replaced all or nothing (`card_store.*`, host-tested; CodeRabbit):
+SensESP's `FileSystemSaveable::save()` removes the old file first and reports
+success whatever the write did. Now the new contents go to a staging file
+(`/pgnew<n>`) and are read back, the old file moves to a backup (`/pgold<n>`,
+empty if there was none), the staging file moves into place, and the backups
+go; a failure undoes every card in the save, and at boot `recover_cards()`
+undoes or finishes a save a power cut interrupted. A web UI save is written
+by `from_json()` itself, so a failed write refuses the save (and puts the
+card back); a swap writes both cards in one replace. The tests fail every
+step in turn, and cut the power at every step, and check that a swap always
+ends both old or both new.

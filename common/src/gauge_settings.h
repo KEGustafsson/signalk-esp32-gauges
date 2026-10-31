@@ -38,10 +38,11 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
   // page_rules.h; also carries out the card's one-shot actions (reset to
   // factory, swap with another page). Changes nothing on a bad value.
   bool from_json(const JsonObject& config) override;
-  // Writes the card to a staging file and checks it before it replaces the
-  // card's file: unlike FileSystemSaveable::save(), which removes the old
-  // file first and does not check the write, a failed write keeps the card's
-  // last good setting. False if the card could not be written.
+  // Writes the card through card_store.h (all or nothing, checked) rather
+  // than FileSystemSaveable::save(), which removes the old file first and
+  // does not check the write. A web UI save is written by from_json() itself,
+  // so a failed write refuses the save; the web UI's own save() after it then
+  // finds nothing new to write. False if the card could not be written.
   bool save() override;
 
   // The factory page, or nullptr for a page past the factory ones.
@@ -57,13 +58,12 @@ class GaugeSettings : public sensesp::FileSystemSaveable {
   size_t slot_;
   const GaugeDef* factory_;
   bool loaded_ = false;
-  // save() in two steps, so a swap can write both cards before it replaces
-  // either: stage() writes and checks the staging file, commit() puts it in
-  // place of the card's file.
-  String staging_path() const;
-  bool stage();
-  bool commit();
-  void discard_staged();
+  // Writes this card, and `other` too if given, all or nothing; only for a
+  // web UI save (the boot load writes nothing).
+  bool persist(GaugeSettings* other);
+  static bool write_cards(GaugeSettings* const* cards, size_t n);
+  // What was last written to the card's file.
+  std::string written_;
   // The revision a form loaded now carries (page_rules.h, PageAction): from
   // a random start each boot, so a form loaded before a restart is out of
   // date too, and moved on by a reset, a swap (both cards) or a save the
