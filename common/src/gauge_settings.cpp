@@ -84,6 +84,10 @@ CardFiles card_files(size_t slot) {
   return files;
 }
 
+// Present while a page save is under way, or one could not be undone
+// (card_store.h).
+const char* const kSaveMarker = "/pgtx";
+
 class SpiffsCardFs : public CardFs {
  public:
   bool exists(const std::string& path) override {
@@ -268,7 +272,7 @@ bool GaugeSettings::write_cards(GaugeSettings* const* cards, size_t n) {
     serializeJson(obj, texts[i]);
   }
   SpiffsCardFs fs;
-  if (!replace_cards(fs, files, texts, n)) return false;
+  if (!replace_cards(fs, kSaveMarker, files, texts, n)) return false;
   for (size_t i = 0; i < n; i++) cards[i]->written_ = texts[i];
   return true;
 }
@@ -324,7 +328,7 @@ void GaugeConfig::begin(Side side) {
   CardFiles files[kMaxPages];
   for (size_t i = 0; i < kMaxPages; i++) files[i] = card_files(i);
   SpiffsCardFs fs;
-  if (!recover_cards(fs, files, kMaxPages)) {
+  if (!recover_cards(fs, kSaveMarker, files, kMaxPages)) {
     ESP_LOGW(kTag, "An interrupted page save was finished or undone");
   }
   page_count_ = std::make_shared<PageCount>();

@@ -1,9 +1,11 @@
-// Replacing page-card files all or nothing (card_store.h): with a write,
-// rename or remove failing at every step, and with a power cut at every
-// step followed by the boot's recovery, a swap of two cards ends with both
-// old or both new, never one page on both cards or a page lost.
+// Replacing page-card files all or nothing (card_store.h): with a read,
+// write, rename or remove failing at any one or two steps (so a rollback can
+// fail too), and with a power cut at every step, then the boot's recovery, a
+// swap of two cards ends with both old or both new, never one page on both
+// cards or a page lost.
 
 #include <map>
+#include <set>
 #include <string>
 
 #include "card_store.h"
@@ -13,26 +15,26 @@ using namespace skgauges;
 
 namespace {
 
-// A filesystem in memory. Only the operations that change it count as
-// steps: the step `fail_at` fails once; from the step `cut_at` on, nothing
-// changes any more (the power is off) until `power_on()`.
+// A filesystem in memory. Every read, write, rename and remove is a step:
+// the steps in `fail` fail; from the step `cut_at` on, nothing works any
+// more (the power is off) until `power_on()`.
 class FakeFs : public CardFs {
  public:
   std::map<std::string, std::string> files;
-  int fail_at = -1;
+  std::set<int> fail;
   int cut_at = -1;
   int steps = 0;
 
   void power_on() {
     cut_at = -1;
-    fail_at = -1;
+    fail.clear();
   }
 
   bool exists(const std::string& path) override {
     return files.count(path) != 0;
   }
   bool read(const std::string& path, std::string* text) override {
-    if (powered_off()) return false;
+    if (!step()) return false;
     auto it = files.find(path);
     if (it == files.end()) return false;
     *text = it->second;
@@ -64,12 +66,13 @@ class FakeFs : public CardFs {
   bool step() {
     if (powered_off()) return false;
     const int n = steps++;
-    if (n == fail_at) return false;
+    if (fail.count(n) != 0) return false;
     if (cut_at >= 0 && n >= cut_at) return false;
     return true;
   }
 };
 
+const std::string kMarker = "/pgtx";
 const CardFiles kCards[2] = {{"/a", "/pgnew0", "/pgold0"},
                              {"/b", "/pgnew1", "/pgold1"}};
 
@@ -94,7 +97,7 @@ const std::string kSwapTexts[2] = {"B2", "A2"};
 // How many changing steps a whole swap takes.
 int swap_steps(bool b_saved) {
   FakeFs fs = before_swap(b_saved);
-  CHECK(replace_cards(fs, kCards, kSwapTexts, 2));
+  CHECK(replace_cards(fs, kMarker, kCards, kSwapTexts, 2));
   return fs.steps;
 }
 
@@ -102,18 +105,30 @@ int swap_steps(bool b_saved) {
 
 TEST(replace_writes_every_card_and_leaves_nothing_behind) {
   FakeFs fs = before_swap(true);
-  CHECK(replace_cards(fs, kCards, kSwapTexts, 2));
+  CHECK(replace_cards(fs, kMarker, kCards, kSwapTexts, 2));
   CHECK(fs.files == swapped_state());
   // A card that had no file.
   fs = before_swap(false);
-  CHECK(replace_cards(fs, kCards, kSwapTexts, 2));
+  CHECK(replace_cards(fs, kMarker, kCards, kSwapTexts, 2));
   CHECK(fs.files == swapped_state());
   // One card on its own.
   fs = before_swap(true);
   const std::string text = "A3";
-  CHECK(replace_cards(fs, kCards, &text, 1));
+  CHECK(replace_cards(fs, kMarker, kCards, &text, 1));
   CHECK(fs.files.at("/a") == "A3" && fs.files.at("/b") == "B");
   CHECK(fs.files.size() == 2);
+}
+
+// After a failed replace and the boot's recovery: both old.
+void check_failed_then_recovered(FakeFs& fs, bool replaced, bool b_saved) {
+  fs.power_on();
+  recover_cards(fs, kMarker, kCards, 2);
+  if (replaced) {
+    CHECK(fs.files == swapped_state());
+  } else {
+    CHECK(fs.files == old_state(b_saved));
+  }
+  CHECK(recover_cards(fs, kMarker, kCards, 2));  // A second boot: nothing
 }
 
 TEST(a_failed_step_changes_nothing) {
@@ -121,15 +136,35 @@ TEST(a_failed_step_changes_nothing) {
     const int total = swap_steps(b_saved);
     for (int k = 0; k < total; k++) {
       FakeFs fs = before_swap(b_saved);
-      fs.fail_at = k;
-      if (replace_cards(fs, kCards, kSwapTexts, 2)) {
-        // Only removing a backup at the end may fail and still succeed;
-        // the next boot removes what is left.
+      fs.fail = {k};
+      const bool replaced = replace_cards(fs, kMarker, kCards, kSwapTexts, 2);
+      if (replaced) {
+        // Only removing a backup at the end may fail and still succeed.
         CHECK(fs.files.at("/a") == "B2" && fs.files.at("/b") == "A2");
-        recover_cards(fs, kCards, 2);
-        CHECK(fs.files == swapped_state());
       } else {
-        CHECK(fs.files == old_state(b_saved));
+        CHECK(fs.files == old_state(b_saved));  // Put back at once
+      }
+      check_failed_then_recovered(fs, replaced, b_saved);
+    }
+  }
+}
+
+TEST(a_failed_rollback_is_finished_at_boot) {
+  // Two failures: the second can hit the rollback of the first (a read of a
+  // backup, a remove, a rename). Until the boot, every replace is refused.
+  for (bool b_saved : {true, false}) {
+    const int total = swap_steps(b_saved) + 12;  // Room for rollback steps
+    for (int j = 0; j < total; j++) {
+      for (int k = j + 1; k < total; k++) {
+        FakeFs fs = before_swap(b_saved);
+        fs.fail = {j, k};
+        const bool replaced =
+            replace_cards(fs, kMarker, kCards, kSwapTexts, 2);
+        if (!replaced && fs.files.count(kMarker) != 0) {
+          const std::string text = "A3";
+          CHECK(!replace_cards(fs, kMarker, kCards, &text, 1));
+        }
+        check_failed_then_recovered(fs, replaced, b_saved);
       }
     }
   }
@@ -137,18 +172,23 @@ TEST(a_failed_step_changes_nothing) {
 
 TEST(a_power_cut_at_any_step_recovers_to_old_or_new) {
   for (bool b_saved : {true, false}) {
-    const int total = swap_steps(b_saved);
-    for (int k = 0; k <= total; k++) {
-      FakeFs fs = before_swap(b_saved);
-      fs.cut_at = k;
-      replace_cards(fs, kCards, kSwapTexts, 2);
-      fs.power_on();
-      recover_cards(fs, kCards, 2);
-      CHECK(fs.files == old_state(b_saved) || fs.files == swapped_state());
-      // A second boot changes nothing.
-      const auto after = fs.files;
-      CHECK(recover_cards(fs, kCards, 2));
-      CHECK(fs.files == after);
+    const int total = swap_steps(b_saved) + 12;
+    // A cut at step k, after a failure at step j (none for j = -1): the cut
+    // can land in the rollback too.
+    for (int j = -1; j < total; j++) {
+      for (int k = j + 1; k <= total; k++) {
+        FakeFs fs = before_swap(b_saved);
+        if (j >= 0) fs.fail = {j};
+        fs.cut_at = k;
+        replace_cards(fs, kMarker, kCards, kSwapTexts, 2);
+        fs.power_on();
+        recover_cards(fs, kMarker, kCards, 2);
+        CHECK(fs.files == old_state(b_saved) || fs.files == swapped_state());
+        // A second boot changes nothing.
+        const auto after = fs.files;
+        CHECK(recover_cards(fs, kMarker, kCards, 2));
+        CHECK(fs.files == after);
+      }
     }
   }
 }
@@ -156,17 +196,19 @@ TEST(a_power_cut_at_any_step_recovers_to_old_or_new) {
 TEST(replace_refuses_an_empty_card_and_clears_a_finished_backup) {
   FakeFs fs = before_swap(true);
   const std::string empty;
-  CHECK(!replace_cards(fs, kCards, &empty, 1));
+  CHECK(!replace_cards(fs, kMarker, kCards, &empty, 1));
   CHECK(fs.files == old_state(true));
   // A backup left by a replace that finished goes with the next one.
   fs.files["/pgold0"] = "A0";
   const std::string text = "A3";
-  CHECK(replace_cards(fs, kCards, &text, 1));
+  CHECK(replace_cards(fs, kMarker, kCards, &text, 1));
   CHECK(fs.files.at("/a") == "A3" && fs.files.count("/pgold0") == 0);
-  // One left by a replace that could not be undone stays for the boot.
-  fs.files.erase("/a");
+  // An unfinished rollback (the marker is there): refused until the boot
+  // puts the card back.
+  fs.files["/pgtx"] = "replace";
   fs.files["/pgold0"] = "A";
-  CHECK(!replace_cards(fs, kCards, &text, 1));
-  CHECK(!recover_cards(fs, kCards, 2));
-  CHECK(fs.files.at("/a") == "A");
+  fs.files["/a"] = "A3";
+  CHECK(!replace_cards(fs, kMarker, kCards, &text, 1));
+  CHECK(!recover_cards(fs, kMarker, kCards, 2));
+  CHECK(fs.files == old_state(true));
 }

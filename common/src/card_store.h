@@ -8,16 +8,19 @@
 // SensESP's FileSystemSaveable::save() is not enough: it removes the old file
 // first and reports success whatever the write did.
 //
-// A replace, for every card in it:
-//   1. writes the new contents to the card's staging file and reads it back;
-//   2. moves the card's file to its backup (or, if it has none, writes an
-//      empty backup, which means "no file");
-//   3. moves the staging file into place;
-//   4. removes the backups.
-// A failure in 1-3 undoes every card's steps. A power cut is undone, or
-// finished, by recover_cards() at the next boot: while any card has a backup
-// but no file, the replace was cut before step 3 ended, and every card goes
-// back to its backup; otherwise step 3 ended and the backups go.
+// A replace:
+//   1. writes each card's new contents to its staging file and reads them
+//      back;
+//   2. writes the marker file: from here until it is removed, the cards are
+//      to go back to their old files whatever happens;
+//   3. moves each card's file to its backup (or, if it has none, writes an
+//      empty backup, which means "no file"), then each staging file into
+//      place;
+//   4. removes the marker (the replace is done), then the backups.
+// A failure in 1-4 puts every card back; the marker goes only once that has
+// worked, so a rollback that fails part-way (or a power cut) is finished by
+// recover_cards() at the next boot: with the marker there, every card goes
+// back to its backup; without it, leftover backups and staging files go.
 
 #include <stddef.h>
 
@@ -43,14 +46,18 @@ struct CardFiles {
   std::string backup;   // Its old file, until every card is replaced
 };
 
-// Replaces cards[i].path with texts[i] for i < n, all or nothing. A card's
-// text is never empty. False (and nothing changed) on any failure.
-bool replace_cards(CardFs& fs, const CardFiles* cards, const std::string* texts,
-                   size_t n);
+// Replaces cards[i].path with texts[i] for i < n, all or nothing, using
+// `marker` as the marker file. A card's text is never empty. False on any
+// failure: nothing changed, or (if putting the cards back failed too) the
+// marker stays and recover_cards() puts them back at the next boot; until
+// then every replace is refused.
+bool replace_cards(CardFs& fs, const std::string& marker,
+                   const CardFiles* cards, const std::string* texts, size_t n);
 
-// Finishes or undoes a replace a power cut interrupted, over every card a
-// replace can include. Call at boot, before the cards are loaded. True if
-// nothing needed doing.
-bool recover_cards(CardFs& fs, const CardFiles* cards, size_t n);
+// Finishes a replace that was cut short or could not be undone, over every
+// card a replace can include. Call at boot, before the cards are loaded.
+// True if nothing needed doing.
+bool recover_cards(CardFs& fs, const std::string& marker,
+                   const CardFiles* cards, size_t n);
 
 }  // namespace skgauges

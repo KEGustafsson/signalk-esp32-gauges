@@ -319,9 +319,13 @@ SensESP's `FileSystemSaveable::save()` removes the old file first and reports
 success whatever the write did. Now the new contents go to a staging file
 (`/pgnew<n>`) and are read back, the old file moves to a backup (`/pgold<n>`,
 empty if there was none), the staging file moves into place, and the backups
-go; a failure undoes every card in the save, and at boot `recover_cards()`
-undoes or finishes a save a power cut interrupted. A web UI save is written
+go. A marker file (`/pgtx`) is written before any old file moves and removed
+only once every new file is in place (or every card is back): while it is
+there, the boot's `recover_cards()` puts every card back to its backup, so a
+power cut, or a rollback that itself failed, is finished at the next boot
+(and further saves are refused until then). A web UI save is written
 by `from_json()` itself, so a failed write refuses the save (and puts the
 card back); a swap writes both cards in one replace. The tests fail every
-step in turn, and cut the power at every step, and check that a swap always
-ends both old or both new.
+step and every pair of steps (reads included, so a rollback fails too), and
+cut the power at every step, with and without a failure before it; a swap
+always ends both old or both new after the boot.
