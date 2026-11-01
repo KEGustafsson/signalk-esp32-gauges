@@ -299,16 +299,20 @@ touch, WiFi, Signal K, live readings and updates over WiFi (OTA) work.
 Readings against another instrument and stale/recovery behaviour on the
 hardware are not verified yet (`docs/JOURNAL.md`).
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every
-pull request and every push to `main`. It:
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), on every pull
+request and every push to `main`:
 
-- builds both boards (as their starboard devices);
 - runs the host unit tests ([`tests/`](tests/)) with AddressSanitizer and
   UndefinedBehaviorSanitizer: unit conversion and scales, the factory pages,
   the page cards' rules, and what a page accepts from Signal K and when it
   stops trusting it;
 - renders every gauge page on the host ([`tools/preview`](tools/preview/));
 - checks the scripts and that no credential is committed.
+
+It does not build the firmware there: that is too heavy for every change.
+Building both boards (as their starboard devices) runs only when the
+workflow is started by hand (Actions -> CI -> Run workflow), so build a
+firmware change locally, one env per board.
 
 [docs/BRINGUP.md](docs/BRINGUP.md) walks through the first power-up of a
 device, with the serial log to expect; the board-specific checks are in each

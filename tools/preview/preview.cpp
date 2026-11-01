@@ -198,7 +198,14 @@ int main(int argc, char** argv) {
       std::sort(us.begin(), us.end());
       printf("bench %d %-14s median %6.2f ms/frame (fastest %5.2f)\n", W,
              p.id, us[kFrames / 2] / 1000.0, us[0] / 1000.0);
+      // Back to the sample, fresh, and let the needle or card settle on it:
+      // a stale page keeps what it last showed.
       v.value = p.sample;
+      for (int k = 0; k < 60; k++) {
+        v.updated_ms = now_ms();
+        page->update(v, now_ms());
+        lv_refr_now(d);
+      }
     }
 
     // The same page once the sample is older than kStaleAfterMs.

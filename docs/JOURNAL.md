@@ -591,3 +591,16 @@ redrew 180 graduations and 16 rotated labels.
   for every change, the user's call): `firmware-build` runs only on a
   manual "Run workflow". Firmware changes are built locally, one env per
   board.
+- CodeRabbit's review of `6fc791d`, all five taken:
+  - the slow-pass restart counted from the first slow pass and started
+    over after a minute, so passes at 0, 31, 61 and 90 s never made three
+    in a minute: it now keeps the last three times (a ring) and restarts
+    when the oldest is within 60 s;
+  - `preview <size> bench` left the compass card at the last bench
+    heading for the stale render: the sample is now applied fresh and
+    settled first (stale images with and without `bench` are identical);
+  - `~/.pio21` is cached on an exact `platformio.ini` match only: the
+    platform cleans an old framework only under a `.platformio` path;
+  - the 4" README's core-dump steps use `pio pkg exec` (esptool,
+    riscv32-esp-elf-gdb);
+  - the top README no longer says CI builds the firmware on every change.

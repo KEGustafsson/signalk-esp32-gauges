@@ -72,8 +72,12 @@ constexpr uint32_t kSlowPassesToRestart = 3;
 constexpr uint32_t kSlowPassWindowMs = 60000;
 bool loop_watchdog_on = false;
 bool ota_started = false;  // An upload got past authentication
-uint32_t slow_passes = 0;
-uint32_t first_slow_pass_ms = 0;
+// When the last kSlowPassesToRestart slow passes ended (a ring): the unit
+// restarts when the oldest of them is within kSlowPassWindowMs, a rolling
+// window, so passes at 31, 61 and 90 s count as three in a minute.
+uint32_t slow_pass_ms[kSlowPassesToRestart] = {};
+uint32_t slow_passes = 0;  // Recorded so far, at most kSlowPassesToRestart
+uint32_t slow_pass_next = 0;
 
 // The longest pass of each side of the loop since the last "loop" log line:
 // how close to a stall the gauge runs, not only when it crosses one.
@@ -294,11 +298,12 @@ void gauge_app_loop() {
   }
   if (took >= kSlowPassMs && !ota_started) {
     const uint32_t now = millis();
-    if (slow_passes == 0 || now - first_slow_pass_ms > kSlowPassWindowMs) {
-      slow_passes = 0;
-      first_slow_pass_ms = now;
-    }
-    if (++slow_passes >= kSlowPassesToRestart) {
+    slow_pass_ms[slow_pass_next] = now;
+    slow_pass_next = (slow_pass_next + 1) % kSlowPassesToRestart;
+    if (slow_passes < kSlowPassesToRestart) slow_passes++;
+    // slow_pass_next now indexes the oldest of the last three.
+    if (slow_passes >= kSlowPassesToRestart &&
+        now - slow_pass_ms[slow_pass_next] <= kSlowPassWindowMs) {
       ESP_LOGE("loop",
                "SensESP held the loop over %u s %u times in %u s "
                "(a WiFi link not answering?): restarting",

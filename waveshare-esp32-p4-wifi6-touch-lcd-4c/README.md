@@ -94,9 +94,15 @@ examples.
   4 s 3 times in 60 s (a WiFi link not answering?): restarting` in the log.
 - After an unexplained restart, the boot log's reset reason and the core
   dump tell why: read the core dump partition (`coredump` at 0x1FF0000 in
-  `partitions_32MB.csv`) with `esptool read-flash 0x1FF0000 0x10000
-  core.bin`, drop its first 24 bytes, and open the rest in
-  `riscv32-esp-elf-gdb` with the `firmware.elf` of the build that ran
-  (`thread apply all bt`). Reading it restarts the unit once.
+  `partitions_32MB.csv`), drop its first 24 bytes, and open the rest in
+  GDB with the `firmware.elf` of the build that ran (`thread apply all
+  bt`). Reading it restarts the unit once. With PlatformIO's own tools,
+  from this folder:
+
+  ```bash
+  pio pkg exec -p tool-esptoolpy -- esptool --chip esp32p4 read-flash 0x1FF0000 0x10000 core.bin
+  tail -c +25 core.bin > core.elf
+  pio pkg exec -p riscv32-esp-elf-gdb -- riscv32-esp-elf-gdb .pio/build/p4_stbd/firmware.elf core.elf
+  ```
 - A swipe down shows the IP address; it should match the one your router gave the
   device (or the static address in `secrets.h`).

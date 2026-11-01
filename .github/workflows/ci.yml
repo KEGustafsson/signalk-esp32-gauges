@@ -73,15 +73,23 @@ jobs:
       # Keyed on platformio.ini, which names the platform and library sources.
       # Per-env keys keep the jobs from racing to write one entry. The 2.1"
       # keeps its packages in ~/.pio21 (core_dir in its platformio.ini: its
-      # framework is rebuilt).
+      # framework is rebuilt), cached in the next step.
       - name: Cache PlatformIO
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/.platformio
-            ~/.pio21
+          path: ~/.platformio
           key: pio-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
           restore-keys: pio-${{ matrix.env }}-${{ runner.os }}-
+
+      # The 2.1"'s rebuilt framework, on an exact match only: the platform
+      # cleans an old framework only under a path with `.platformio` in it,
+      # so one restored from another platformio.ini would be built on.
+      - name: Cache PlatformIO (2.1" framework)
+        if: matrix.project == 'waveshare-esp32-s3-touch-lcd-2.1'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pio21
+          key: pio21-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
 
       # Compiled objects (Arduino core, LVGL, SensESP, the gauge code), reused
       # through PlatformIO's build cache. Its entries are keyed by the content
