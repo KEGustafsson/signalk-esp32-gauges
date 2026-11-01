@@ -207,7 +207,9 @@ warning from 2500 rpm and an alarm from 2800 rpm, on a 0–3000 rpm dial:
   off), also in SI.
 - Zones and scale changed on the server reach the dial when the server
   sends them — at the latest when the device reconnects — without a
-  restart.
+  restart. A metadata update that carries only some fields changes only
+  those, as on the server: a SensESP device, for one, sends the units and
+  description of its outputs every time it connects, and the zones stay.
 - If the server's `units` for the path do not match the display unit (for
   example °C chosen for a path in Hz), the dial draws no zones and ignores
   `displayScale`, rather than drawing them in the wrong place.

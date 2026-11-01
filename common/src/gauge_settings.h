@@ -126,7 +126,8 @@ class GaugeConfig {
   std::shared_ptr<PageCount> page_count_;
   std::shared_ptr<GaugeSettings> settings_[kMaxPages];
   Snapshot snapshot_[kMaxPages];
-  GaugeMeta meta_[kMaxPages];
+  GaugeMeta received_[kMaxPages];  // Every meta delta merged (sk_merge_meta)
+  GaugeMeta meta_[kMaxPages];      // What the page is drawn from
   GaugeDef defs_[kMaxPages] = {};
   uint32_t generation_[kMaxPages] = {};
   uint32_t stale_ms_[kMaxPages] = {};

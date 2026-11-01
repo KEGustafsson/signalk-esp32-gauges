@@ -11,6 +11,8 @@
 
 #include <string>
 
+#include "gauge_resolve.h"
+
 namespace skgauges {
 
 // A numeric value: true and *out set, or false for null, a string, a
@@ -44,6 +46,51 @@ inline bool sk_attitude(JsonVariantConst value, float* roll, float* pitch) {
 inline std::string sk_meta_units(JsonVariantConst meta) {
   JsonVariantConst units = meta["units"];
   return units.is<const char*>() ? units.as<const char*>() : "";
+}
+
+// Applies a meta delta's `value` to what is known of the path, the way the
+// Signal K server merges it: a field the delta carries replaces the old one
+// (null or a malformed one clears it), a field it leaves out is kept. Each
+// source's metadata reaches the gauge as sent, not merged: SensESP, for one,
+// sends {units, description} for its outputs at every connect, and taking
+// that for the whole metadata wiped the server's zones minutes after boot.
+// A zone with a bound that is not a number is left out (as<float>() would
+// read it as 0).
+inline void sk_merge_meta(JsonVariantConst value, GaugeMeta* meta) {
+  if (!value.is<JsonObjectConst>()) {
+    return;
+  }
+  if (!value["units"].isUnbound()) {
+    meta->units = sk_meta_units(value);
+  }
+  JsonVariantConst scale = value["displayScale"];
+  if (!scale.isUnbound()) {
+    meta->has_scale =
+        scale["lower"].is<float>() && scale["upper"].is<float>();
+    meta->scale_lower = meta->has_scale ? scale["lower"].as<float>() : 0.0f;
+    meta->scale_upper = meta->has_scale ? scale["upper"].as<float>() : 0.0f;
+  }
+  JsonVariantConst zones = value["zones"];
+  if (!zones.isUnbound()) {
+    meta->zones.clear();
+    for (JsonVariantConst z : zones.as<JsonArrayConst>()) {
+      SiZone zone;
+      JsonVariantConst lower = z["lower"];
+      JsonVariantConst upper = z["upper"];
+      if ((!lower.isNull() && !lower.is<float>()) ||
+          (!upper.isNull() && !upper.is<float>())) {
+        continue;
+      }
+      zone.has_lower = lower.is<float>();
+      zone.lower = zone.has_lower ? lower.as<float>() : 0.0f;
+      zone.has_upper = upper.is<float>();
+      zone.upper = zone.has_upper ? upper.as<float>() : 0.0f;
+      JsonVariantConst state = z["state"];
+      zone.color = zone_state_color(
+          state.is<const char*>() ? state.as<const char*>() : "");
+      meta->zones.push_back(zone);
+    }
+  }
 }
 
 }  // namespace skgauges

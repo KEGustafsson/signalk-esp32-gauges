@@ -81,3 +81,82 @@ TEST(meta_units_only_from_a_string) {
     CHECK(sk_meta_units(parse(json)["value"]).empty());
   }
 }
+
+TEST(meta_deltas_merge_like_the_server) {
+  // What the server sends at subscribe: its merged metadata for the path.
+  GaugeMeta meta;
+  sk_merge_meta(parse(R"({"value":{"units":"Hz","description":"Revs",
+      "displayScale":{"lower":0,"upper":50},
+      "zones":[{"lower":36.7,"upper":50,"state":"warn"},
+               {"upper":5,"state":"normal"}]}})")["value"],
+                &meta);
+  CHECK(meta.units == "Hz");
+  CHECK(meta.has_scale);
+  CHECK_NEAR(meta.scale_upper, 50, 0);
+  CHECK(meta.zones.size() == 2);
+  CHECK(meta.zones[0].has_lower && meta.zones[0].has_upper);
+  CHECK_NEAR(meta.zones[0].lower, 36.7, 1e-5);
+  CHECK(meta.zones[0].color != 0);
+  CHECK(!meta.zones[1].has_lower);
+  CHECK(meta.zones[1].color == 0);  // normal: not drawn
+
+  // What a SensESP source sends for its output at every connect, forwarded
+  // as is: the zones and scale stay.
+  sk_merge_meta(
+      parse(R"({"value":{"units":"Hz","description":"Revs"}})")["value"],
+      &meta);
+  CHECK(meta.units == "Hz");
+  CHECK(meta.has_scale);
+  CHECK(meta.zones.size() == 2);
+
+  // A field the delta carries replaces the old one.
+  sk_merge_meta(parse(R"({"value":{"zones":[{"lower":40,"state":"alarm"}],
+      "displayScale":{"lower":0,"upper":60}}})")["value"],
+                &meta);
+  CHECK(meta.zones.size() == 1);
+  CHECK(meta.zones[0].has_lower && !meta.zones[0].has_upper);
+  CHECK_NEAR(meta.scale_upper, 60, 0);
+  CHECK(meta.units == "Hz");
+
+  // Cleared: an empty list, null, or a malformed scale.
+  sk_merge_meta(parse(R"({"value":{"zones":[]}})")["value"], &meta);
+  CHECK(meta.zones.empty());
+  sk_merge_meta(parse(R"({"value":{"zones":[{"lower":1,"state":"warn"}]}})")
+                    ["value"],
+                &meta);
+  CHECK(meta.zones.size() == 1);
+  sk_merge_meta(parse(R"({"value":{"zones":null,"displayScale":null,
+      "units":null}})")["value"],
+                &meta);
+  CHECK(meta.zones.empty());
+  CHECK(!meta.has_scale);
+  CHECK(meta.units.empty());
+  sk_merge_meta(parse(R"({"value":{"displayScale":{"lower":0,"upper":60}}})")
+                    ["value"],
+                &meta);
+  CHECK(meta.has_scale);
+  sk_merge_meta(parse(R"({"value":{"displayScale":{"upper":60}}})")["value"],
+                &meta);
+  CHECK(!meta.has_scale);
+
+  // Not an object: nothing changes.
+  sk_merge_meta(parse(R"({"value":{"units":"K"}})")["value"], &meta);
+  sk_merge_meta(parse(R"({"value":null})")["value"], &meta);
+  sk_merge_meta(parse(R"({})")["value"], &meta);
+  CHECK(meta.units == "K");
+}
+
+TEST(meta_zones_with_bad_bounds_are_left_out) {
+  // as<float>() would read these bounds as 0: a zone over the wrong part of
+  // the dial.
+  GaugeMeta meta;
+  sk_merge_meta(parse(R"({"value":{"zones":[
+      {"lower":"80","upper":100,"state":"alarm"},
+      {"lower":80,"upper":true,"state":"alarm"},
+      {"lower":80,"upper":null,"state":"alarm"},
+      {"lower":60,"upper":80,"state":"warn"}]}})")["value"],
+                &meta);
+  CHECK(meta.zones.size() == 2);
+  CHECK(meta.zones[0].has_lower && !meta.zones[0].has_upper);
+  CHECK_NEAR(meta.zones[1].lower, 60, 0);
+}

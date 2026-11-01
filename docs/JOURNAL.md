@@ -604,3 +604,29 @@ redrew 180 graduations and 16 rotated labels.
   - the 4" README's core-dump steps use `pio pkg exec` (esptool,
     riscv32-esp-elf-gdb);
   - the top README no longer says CI builds the firmware on every change.
+
+## 2026-11-01 — Zones that vanished minutes after boot
+
+- **Symptom (user):** on both units, the dials' zones disappear some time
+  after boot. A saved 2.1" log shows it: the rpm, coolant and oil pages got
+  their zone at 41 s, then at 153 s, within 90 ms of each other,
+  `metadata applied (0 zones drawn, ...)`. The server still held the zones
+  (`.../coolantTemperature/meta` over its REST API).
+- **Cause:** the three paths come from another SensESP device
+  (`$source` `sensesp-engines`). SensESP sends a meta delta for its outputs
+  at every connect (`SKDeltaQueue::add_metadata()`, re-armed in
+  `on_connected()`): `units`, `description`, no zones. The server merges it
+  into what it holds and forwards it as sent to `sendMeta=all` subscribers.
+  `GaugeConfig::set_meta()` built the page's metadata from each delta alone,
+  so this one replaced the zones with none: the engine unit reconnecting
+  wiped them on every gauge, until the gauge itself reconnected.
+- **Fix:** `sk_merge_meta()` (`sk_parse.h`, tested) merges like the server:
+  a field the delta carries replaces the old one (null or malformed clears
+  it), one it leaves out is kept. `GaugeConfig` keeps the merged metadata
+  as received (`received_`) apart from what the page draws, so the unit
+  check runs on the merged result. A zone bound that is not a number now
+  leaves the zone out (SensESP's `SKZone` read it as 0).
+- Host tests 47 passed. Both units flashed over USB (`p4_stbd_usb`, `s3_stbd_usb`):
+  zones on the rpm, coolant and oil pages at boot, none lost in the first
+  8 (2.1") and 13 (4") minutes. Not yet seen: the engine unit reconnecting
+  while a gauge runs, the case that wiped them.
