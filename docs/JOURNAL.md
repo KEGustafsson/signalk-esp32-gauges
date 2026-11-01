@@ -634,3 +634,12 @@ redrew 180 graduations and 16 rotated labels.
   redrew nothing (the first, at the settled sample), so "fastest" could be
   a no-op (0.01 ms). It now times only frames that flushed a strip, and
   prints how many did (239 of 240, the compass 237).
+- CodeRabbit's review of `8e13ffd`: no actionable findings, one nitpick:
+  the merge was tested on a bare `GaugeMeta`, not through
+  `GaugeConfig::set_meta()`. `set_meta()` is SensESP glue the host tests
+  cannot build, so its unit check moved to `meta_fits_unit()`
+  (`gauge_resolve.*`), and a test runs `set_meta()`'s steps on the port
+  rpm dial: zones, then SensESP's `{units, description}`, still draws
+  both zones; a meta in another unit draws none, and back in Hz the zones
+  return. With each delta taken as the whole metadata (the bug before
+  `1c34764`) it fails.

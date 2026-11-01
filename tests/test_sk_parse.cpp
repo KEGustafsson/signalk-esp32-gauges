@@ -3,6 +3,7 @@
 
 #include <ArduinoJson.h>
 
+#include "gauge_defs.h"
 #include "sk_parse.h"
 #include "test.h"
 
@@ -159,4 +160,41 @@ TEST(meta_zones_with_bad_bounds_are_left_out) {
   CHECK(meta.zones.size() == 2);
   CHECK(meta.zones[0].has_lower && !meta.zones[0].has_upper);
   CHECK_NEAR(meta.zones[1].lower, 60, 0);
+}
+
+TEST(a_page_keeps_its_zones_through_a_units_only_delta) {
+  // GaugeConfig::set_meta()'s steps, on the port rpm dial (rpm from Hz):
+  // merge the delta into what was received, check it fits the page's unit,
+  // resolve the page. Each delta is applied to what came before, never taken
+  // as the whole metadata.
+  const GaugeDef& rpm = *default_page(Side::kPort, 0);
+  GaugeMeta received;
+  auto drawn = [&](const char* json) {
+    sk_merge_meta(parse(json)["value"], &received);
+    const GaugeMeta meta =
+        meta_fits_unit(received, rpm.unit_id) ? received : GaugeMeta();
+    return resolve_gauge(rpm, GaugeOptions(), meta).zone_count;
+  };
+  CHECK(drawn(R"({"value":{"units":"Hz","zones":[
+      {"lower":41.667,"upper":46.667,"state":"warn"},
+      {"lower":46.667,"state":"alarm"}]}})") == 2);
+  // SensESP's {units, description} at every reconnect of the engine unit:
+  // the zones stay (they were dropped before 1c34764).
+  CHECK(drawn(R"({"value":{"units":"Hz","description":"Revs"}})") == 2);
+  // Given in another unit, they no longer fit the dial: none drawn...
+  CHECK(drawn(R"({"value":{"units":"rad/s"}})") == 0);
+  // ...and back in Hz, the zones received earlier are drawn again.
+  CHECK(drawn(R"({"value":{"units":"Hz"}})") == 2);
+}
+
+TEST(meta_fits_only_the_unit_the_page_converts_from) {
+  GaugeMeta meta;
+  CHECK(meta_fits_unit(meta, "rpm"));  // No units: nothing to contradict
+  meta.units = "Hz";
+  CHECK(meta_fits_unit(meta, "rpm"));
+  CHECK(meta_fits_unit(meta, "SI"));       // As sent: any unit
+  CHECK(meta_fits_unit(meta, "furlong"));  // Unknown id: not converted
+  meta.units = "K";
+  CHECK(!meta_fits_unit(meta, "rpm"));
+  CHECK(meta_fits_unit(meta, "\xC2\xB0" "C"));  // degrees C, from K
 }

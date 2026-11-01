@@ -75,6 +75,14 @@ float label_divisor(float min, float max);
 void convert_range(const char* from_id, const char* to_id, float* min,
                    float* max);
 
+// Whether metadata received for a path fits a page shown in display unit
+// `unit_id`: its zones and scale are in the path's unit (meta.units), and
+// converted as if they were in another they would mark the wrong part of
+// the dial. False only when the server names a unit other than the one the
+// page converts from; an "SI" (as sent) page, an unknown unit id or a meta
+// without units always fits.
+bool meta_fits_unit(const GaugeMeta& meta, const char* unit_id);
+
 // The effective definition of `base` with `options` and `meta` applied. The
 // result points into all three (an "SI" dial's unit label is meta.units), so
 // they must outlive it.
