@@ -101,11 +101,13 @@ cmake -S tests -B build/tests && cmake --build build/tests -j && build/tests/gau
 
 Building one env per board is enough to prove the code compiles: the port and
 starboard envs differ only in `-D` flags, and the `_usb` envs only in the
-upload method. CI (`.github/workflows/ci.yml`) builds the starboard unit of
-each board (`p4_stbd`, `s3_stbd`), runs the host unit tests, renders
-the preview at both sizes, and checks the scripts and credential rules on every
-push to `main` and every pull request. Run the relevant check locally anyway:
-CI is the backstop, not the first place to find out.
+upload method. CI (`.github/workflows/ci.yml`) runs the host unit tests,
+renders the preview at both sizes, and checks the scripts and credential
+rules on every push to `main` and every pull request. The firmware builds
+(the starboard unit of each board, `p4_stbd`, `s3_stbd`) are too heavy for
+every change: they run only when the workflow is started by hand, so build
+a firmware change locally, one env per board. Run the relevant check locally
+anyway: CI is the backstop, not the first place to find out.
 
 A UI change is not done until the preview has been rendered and looked at.
 A logic change in the host-safe files is not done until `tests/` covers it.

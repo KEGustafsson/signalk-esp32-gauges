@@ -587,3 +587,7 @@ redrew 180 graduations and 16 rotated labels.
   framework with all three settings in 7.5 min (`Replace: ...=n` for
   `RESTART_IN_VSYNC`), 9 min in all, far inside the 90 min limit. Flash
   43.5 %, RAM 18.6 %.
+- The firmware builds are now off on pushes and pull requests (too heavy
+  for every change, the user's call): `firmware-build` runs only on a
+  manual "Run workflow". Firmware changes are built locally, one env per
+  board.

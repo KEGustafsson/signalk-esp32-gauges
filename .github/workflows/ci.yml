@@ -5,8 +5,8 @@ name: CI
 # Nothing here proves a gauge WORKS on the boat -- that needs the first
 # power-up checklists in each board folder's README. What it does prove is that
 # both boards' firmware still compiles against its configured dependencies
-# (SensESP tracks its main branch, so upstream changes surface here first),
-# that the shared gauge UI still renders every page at both panel sizes, and
+# (SensESP tracks its main branch, so upstream changes surface here first;
+# that job runs only when started by hand), that the shared gauge UI still renders every page at both panel sizes, and
 # that the committed tree carries no usable OTA credential.
 
 on:
@@ -32,9 +32,14 @@ jobs:
   # in -D flags (side, hostname, address) and the *_usb envs only in the upload
   # method, so the starboard build proves the code compiles for both sides.
   # fail-fast is off so a break shows for every board it hits.
+  #
+  # Off on pushes and pull requests: too heavy to run on every change. Run it
+  # by hand (Actions -> CI -> Run workflow) before a merge that touches the
+  # firmware or a platformio.ini; build locally otherwise.
   # ---------------------------------------------------------------------------
   firmware-build:
     name: Build ${{ matrix.env }}
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # The 2.1" rebuilds the framework's libraries (custom_sdkconfig in its
     # platformio.ini): ESP-IDF's CMake pass is not in PlatformIO's build
