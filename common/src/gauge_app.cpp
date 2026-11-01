@@ -6,6 +6,7 @@
 #include <SPIFFS.h>
 #include <esp_heap_caps.h>
 #include <esp_psram.h>
+#include <esp_task_wdt.h>
 #include <lvgl.h>
 
 #include <memory>
@@ -52,13 +53,36 @@ std::vector<sensesp::ClientSSIDConfig> wifi_clients(const char* address) {
 }
 
 // A loop that stops turning would leave the last numbers on screen forever,
-// so the Arduino loop task runs under the task watchdog (5 s): a hang reboots
-// the unit. An OTA upload legitimately blocks the loop for its whole
-// transfer, so the watchdog is off while one runs. Registered after
-// SensESP's own OTA setup (its onDelay(0)), so these callbacks are the ones
-// ArduinoOTA keeps.
+// so the Arduino loop task runs under the task watchdog: a hang reboots the
+// unit. An OTA upload legitimately blocks the loop for its whole transfer,
+// so the watchdog is off while one runs. Registered after SensESP's own OTA
+// setup (its onDelay(0)), so these callbacks are the ones ArduinoOTA keeps.
+//
+// Longer than the framework's 5 s: on the 4" a WiFi call from the loop
+// (SensESP reads the SSID and the signal strength for its status page) waits
+// up to 5 s for the C6's reply (ESP-Hosted's DEFAULT_RPC_RSP_TIMEOUT). One
+// lost reply rebooted the unit after hours of running; it should cost a
+// 5 s pause. A link that stopped answering for good is caught by the slow
+// passes it causes (gauge_app_loop()).
+constexpr uint32_t kLoopWatchdogMs = 12000;
+// SensESP passes this long, this often, mean the loop is stuck in calls
+// that each give up: restart, as the watchdog would for a hang.
+constexpr uint32_t kSlowPassMs = 4000;
+constexpr uint32_t kSlowPassesToRestart = 3;
+constexpr uint32_t kSlowPassWindowMs = 60000;
 bool loop_watchdog_on = false;
 bool ota_started = false;  // An upload got past authentication
+// When the last kSlowPassesToRestart slow passes ended (a ring): the unit
+// restarts when the oldest of them is within kSlowPassWindowMs, a rolling
+// window, so passes at 31, 61 and 90 s count as three in a minute.
+uint32_t slow_pass_ms[kSlowPassesToRestart] = {};
+uint32_t slow_passes = 0;  // Recorded so far, at most kSlowPassesToRestart
+uint32_t slow_pass_next = 0;
+
+// The longest pass of each side of the loop since the last "loop" log line:
+// how close to a stall the gauge runs, not only when it crosses one.
+uint32_t slowest_sensesp_ms = 0;
+uint32_t slowest_lvgl_ms = 0;
 
 void loop_watchdog(bool on) {
   if (on == loop_watchdog_on) return;  // ArduinoOTA may report one error twice
@@ -80,6 +104,12 @@ class WatchdogOffForReset : public sensesp::Resettable {
 };
 
 void start_loop_watchdog() {
+  // The framework's other settings kept: core 0's idle task watched, a
+  // panic (and a core dump) when it fires.
+  const esp_task_wdt_config_t config = {kLoopWatchdogMs, 1 << 0, true};
+  if (esp_task_wdt_reconfigure(&config) != ESP_OK) {
+    ESP_LOGW("gauge", "Loop watchdog stays at the framework's timeout");
+  }
   loop_watchdog(true);
   new WatchdogOffForReset();  // Registers itself; lives for the program
   if (SECRET_OTA_PASSWORD[0] == '\0') {
@@ -245,6 +275,10 @@ void gauge_app_begin(const GaugeAppConfig& config) {
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_DMA) >> 10),
              (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_DMA) >> 10),
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >> 10));
+    ESP_LOGI("loop",
+             "Slowest pass in the last minute: LVGL %u ms, SensESP %u ms",
+             (unsigned)slowest_lvgl_ms, (unsigned)slowest_sensesp_ms);
+    slowest_lvgl_ms = slowest_sensesp_ms = 0;
   });
   start_loop_watchdog();
   ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
@@ -258,12 +292,31 @@ void gauge_app_loop() {
   uint32_t start = millis();
   sensesp::event_loop()->tick();
   uint32_t took = millis() - start;
+  if (took > slowest_sensesp_ms) slowest_sensesp_ms = took;
   if (took >= kStallMs) {
     ESP_LOGW("loop", "SensESP held the loop for %u ms", (unsigned)took);
+  }
+  if (took >= kSlowPassMs && !ota_started) {
+    const uint32_t now = millis();
+    slow_pass_ms[slow_pass_next] = now;
+    slow_pass_next = (slow_pass_next + 1) % kSlowPassesToRestart;
+    if (slow_passes < kSlowPassesToRestart) slow_passes++;
+    // slow_pass_next now indexes the oldest of the last three.
+    if (slow_passes >= kSlowPassesToRestart &&
+        now - slow_pass_ms[slow_pass_next] <= kSlowPassWindowMs) {
+      ESP_LOGE("loop",
+               "SensESP held the loop over %u s %u times in %u s "
+               "(a WiFi link not answering?): restarting",
+               (unsigned)(kSlowPassMs / 1000), (unsigned)slow_passes,
+               (unsigned)(kSlowPassWindowMs / 1000));
+      delay(100);  // Let the log line out
+      esp_restart();
+    }
   }
   start = millis();
   const uint32_t wait_ms = lv_timer_handler();
   took = millis() - start;
+  if (took > slowest_lvgl_ms) slowest_lvgl_ms = took;
   if (took >= kStallMs) {
     ESP_LOGW("loop", "LVGL held the loop for %u ms", (unsigned)took);
   }

@@ -419,36 +419,23 @@ void GaugeConfig::add_config_items() {
 }
 
 void GaugeConfig::set_meta(size_t index, const sensesp::SKMetaView& view) {
-  GaugeMeta meta;
-  if (view.raw) {
-    // Not view.units: that reads a missing unit as "null" (sk_meta_units()).
-    meta.units = sk_meta_units((*view.raw)["value"]);
-    JsonVariantConst scale = (*view.raw)["value"]["displayScale"];
-    if (scale["lower"].is<float>() && scale["upper"].is<float>()) {
-      meta.has_scale = true;
-      meta.scale_lower = scale["lower"].as<float>();
-      meta.scale_upper = scale["upper"].as<float>();
-    }
+  if (!view.raw) {
+    return;
   }
-  for (const sensesp::SKZone& z : view.zones) {
-    SiZone zone;
-    zone.has_lower = z.has_lower;
-    zone.lower = z.lower;
-    zone.has_upper = z.has_upper;
-    zone.upper = z.upper;
-    zone.color = zone_state_color(z.state.c_str());
-    meta.zones.push_back(zone);
-  }
+  // From the raw delta, not view.units / view.zones: those cannot tell a
+  // field left out (keep it) from one cleared (sk_merge_meta()), and units
+  // reads a missing unit as "null".
+  sk_merge_meta((*view.raw)["value"], &received_[index]);
+  GaugeMeta meta = received_[index];
 
   // Zones and scale are in the path's unit; converted as if they were in
   // another, they would mark the wrong part of the dial. Drop them.
-  const DisplayUnit* unit = find_display_unit(defs_[index].unit_id);
-  if (!meta.units.empty() && unit != nullptr && !is_as_sent(*unit) &&
-      meta.units != unit->si) {
+  if (!meta_fits_unit(meta, defs_[index].unit_id)) {
     ESP_LOGW(kTag,
              "%s: the server gives %s in %s, the gauge converts from %s; "
              "its zones and scale are not used",
-             defs_[index].id, sk_path(index), meta.units.c_str(), unit->si);
+             defs_[index].id, sk_path(index), meta.units.c_str(),
+             find_display_unit(defs_[index].unit_id)->si);
     meta = GaugeMeta();
   }
 

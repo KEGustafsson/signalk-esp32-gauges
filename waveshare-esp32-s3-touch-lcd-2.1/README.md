@@ -58,6 +58,106 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
   block fell to 7 KB and SensESP could not start its 8 KB connect task, so
   the unit never reconnected after a Signal K server restart (log:
   `connect worker spawn failed`). Watch the boot log's `heap` line.
+- The framework is rebuilt for this board (`custom_sdkconfig` in
+  `platformio.ini`), against the picture shift described below:
+  - `CONFIG_SPIRAM_XIP_FROM_PSRAM=y`: the firmware's code and read-only
+    data are copied into PSRAM at boot and run from there. Flash is then
+    not needed while the gauge runs, so reading or writing a file no longer
+    cuts the chip off from PSRAM.
+  - `CONFIG_LCD_RGB_ISR_IRAM_SAFE=y`: the RGB panel's interrupt, which fills
+    the bounce buffers, lives in internal RAM and keeps running while the
+    flash is busy (a file read or written, WiFi saving its settings).
+
+  - `CONFIG_LCD_RGB_RESTART_IN_VSYNC=n` (ESP-IDF's default; the Arduino
+    libraries turn it on): the fix for the shift that stays. See below.
+
+  The first two come from ESP-IDF's RGB LCD guide for a frame buffer in
+  PSRAM. The
+  cost: the code takes about 1.4 MB of PSRAM (the `heap` line's PSRAM went
+  from 4878 KB to 3459 KB free on the first unit). If PSRAM runs short,
+  fewer pages are kept built, and a page that is not is built when shown
+  (about 0.3 s). The 4" uses the stock libraries.
+
+  Building it:
+  - The first build of each env downloads ESP-IDF 5.5.5 and compiles the
+    framework's libraries before the firmware: 63 minutes on the first PC
+    (ESP-IDF's CMake configure ~10 min, its components, then the Arduino
+    core, the libraries and the gauge). Later builds of that env with the
+    same settings recompile only what changed; changing a
+    `custom_sdkconfig` line rebuilds the libraries again. Each env (`s3_stbd`,
+    `s3_stbd_usb`, the port ones) builds them once for itself.
+  - The project has its own PlatformIO directory, `~/.pio21` (`core_dir`):
+    platform, toolchain and framework. Keep its path short: on Windows,
+    generating the linker script passes every framework library's full
+    path on one command line, and from inside the repo
+    (`../.pio-core-2.1in`) that failed after an hour with "The command line
+    is too long". The rebuild
+    replaces the framework's libraries in place; in the shared
+    `~/.platformio` the 4"'s next build put the stock ones back ("Reinstall
+    Arduino framework") and the 2.1"'s next build rebuilt them again, about
+    an hour each way, and two builds at once would have overwritten each
+    other. The first build in a fresh directory downloads everything again.
+  - On Windows, build from PowerShell or cmd, not from Git Bash or another
+    MSYS/MinGW shell: ESP-IDF's tool installer (`idf_tools.py`), which
+    fetches the CMake and Ninja this build needs, refuses to run there
+    ("MSys/Mingw is not supported"). PlatformIO only logs that, and the
+    build then fails with `FileNotFoundError` while reading the CMake
+    configuration.
+  - After changing a `custom_sdkconfig` line, delete this folder's
+    `sdkconfig.<env>` (e.g. `sdkconfig.s3_stbd_usb`; generated, gitignored)
+    before building. ESP-IDF keeps the values of an existing one and
+    applies the new settings only where it has none: the build log still
+    says `Replace: ...=y with: ...=n`, but the framework is built with the
+    old value. Check the result in `sdkconfig.<env>` (an option that is off
+    reads `# CONFIG_... is not set`). A fresh clone has none.
+  - The second stage of the build ("Starting Arduino compile ... with
+    custom libraries") runs PlatformIO from `~/.pio21/penv`. In a fresh
+    `~/.pio21` that environment got the newest PlatformIO (6.2.0.post1),
+    whose SCons 4.11.1 the platform cannot use: the build failed after the
+    framework with `No module named 'SCons.Tool.FortranCommon'`. Give it
+    the PlatformIO the rest uses and build again (the framework is kept):
+    `~/.pio21/penv/Scripts/uv pip install --python
+    ~/.pio21/penv/Scripts/python platformio==6.1.19`. The `pio` you run
+    must be 6.1.19 as well (`pio --version`): PyPI's `platformio` is 6.2
+    since 2026-11-01, and CI failed the same way with only the penv pinned.
+- Verified 2026-11-01: with the first two settings the picture stayed in
+  place through 60 s of settings reads every 2 s and a settings save, the
+  load that shifted it within half a minute on the stock libraries, but
+  it still shifted once at rest a few minutes later: the driver bug below,
+  which turns any one late interrupt into a lasting shift. With all three
+  (built from a fresh clone on another PC, flashed over the air) the user
+  saw no flicker and no shift, also while browsing the web UI's
+  configuration pages.
+- Why the shift is always exactly 20 lines and stays (ESP-IDF 5.5,
+  `components/esp_lcd/rgb/esp_lcd_panel_rgb.c`): the interrupt for "a
+  bounce buffer has been sent" refills a buffer chosen by a running count,
+  `bb_eof_count % 2`, not by the buffer actually sent. If that interrupt is
+  late by more than one buffer's time (about 0.9 ms at 12 MHz), two merge
+  into one and the count falls one behind: from then on each buffer is
+  filled with the other's 20 lines. At every VSYNC,
+  `lcd_rgb_panel_try_restart_transmission()` resets the count and restarts
+  the output when interrupts were missing, but only when
+  `CONFIG_LCD_RGB_RESTART_IN_VSYNC` is off. With it on, as in the Arduino
+  libraries, the output restarts every frame and the count never resets,
+  so the shift stays until the unit restarts. With it off, a late
+  interrupt costs one wrong frame (1/44 s).
+- The picture shift, on the stock libraries: it moved up by exactly 20
+  lines (one bounce buffer) and stayed so until a restart, with
+  horizontal lines while it happened.
+  The panel streams its picture all the time; an interrupt copies it from
+  the PSRAM frame buffer into two 20-line bounce buffers in internal RAM,
+  one while the other is sent. When a copy is missed, the picture is one
+  buffer out of step for good. ESP-IDF's restart at every frame start
+  (`CONFIG_LCD_RGB_RESTART_IN_VSYNC`, on in the stock build) does not undo
+  it. On the S3, flash and PSRAM share one bus: while the flash is read or
+  written (a settings file read by the web UI, a setting saved, WiFi
+  connecting), neither PSRAM nor that interrupt can run, for longer than
+  any bounce buffer covers. Reading the page settings every 2 s over the
+  web API shifted the picture within half a minute. Heavy PSRAM traffic
+  from drawing (tried: a 1 MB lookup per compass step; LVGL compiled at
+  -O2) does it too. Without bounce buffers (the panel's DMA reads PSRAM
+  itself) the shift cannot last, but single frames then jumped sideways
+  several times a second: worse. See `docs/JOURNAL.md` (2026-11-01).
 
 ## First power-up checklist
 

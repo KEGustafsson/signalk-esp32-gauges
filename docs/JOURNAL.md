@@ -438,3 +438,208 @@ Later the same day:
   into `src/main.cpp` (`kBufferLines`): only `main.cpp` used it, but as a
   flag any change recompiled every file (one full rebuild per board to move
   it).
+
+## 2026-11-01 — The 2.1" compass, and why its picture shifts
+
+Both boards ran ~6 h after the reflash with no restart and ~12 Signal K
+deltas a second each. The 2.1" logged "LVGL held the loop" (150-175 ms)
+5-10 times a minute on the compass page: each step of the turning card
+redrew 180 graduations and 16 rotated labels.
+
+- **Tried and dropped: the card turned by table lookup.** The card drawn
+  once (at 2x, averaged down), resampled into a polar strip, each angle
+  a lookup per pixel. It looked the same as the drawn card and built in
+  slices, but every step read and wrote ~1 MB of PSRAM in a burst, and the
+  2.1"'s panel (fed from PSRAM) flickered and shifted up. Lesson for the
+  2.1": no memory-heavy per-frame work, however fast.
+- **Tried and dropped: LVGL and the pages compiled at -O2** (the framework
+  builds everything -Os). Larger code means more flash fetches on the
+  S3's bus shared by flash and PSRAM; the picture shifted even at rest.
+- **Kept, CPU only:** the card is redrawn as the ring its marks sweep
+  (`invalidate_ring()`, up to 16 bands) instead of its bounding square; it
+  ignores heading changes under 0.3 degrees (the LCD shows the heading as
+  it is), so at the dock it does not redraw at all; the 180 graduations are
+  placed by turning one direction by 2 degrees at a time, not with a sine
+  and cosine each, per screen strip. Measured with the card stepping all
+  the time (course over ground at the dock): 137 ms a step (180 marks
+  ~32 ms, 16 labels ~42 ms, the rest ~62 ms); at rest the slowest pass is
+  16-21 ms. The preview renders the compass pixel for pixel as before.
+- **Once a minute, `loop: Slowest pass in the last minute`** next to the
+  heap line: how close to a stall the gauge runs, not only when it
+  crosses 150 ms.
+- **`preview <size> bench`** times one redraw of each page (median), in
+  strips as tall as the boards' draw buffers.
+- **The 2.1" picture shift, explained.** The panel is fed by an interrupt
+  that copies the PSRAM frame buffer into two 20-line bounce buffers. One
+  missed copy leaves the picture one bounce buffer (20 lines) out of step,
+  and it stays so (ESP-IDF's restart at every VSYNC, on in this build, does
+  not catch it); late copies are the horizontal lines. A copy is missed
+  when PSRAM cannot be read in time: flash writes (WiFi connect, a file or
+  preference saved) and heavy PSRAM traffic. Without bounce buffers (the
+  panel's DMA reads PSRAM itself) the shift cannot stay, but single frames
+  then jumped sideways several times a second: worse. Back at 20 lines.
+  ESP-IDF's documented setup for an RGB panel in PSRAM next to WiFi (code
+  and read-only data from PSRAM, an IRAM-safe RGB interrupt, a larger data
+  cache) needs a rebuilt framework (`custom_sdkconfig`): to try next.
+
+## 2026-11-01 — A 4" watchdog reboot; what shifts the 2.1" picture
+
+- **The 4" rebooted by itself** after about 6 h (reset reason: task
+  watchdog). Its core dump (read with esptool from the `coredump`
+  partition, opened in `riscv32-esp-elf-gdb` with the build's
+  `firmware.elf`): the loop was in SensESP's status-page timer, in
+  `WiFi.SSID()`, waiting in ESP-Hosted's `wait_for_sync_response` for the
+  C6 to answer `wifi_sta_get_ap_info`. The same place as on the first
+  night, but this time with 78 KB of internal RAM free and the C6 on
+  2.12.11: one lost reply, not a dead link. ESP-Hosted waits 5 s for a
+  reply (`DEFAULT_RPC_RSP_TIMEOUT`) and the loop watchdog was 5 s
+  (`CONFIG_ESP_TASK_WDT_TIMEOUT_S`), so the watchdog fired as the call was
+  about to give up.
+- **Fix (both boards, shared code):** the loop watchdog is reconfigured to
+  12 s at start (`kLoopWatchdogMs`, `esp_task_wdt_reconfigure()`, keeping
+  core 0's idle task watched and the panic with a core dump). A lost reply
+  now freezes the picture for 5 s instead of rebooting. A link that never
+  answers again would leave the loop running but stalling 5 s at a time,
+  which no watchdog sees; so three SensESP passes of 4 s or more within a
+  minute log why and restart (`gauge_app_loop()`, not during an OTA
+  upload).
+- **What shifts the 2.1" picture, found by trying it:** the 20-line shift
+  came back at rest, on the stock build, several times. With the unit
+  freshly restarted and steady, reading the page settings over the web API
+  every 2 s (`GET /api/config/Pages/<n>`, files on SPIFFS) shifted it
+  within half a minute (the user watching the screen). On the S3 a flash
+  read or write takes the shared bus away from PSRAM and holds off the
+  RGB interrupt (not IRAM-safe in the stock build) for longer than a
+  bounce buffer lasts. Whatever touches the filesystem can do it: the web
+  UI's configuration page, a saved setting, WiFi saving its settings.
+- **Fix (2.1" only):** `custom_sdkconfig` in its
+  `platformio.ini` rebuilds the framework with
+  `CONFIG_SPIRAM_XIP_FROM_PSRAM=y` (code and read-only data run from PSRAM,
+  so flash access no longer stops PSRAM) and
+  `CONFIG_LCD_RGB_ISR_IRAM_SAFE=y` (the RGB interrupt runs during flash
+  access), as ESP-IDF's RGB LCD guide describes for a PSRAM frame buffer.
+  The first attempt failed after 3.5 min with `FileNotFoundError` in
+  `run_cmake`: the build was started from Git Bash, where ESP-IDF's
+  `idf_tools.py` refuses to run ("MSys/Mingw is not supported"), so CMake
+  and Ninja were never installed and PlatformIO only logged it. Installed
+  from PowerShell, and the build runs from PowerShell: 63 min the first
+  time. Result on the 2.1": PSRAM free 4878 -> 3459 KB (the code in PSRAM),
+  DMA RAM 46 KB free (largest block 28 KB), all pages live. The same test
+  as before, longer (60 s of reads every 2 s, a save, 20 s more reads),
+  with the user watching: the picture stayed in place, no lines. CI's
+  firmware job gets 90 min instead of 30 for this build.
+- **Why some builds were slow:** the build cache is keyed on the compile
+  command, which includes the env's own library folder
+  (`.pio/libdeps/<env>`). Building `p4_stbd` after only `p4_stbd_usb` had
+  been built compiled all 778 files (21 min). Build and flash with the env
+  already built.
+- **The shift came back at rest**, a few minutes after that test, with
+  nothing touching the flash. ESP-IDF's RGB driver source (downloaded for
+  the rebuild) explains it and the user's "always the same height": the
+  bounce-buffer refill picks its buffer by a running count
+  (`bb_eof_count % 2`); one late "buffer sent" interrupt (two merged into
+  one) puts the count one behind, and every later refill goes into the
+  other buffer, 20 lines out of step. The VSYNC handler resets the count
+  only when `CONFIG_LCD_RGB_RESTART_IN_VSYNC` is off; the Arduino libraries
+  turn it on (ESP-IDF's default is off), so the restart in every VSYNC
+  never repaired it. Third setting: `CONFIG_LCD_RGB_RESTART_IN_VSYNC=n`.
+- **The two boards' builds undid each other:** the rebuild replaces the
+  framework's libraries inside `~/.platformio`, so the 4"'s next build
+  reinstalled the stock framework, which the 2.1"'s next build would have
+  rebuilt again. The 2.1" project now has its own `core_dir`
+  (`~/.pio21`, cached in CI too). First tried inside the repo
+  (`../.pio-core-2.1in`): after an hour the build failed generating the
+  linker script, "The command line is too long" (Windows), as every
+  framework library's full path goes on one command line; the home
+  directory path is shorter than `~/.platformio`'s.
+- **Getting the third setting built** took two more tries. The build with
+  `core_dir = ~/.pio21` compiled the framework, then its second stage
+  failed: in the fresh directory the platform had installed the newest
+  PlatformIO (6.2.0.post1) into `~/.pio21/penv`, whose SCons 4.11.1 the
+  platform cannot use (`No module named 'SCons.Tool.FortranCommon'`).
+  With 6.1.19 installed there (`uv pip install platformio==6.1.19`) it
+  linked in 7 min, reusing the framework, but the compiled `sdkconfig.h`
+  still had `CONFIG_LCD_RGB_RESTART_IN_VSYNC 1`: a `sdkconfig.s3_stbd_usb`
+  left in the project folder by the first build at 11:32 was taken as the
+  configuration, and `sdkconfig.defaults` (where `custom_sdkconfig` goes)
+  only fills what it lacks. Deleted it and the compiled framework: the
+  next build (71 min) has all three.
+- **Result:** the user built both units from a fresh clone of `c02a5e4` on
+  another PC and flashed them over the air: the first OTA updates of both,
+  and both came back on Signal K. The 2.1": no flicker and no shift, also
+  while browsing the web UI's configuration pages (which shifted it within
+  half a minute on the stock libraries).
+
+## 2026-11-01 — PR #8: the 2.1" CI build
+
+- PR #8's first CI run failed the `s3_stbd` job after 4 min with the same
+  `No module named 'SCons.Tool.FortranCommon'`: the runner's fresh
+  `~/.pio21/penv` got pioarduino 6.2.0.post1. The platform's
+  `penv_setup.py` asks only for `pioarduino>=6.1.19` and keeps any
+  installed version that satisfies it, so CI now creates the penv itself
+  (same Python as `pio`) with `pioarduino==6.1.19` before the build.
+  Checked locally: a venv with that pin runs PlatformIO 6.1.19.
+- The next run failed the same way: `pip install --upgrade platformio`
+  had put PyPI's new `platformio` 6.2.0 on the runner, and that outer
+  `pio` installs `tool-scons ~4.41101` for the platform. CI now installs
+  `platformio==6.1.19` for both boards; the top README's setup says so too.
+- With both pins the run passed (`8cece15`): the 2.1" job built the
+  framework with all three settings in 7.5 min (`Replace: ...=n` for
+  `RESTART_IN_VSYNC`), 9 min in all, far inside the 90 min limit. Flash
+  43.5 %, RAM 18.6 %.
+- The firmware builds are now off on pushes and pull requests (too heavy
+  for every change, the user's call): `firmware-build` runs only on a
+  manual "Run workflow". Firmware changes are built locally, one env per
+  board.
+- CodeRabbit's review of `6fc791d`, all five taken:
+  - the slow-pass restart counted from the first slow pass and started
+    over after a minute, so passes at 0, 31, 61 and 90 s never made three
+    in a minute: it now keeps the last three times (a ring) and restarts
+    when the oldest is within 60 s;
+  - `preview <size> bench` left the compass card at the last bench
+    heading for the stale render: the sample is now applied fresh and
+    settled first (stale images with and without `bench` are identical);
+  - `~/.pio21` is cached on an exact `platformio.ini` match only: the
+    platform cleans an old framework only under a `.platformio` path;
+  - the 4" README's core-dump steps use `pio pkg exec` (esptool,
+    riscv32-esp-elf-gdb);
+  - the top README no longer says CI builds the firmware on every change.
+
+## 2026-11-01 — Zones that vanished minutes after boot
+
+- **Symptom (user):** on both units, the dials' zones disappear some time
+  after boot. A saved 2.1" log shows it: the rpm, coolant and oil pages got
+  their zone at 41 s, then at 153 s, within 90 ms of each other,
+  `metadata applied (0 zones drawn, ...)`. The server still held the zones
+  (`.../coolantTemperature/meta` over its REST API).
+- **Cause:** the three paths come from another SensESP device
+  (`$source` `sensesp-engines`). SensESP sends a meta delta for its outputs
+  at every connect (`SKDeltaQueue::add_metadata()`, re-armed in
+  `on_connected()`): `units`, `description`, no zones. The server merges it
+  into what it holds and forwards it as sent to `sendMeta=all` subscribers.
+  `GaugeConfig::set_meta()` built the page's metadata from each delta alone,
+  so this one replaced the zones with none: the engine unit reconnecting
+  wiped them on every gauge, until the gauge itself reconnected.
+- **Fix:** `sk_merge_meta()` (`sk_parse.h`, tested) merges like the server:
+  a field the delta carries replaces the old one (null or malformed clears
+  it), one it leaves out is kept. `GaugeConfig` keeps the merged metadata
+  as received (`received_`) apart from what the page draws, so the unit
+  check runs on the merged result. A zone bound that is not a number now
+  leaves the zone out (SensESP's `SKZone` read it as 0).
+- Host tests 47 passed. Both units flashed over USB (`p4_stbd_usb`, `s3_stbd_usb`):
+  zones on the rpm, coolant and oil pages at boot, none lost in the first
+  8 (2.1") and 13 (4") minutes. Not yet seen: the engine unit reconnecting
+  while a gauge runs, the case that wiped them.
+- CodeRabbit's full review of `1c34764`: `bench` counted frames that
+  redrew nothing (the first, at the settled sample), so "fastest" could be
+  a no-op (0.01 ms). It now times only frames that flushed a strip, and
+  prints how many did (239 of 240, the compass 237).
+- CodeRabbit's review of `8e13ffd`: no actionable findings, one nitpick:
+  the merge was tested on a bare `GaugeMeta`, not through
+  `GaugeConfig::set_meta()`. `set_meta()` is SensESP glue the host tests
+  cannot build, so its unit check moved to `meta_fits_unit()`
+  (`gauge_resolve.*`), and a test runs `set_meta()`'s steps on the port
+  rpm dial: zones, then SensESP's `{units, description}`, still draws
+  both zones; a meta in another unit draws none, and back in Hz the zones
+  return. With each delta taken as the whole metadata (the bug before
+  `1c34764`) it fails.

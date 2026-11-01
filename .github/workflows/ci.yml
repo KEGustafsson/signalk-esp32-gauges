@@ -5,8 +5,8 @@ name: CI
 # Nothing here proves a gauge WORKS on the boat -- that needs the first
 # power-up checklists in each board folder's README. What it does prove is that
 # both boards' firmware still compiles against its configured dependencies
-# (SensESP tracks its main branch, so upstream changes surface here first),
-# that the shared gauge UI still renders every page at both panel sizes, and
+# (SensESP tracks its main branch, so upstream changes surface here first;
+# that job runs only when started by hand), that the shared gauge UI still renders every page at both panel sizes, and
 # that the committed tree carries no usable OTA credential.
 
 on:
@@ -32,11 +32,20 @@ jobs:
   # in -D flags (side, hostname, address) and the *_usb envs only in the upload
   # method, so the starboard build proves the code compiles for both sides.
   # fail-fast is off so a break shows for every board it hits.
+  #
+  # Off on pushes and pull requests: too heavy to run on every change. Run it
+  # by hand (Actions -> CI -> Run workflow) before a merge that touches the
+  # firmware or a platformio.ini; build locally otherwise.
   # ---------------------------------------------------------------------------
   firmware-build:
     name: Build ${{ matrix.env }}
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The 2.1" rebuilds the framework's libraries (custom_sdkconfig in its
+    # platformio.ini): ESP-IDF's CMake pass is not in PlatformIO's build
+    # cache and compiles anew each run (63 min on a Windows PC, the first
+    # time).
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -62,13 +71,25 @@ jobs:
           python-version: '3.12'
 
       # Keyed on platformio.ini, which names the platform and library sources.
-      # Per-env keys keep the jobs from racing to write one entry.
+      # Per-env keys keep the jobs from racing to write one entry. The 2.1"
+      # keeps its packages in ~/.pio21 (core_dir in its platformio.ini: its
+      # framework is rebuilt), cached in the next step.
       - name: Cache PlatformIO
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.platformio
           key: pio-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
           restore-keys: pio-${{ matrix.env }}-${{ runner.os }}-
+
+      # The 2.1"'s rebuilt framework, on an exact match only: the platform
+      # cleans an old framework only under a path with `.platformio` in it,
+      # so one restored from another platformio.ini would be built on.
+      - name: Cache PlatformIO (2.1" framework)
+        if: matrix.project == 'waveshare-esp32-s3-touch-lcd-2.1'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pio21
+          key: pio21-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
 
       # Compiled objects (Arduino core, LVGL, SensESP, the gauge code), reused
       # through PlatformIO's build cache. Its entries are keyed by the content
@@ -88,8 +109,27 @@ jobs:
           key: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ steps.week.outputs.week }}-${{ github.run_id }}
           restore-keys: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ steps.week.outputs.week }}-
 
+      # Pinned: PlatformIO 6.2 brings SCons 4.11, which the pioarduino
+      # platform cannot use (`No module named 'SCons.Tool.FortranCommon'`,
+      # seen on the 2.1" build). Move the pin only with a build that passes.
       - name: Install PlatformIO
-        run: pip install --upgrade platformio
+        run: pip install platformio==6.1.19
+
+      # The 2.1"'s second build stage ("Arduino compile with custom
+      # libraries") runs PlatformIO from ~/.pio21/penv. Left to itself the
+      # platform fills a new penv with the newest pioarduino (6.2), whose
+      # SCons it cannot use: `No module named 'SCons.Tool.FortranCommon'`
+      # (board README). It keeps a pioarduino it finds that satisfies
+      # >=6.1.19, so give it 6.1.19 first, from the interpreter that runs
+      # pio (a penv of another Python version is recreated).
+      - name: Pin PlatformIO in the 2.1" penv
+        if: matrix.project == 'waveshare-esp32-s3-touch-lcd-2.1'
+        run: |
+          set -euo pipefail
+          penv="$HOME/.pio21/penv"
+          [ -x "$penv/bin/python" ] || python -m venv "$penv"
+          "$penv/bin/python" -m pip install --quiet pioarduino==6.1.19
+          "$penv/bin/pio" --version
 
       # include/secrets.h is untracked, so the firmware builds from
       # secrets.example.h here, as on any clean checkout.

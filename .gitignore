@@ -24,3 +24,13 @@ __pycache__/
 
 # PlatformIO build cache (build_cache_dir in each platformio.ini; CI too)
 .pio-build-cache/
+
+# Generated in the 2.1" project by its framework rebuild (custom_sdkconfig):
+# ESP-IDF's managed components, the merged sdkconfig per env, the CMake
+# project and component lock it generates, scratch.
+waveshare-esp32-s3-touch-lcd-2.1/managed_components/
+waveshare-esp32-s3-touch-lcd-2.1/.dummy/
+waveshare-esp32-s3-touch-lcd-2.1/sdkconfig.defaults
+waveshare-esp32-s3-touch-lcd-2.1/sdkconfig.*
+waveshare-esp32-s3-touch-lcd-2.1/CMakeLists.txt
+waveshare-esp32-s3-touch-lcd-2.1/dependencies.lock

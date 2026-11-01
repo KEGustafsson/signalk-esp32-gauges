@@ -47,6 +47,10 @@ pio run -e p4_stbd_usb -t upload
 pio device monitor -e p4_stbd_usb
 ```
 
+The 2.1"'s first build rebuilds the framework's libraries (its README):
+expect about an hour the first time, and on Windows run it from PowerShell
+or cmd, not Git Bash.
+
 Once the monitor is connected, press the board's **RESET** button so the
 log starts from power-on (opening the monitor does not always restart the
 device, and the first lines would be missed). Erasing first is only needed
@@ -96,6 +100,17 @@ Warnings worth knowing:
 - `loop: SensESP held the loop for ... ms` or `LVGL held ...`: something
   stalled the loop for 150 ms or more (touch feels slow). An occasional one
   during WiFi connect is normal; a steady stream is not.
+- `loop: Slowest pass in the last minute: LVGL ... ms, SensESP ... ms`,
+  once a minute after the `heap` line: how close the loop came to a stall.
+  Building pages at boot and the first readings make the first minute's
+  high (300-500 ms); after that tens of milliseconds at rest are normal.
+  On the 2.1", a compass card that keeps turning reaches about 140 ms.
+- `loop: SensESP held the loop over 4 s 3 times in 60 s (a WiFi link not
+  answering?): restarting`: the loop kept waiting on calls that time out
+  (on the 4": requests to its WiFi chip). The restart is deliberate; if it
+  repeats, see the 4"'s README.
+- A restart with reset reason `Task watchdog`: the loop did not run for
+  12 s. The core dump says where it stood (4" README).
 - `gauges: pageN: the server gives ... in ..., the gauge converts from ...`:
   the page's display unit does not match the path's unit; its zones and
   scale are not used (`docs/PAGES.md`).
@@ -145,6 +160,11 @@ Once the device is on the network:
 ```bash
 pio run -e p4_stbd -t upload
 ```
+
+The computer must be on the device's network and accept the device's
+connection back to it (allow it if a firewall asks). The `_usb` and OTA
+envs keep separate builds, so the first OTA build of a board compiles
+everything once (on the 2.1", the framework too: about an hour).
 
 ## Something wrong?
 

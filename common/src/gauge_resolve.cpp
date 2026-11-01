@@ -118,6 +118,12 @@ float label_divisor(float min, float max) {
   return divisor;
 }
 
+bool meta_fits_unit(const GaugeMeta& meta, const char* unit_id) {
+  const DisplayUnit* unit = find_display_unit(unit_id);
+  return meta.units.empty() || unit == nullptr || is_as_sent(*unit) ||
+         meta.units == unit->si;
+}
+
 GaugeDef resolve_gauge(const GaugeDef& base, const GaugeOptions& options,
                        const GaugeMeta& meta) {
   GaugeDef def = base;

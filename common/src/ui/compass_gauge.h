@@ -28,13 +28,15 @@ class CompassGaugePage : public GaugePage {
 
   void draw_face();
   void draw_card(lv_layer_t* layer) const;
-  void invalidate_card();
   static void card_draw_cb(lv_event_t* e);
 
   std::vector<CardLabel> labels_;
   lv_obj_t* card_obj_;
   LcdReadout lcd_;
   float shown_heading_;
+  float card_target_;  // The heading the card turns to (kCardDeadbandDeg)
+  int32_t ring_in_ = 0;  // The ring the marks sweep, from the centre
+  int32_t ring_out_ = 0;
 };
 
 }  // namespace ui

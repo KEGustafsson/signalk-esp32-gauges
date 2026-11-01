@@ -1,6 +1,7 @@
 #include "draw_utils.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace skgauges {
@@ -336,6 +337,39 @@ void TextImage::draw(lv_layer_t* layer, float cx, float cy,
   const int32_t y = (int32_t)lroundf(cy) - h / 2;
   lv_area_t area = {x, y, x + w - 1, y + h - 1};
   lv_draw_image(layer, &dsc, &area);
+}
+
+void invalidate_ring(lv_obj_t* obj, int32_t cx, int32_t cy, int32_t r_in,
+                     int32_t r_out) {
+  // Bands from top to bottom. LVGL joins invalid areas only where that
+  // makes them smaller, so these stay apart.
+  constexpr int32_t kBands = 8;
+  const int32_t height = 2 * r_out + 1;
+  for (int32_t b = 0; b < kBands; b++) {
+    const int32_t dy0 = -r_out + height * b / kBands;
+    const int32_t dy1 = -r_out + height * (b + 1) / kBands - 1;
+    if (dy1 < dy0) continue;
+    // Widest where the band is nearest the centre row; the hole is
+    // narrowest where it is farthest.
+    const int32_t near =
+        (dy0 <= 0 && dy1 >= 0) ? 0 : LV_MIN(abs(dy0), abs(dy1));
+    const int32_t far = LV_MAX(abs(dy0), abs(dy1));
+    const int32_t outer =
+        (int32_t)ceilf(sqrtf((float)(r_out * r_out - near * near))) + 1;
+    const int32_t inner =
+        far < r_in
+            ? (int32_t)floorf(sqrtf((float)(r_in * r_in - far * far))) - 1
+            : 0;
+    if (inner > 0) {
+      lv_area_t left = {cx - outer, cy + dy0, cx - inner, cy + dy1};
+      lv_area_t right = {cx + inner, cy + dy0, cx + outer, cy + dy1};
+      lv_obj_invalidate_area(obj, &left);
+      lv_obj_invalidate_area(obj, &right);
+    } else {
+      lv_area_t whole = {cx - outer, cy + dy0, cx + outer, cy + dy1};
+      lv_obj_invalidate_area(obj, &whole);
+    }
+  }
 }
 
 void draw_text_on_canvas_rotated(lv_obj_t* canvas, const char* text,

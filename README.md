@@ -193,7 +193,8 @@ second, when connected.
 ## Setup
 
 1. Install [PlatformIO](https://platformio.org/install) (VS Code extension or
-   `pip install platformio`).
+   `pip install platformio==6.1.19`). PlatformIO 6.2 brings an SCons the
+   board platform cannot use (`No module named 'SCons.Tool.FortranCommon'`).
 2. Copy `include/secrets.example.h` to `include/secrets.h` and fill in the WiFi,
    the Signal K server, an OTA password (letters, digits and
    `. _ ~ + = @ : , / -` only: it goes on a shell command line) and a web UI
@@ -215,6 +216,13 @@ second, when connected.
    ```bash
    pio run -e p4_stbd_usb -t upload
    ```
+
+   The 2.1"'s first build takes about an hour: it rebuilds the framework's
+   libraries with two settings that keep its picture steady (its README). On
+   Windows, run it from PowerShell or cmd, not Git Bash. Build and flash with
+   the same env each time (the `_usb` one over USB): PlatformIO keeps each
+   env's libraries apart, so the build cache does not carry over between
+   `s3_stbd_usb` and `s3_stbd`, and switching rebuilds everything once.
 
 4. In the Signal K server admin UI, approve the device's access request
    (**Security → Access Requests**; the device is named after its hostname, e.g.
@@ -259,9 +267,13 @@ The same erase is the way back to a device that cannot be reached at all
 (wrong saved WiFi and no access point): the 4" has no button for SensESP's
 reset; on the 2.1", holding BOOT for 5 s resets SensESP's settings.
 
-The devices also reboot rather than freeze: the main loop runs under a 5 s
-watchdog (paused during OTA uploads), and a failed display start or a stuck
-screen update restarts the device.
+The devices also reboot rather than freeze: the main loop runs under a
+12 s watchdog (paused during OTA uploads), the device restarts when the loop
+keeps stalling for 4 s or more (three times within a minute: a WiFi link
+that stopped answering), and a failed display start or a stuck screen update
+restarts it too. The watchdog is longer than a WiFi request may take on the
+4" (5 s), so one lost reply from its WiFi chip pauses the picture instead of
+rebooting the gauge (board README).
 
 ## How it is built
 
@@ -275,25 +287,32 @@ screen update restarts the device.
   readouts are redrawn as values change.
 - **Data**: SensESP (main branch) subscribes to the Signal K paths over WebSocket. SensESP
   and LVGL run on the same Arduino loop task, so they share data without locks.
-- **Framework**: Arduino-ESP32 3.3.11 through the pioarduino platform.
+- **Framework**: Arduino-ESP32 3.3.11 through the pioarduino platform. The
+  4" uses its precompiled libraries; the 2.1" rebuilds them with its code
+  run from PSRAM and an RGB interrupt kept in internal RAM
+  (`custom_sdkconfig`, board README).
 
 ## Status
 
 The firmware has been brought up on the 4" and 2.1" starboard units: boot,
-touch, WiFi, Signal K and live readings work. Readings against another
-instrument, stale/recovery behaviour on the hardware and OTA are not
-verified yet (`docs/JOURNAL.md`).
+touch, WiFi, Signal K, live readings and updates over WiFi (OTA) work.
+Readings against another instrument and stale/recovery behaviour on the
+hardware are not verified yet (`docs/JOURNAL.md`).
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every
-pull request and every push to `main`. It:
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), on every pull
+request and every push to `main`:
 
-- builds both boards (as their starboard devices);
 - runs the host unit tests ([`tests/`](tests/)) with AddressSanitizer and
   UndefinedBehaviorSanitizer: unit conversion and scales, the factory pages,
   the page cards' rules, and what a page accepts from Signal K and when it
   stops trusting it;
 - renders every gauge page on the host ([`tools/preview`](tools/preview/));
 - checks the scripts and that no credential is committed.
+
+It does not build the firmware there: that is too heavy for every change.
+Building both boards (as their starboard devices) runs only when the
+workflow is started by hand (Actions -> CI -> Run workflow), so build a
+firmware change locally, one env per board.
 
 [docs/BRINGUP.md](docs/BRINGUP.md) walks through the first power-up of a
 device, with the serial log to expect; the board-specific checks are in each

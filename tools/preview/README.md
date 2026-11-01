@@ -28,3 +28,11 @@ combines them into one PNG. Each page is rendered twice: live
 (`out/stale<size>_*.ppm`, e.g. `contact_sheet.py out/stale480 ...`), which
 must show dashes, a parked needle, a dimmed compass card or a dimmed, level
 boat symbol.
+
+`build/preview/preview 480 bench` also times one redraw of each page while
+its value swings (the median of the 240 frames that redrew anything; a
+frame at an unchanged value is left out), drawn in strips as tall as the board's
+draw buffer. PC times are only relative: a compass step that takes ~2 ms
+here took ~150 ms on the 2.1". And they say nothing about memory traffic,
+which is what the 2.1"'s panel cannot spare (`AGENTS.md`, Gotchas): check a
+drawing change on the real screen too.

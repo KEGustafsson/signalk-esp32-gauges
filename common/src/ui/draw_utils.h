@@ -101,6 +101,13 @@ class TextImage {
   lv_draw_buf_t* buf_ = nullptr;
 };
 
+// Invalidates the ring between r_in and r_out around (cx, cy) on `obj` as a
+// few bands hugging it, not its bounding square: the square's corners and
+// the middle (an LCD, a title) are left alone. Uses up to 16 of LVGL's 32
+// invalid areas.
+void invalidate_ring(lv_obj_t* obj, int32_t cx, int32_t cy, int32_t r_in,
+                     int32_t r_out);
+
 // Draws `text` centred on (cx, cy), rotated so it reads along the dial at
 // dial_angle_deg (the classic radial-label look), into a canvas. Use for
 // static faces only: renders through a temporary buffer.
