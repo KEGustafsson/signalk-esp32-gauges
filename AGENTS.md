@@ -179,7 +179,8 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   ESP-IDF's RGB driver never resets the counter that picks which bounce
   buffer to refill, so one late interrupt shifts the picture 20 lines for
   good (board README). The project has its own `core_dir`
-  (`.pio-core-2.1in`): the rebuild replaces the framework in place, and in
+  (`~/.pio21`, short: a longer path made a Windows command line too
+  long): the rebuild replaces the framework in place, and in
   a shared `~/.platformio` the two boards' builds undid each other. The first build of each env, and any change to those lines,
   compiles ESP-IDF (63 min the first time on the first PC). On Windows run
   it from PowerShell or cmd: from Git Bash ESP-IDF's tool installer

@@ -547,4 +547,8 @@ redrew 180 graduations and 16 rotated labels.
   framework's libraries inside `~/.platformio`, so the 4"'s next build
   reinstalled the stock framework, which the 2.1"'s next build would have
   rebuilt again. The 2.1" project now has its own `core_dir`
-  (`../.pio-core-2.1in`, gitignored, cached in CI too).
+  (`~/.pio21`, cached in CI too). First tried inside the repo
+  (`../.pio-core-2.1in`): after an hour the build failed generating the
+  linker script, "The command line is too long" (Windows), as every
+  framework library's full path goes on one command line; the home
+  directory path is shorter than `~/.platformio`'s.

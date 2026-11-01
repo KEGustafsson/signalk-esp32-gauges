@@ -86,8 +86,12 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
     same settings recompile only what changed; changing a
     `custom_sdkconfig` line rebuilds the libraries again. Each env (`s3_stbd`,
     `s3_stbd_usb`, the port ones) builds them once for itself.
-  - The project has its own PlatformIO directory, `../.pio-core-2.1in`
-    (`core_dir`, gitignored): platform, toolchain and framework. The rebuild
+  - The project has its own PlatformIO directory, `~/.pio21` (`core_dir`):
+    platform, toolchain and framework. Keep its path short: on Windows,
+    generating the linker script passes every framework library's full
+    path on one command line, and from inside the repo
+    (`../.pio-core-2.1in`) that failed after an hour with "The command line
+    is too long". The rebuild
     replaces the framework's libraries in place; in the shared
     `~/.platformio` the 4"'s next build put the stock ones back ("Reinstall
     Arduino framework") and the 2.1"'s next build rebuilt them again, about

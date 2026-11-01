@@ -67,14 +67,14 @@ jobs:
 
       # Keyed on platformio.ini, which names the platform and library sources.
       # Per-env keys keep the jobs from racing to write one entry. The 2.1"
-      # keeps its packages in .pio-core-2.1in (core_dir in its
-      # platformio.ini: its framework is rebuilt).
+      # keeps its packages in ~/.pio21 (core_dir in its platformio.ini: its
+      # framework is rebuilt).
       - name: Cache PlatformIO
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.platformio
-            ${{ github.workspace }}/.pio-core-2.1in
+            ~/.pio21
           key: pio-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
           restore-keys: pio-${{ matrix.env }}-${{ runner.os }}-
 
