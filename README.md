@@ -193,7 +193,8 @@ second, when connected.
 ## Setup
 
 1. Install [PlatformIO](https://platformio.org/install) (VS Code extension or
-   `pip install platformio`).
+   `pip install platformio==6.1.19`). PlatformIO 6.2 brings an SCons the
+   board platform cannot use (`No module named 'SCons.Tool.FortranCommon'`).
 2. Copy `include/secrets.example.h` to `include/secrets.h` and fill in the WiFi,
    the Signal K server, an OTA password (letters, digits and
    `. _ ~ + = @ : , / -` only: it goes on a shell command line) and a web UI

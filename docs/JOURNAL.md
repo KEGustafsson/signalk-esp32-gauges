@@ -578,6 +578,8 @@ redrew 180 graduations and 16 rotated labels.
   `penv_setup.py` asks only for `pioarduino>=6.1.19` and keeps any
   installed version that satisfies it, so CI now creates the penv itself
   (same Python as `pio`) with `pioarduino==6.1.19` before the build.
-  Checked locally: a venv with that pin runs PlatformIO 6.1.19. Whether
-  90 min covers the framework compile on a runner is the next run's
-  answer.
+  Checked locally: a venv with that pin runs PlatformIO 6.1.19.
+- The next run failed the same way: `pip install --upgrade platformio`
+  had put PyPI's new `platformio` 6.2.0 on the runner, and that outer
+  `pio` installs `tool-scons ~4.41101` for the platform. CI now installs
+  `platformio==6.1.19` for both boards; the top README's setup says so too.

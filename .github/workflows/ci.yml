@@ -96,8 +96,11 @@ jobs:
           key: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ steps.week.outputs.week }}-${{ github.run_id }}
           restore-keys: pio-objs-${{ matrix.env }}-${{ runner.os }}-${{ steps.week.outputs.week }}-
 
+      # Pinned: PlatformIO 6.2 brings SCons 4.11, which the pioarduino
+      # platform cannot use (`No module named 'SCons.Tool.FortranCommon'`,
+      # seen on the 2.1" build). Move the pin only with a build that passes.
       - name: Install PlatformIO
-        run: pip install --upgrade platformio
+        run: pip install platformio==6.1.19
 
       # The 2.1"'s second build stage ("Arduino compile with custom
       # libraries") runs PlatformIO from ~/.pio21/penv. Left to itself the

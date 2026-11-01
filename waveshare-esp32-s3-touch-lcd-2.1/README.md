@@ -117,7 +117,9 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
     framework with `No module named 'SCons.Tool.FortranCommon'`. Give it
     the PlatformIO the rest uses and build again (the framework is kept):
     `~/.pio21/penv/Scripts/uv pip install --python
-    ~/.pio21/penv/Scripts/python platformio==6.1.19`.
+    ~/.pio21/penv/Scripts/python platformio==6.1.19`. The `pio` you run
+    must be 6.1.19 as well (`pio --version`): PyPI's `platformio` is 6.2
+    since 2026-11-01, and CI failed the same way with only the penv pinned.
 - Verified 2026-11-01: with the first two settings the picture stayed in
   place through 60 s of settings reads every 2 s and a settings save, the
   load that shifted it within half a minute on the stock libraries, but
