@@ -99,6 +99,22 @@ jobs:
       - name: Install PlatformIO
         run: pip install --upgrade platformio
 
+      # The 2.1"'s second build stage ("Arduino compile with custom
+      # libraries") runs PlatformIO from ~/.pio21/penv. Left to itself the
+      # platform fills a new penv with the newest pioarduino (6.2), whose
+      # SCons it cannot use: `No module named 'SCons.Tool.FortranCommon'`
+      # (board README). It keeps a pioarduino it finds that satisfies
+      # >=6.1.19, so give it 6.1.19 first, from the interpreter that runs
+      # pio (a penv of another Python version is recreated).
+      - name: Pin PlatformIO in the 2.1" penv
+        if: matrix.project == 'waveshare-esp32-s3-touch-lcd-2.1'
+        run: |
+          set -euo pipefail
+          penv="$HOME/.pio21/penv"
+          [ -x "$penv/bin/python" ] || python -m venv "$penv"
+          "$penv/bin/python" -m pip install --quiet pioarduino==6.1.19
+          "$penv/bin/pio" --version
+
       # include/secrets.h is untracked, so the firmware builds from
       # secrets.example.h here, as on any clean checkout.
       - name: Build

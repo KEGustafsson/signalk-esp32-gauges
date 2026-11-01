@@ -569,3 +569,15 @@ redrew 180 graduations and 16 rotated labels.
   and both came back on Signal K. The 2.1": no flicker and no shift, also
   while browsing the web UI's configuration pages (which shifted it within
   half a minute on the stock libraries).
+
+## 2026-11-01 — PR #8: the 2.1" CI build
+
+- PR #8's first CI run failed the `s3_stbd` job after 4 min with the same
+  `No module named 'SCons.Tool.FortranCommon'`: the runner's fresh
+  `~/.pio21/penv` got pioarduino 6.2.0.post1. The platform's
+  `penv_setup.py` asks only for `pioarduino>=6.1.19` and keeps any
+  installed version that satisfies it, so CI now creates the penv itself
+  (same Python as `pio`) with `pioarduino==6.1.19` before the build.
+  Checked locally: a venv with that pin runs PlatformIO 6.1.19. Whether
+  90 min covers the framework compile on a runner is the next run's
+  answer.
