@@ -22,7 +22,10 @@ static uint32_t now_ms() {
   static auto t0 = steady_clock::now();
   return (uint32_t)duration_cast<milliseconds>(steady_clock::now() - t0).count();
 }
+// Strips flushed so far: a bench frame that flushed none redrew nothing.
+static unsigned long flushes = 0;
 static void flush_cb(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
+  flushes++;
   int w = lv_area_get_width(a);
   for (int y = a->y1; y <= a->y2; y++)
     memcpy(&fb[y * W + a->x1], px + (size_t)(y - a->y1) * w * 2, w * 2);
@@ -183,21 +186,32 @@ int main(int argc, char** argv) {
       // the water: the cost of one redraw (host time, relative only).
       const float swing = (def.max - def.min) * 0.01f + 1.0f;
       constexpr int kFrames = 240;
-      std::vector<double> us(kFrames);
+      std::vector<double> us;
+      us.reserve(kFrames);
       for (int k = 0; k < kFrames; k++) {
         v.value = p.sample + swing * sinf(k * 0.15f);
         v.updated_ms = now_ms();
+        const unsigned long flushed = flushes;
         const auto t0 = std::chrono::steady_clock::now();
         page->update(v, now_ms());
         lv_refr_now(d);
-        us[k] = std::chrono::duration<double, std::micro>(
-                    std::chrono::steady_clock::now() - t0)
-                    .count();
+        const double t = std::chrono::duration<double, std::micro>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+        // Only frames that redrew: one that changed nothing (the first,
+        // at the settled sample) would read as the fastest.
+        if (flushes != flushed) us.push_back(t);
       }
-      // The median: a PC's timing is noisy, the median much less so.
-      std::sort(us.begin(), us.end());
-      printf("bench %d %-14s median %6.2f ms/frame (fastest %5.2f)\n", W,
-             p.id, us[kFrames / 2] / 1000.0, us[0] / 1000.0);
+      if (us.empty()) {
+        printf("bench %d %-14s no frame redrew\n", W, p.id);
+      } else {
+        // The median: a PC's timing is noisy, the median much less so.
+        std::sort(us.begin(), us.end());
+        printf("bench %d %-14s median %6.2f ms/frame (fastest %5.2f, %zu of "
+               "%d frames redrew)\n",
+               W, p.id, us[us.size() / 2] / 1000.0, us[0] / 1000.0, us.size(),
+               kFrames);
+      }
       // Back to the sample, fresh, and let the needle or card settle on it:
       // a stale page keeps what it last showed.
       v.value = p.sample;

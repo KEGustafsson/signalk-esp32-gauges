@@ -630,3 +630,7 @@ redrew 180 graduations and 16 rotated labels.
   zones on the rpm, coolant and oil pages at boot, none lost in the first
   8 (2.1") and 13 (4") minutes. Not yet seen: the engine unit reconnecting
   while a gauge runs, the case that wiped them.
+- CodeRabbit's full review of `1c34764`: `bench` counted frames that
+  redrew nothing (the first, at the settled sample), so "fastest" could be
+  a no-op (0.01 ms). It now times only frames that flushed a strip, and
+  prints how many did (239 of 240, the compass 237).
