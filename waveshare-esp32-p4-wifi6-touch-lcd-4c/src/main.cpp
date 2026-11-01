@@ -23,6 +23,9 @@ Board* board = nullptr;
 // The GT911-compatible touch chip answers at 0x5D on most boards and at 0x14
 // on some (Waveshare's BSP probes both); start_board() tries both.
 constexpr uint8_t kGt911BackupAddress = 0x14;
+// LVGL draw buffer: 720 x 72 px (RGB565, 101 KB), in PSRAM: internal DMA RAM
+// is for the WiFi link to the C6 (common/src/lvgl_port.cpp).
+constexpr int kBufferLines = 72;
 }  // namespace
 
 void setup() {
@@ -33,8 +36,7 @@ void setup() {
   sensesp::SetupLogging(ESP_LOG_INFO);
 
   board = skgauges::start_board(kGt911BackupAddress);
-  // Draw buffer in PSRAM: internal DMA RAM is for the WiFi link to the C6.
-  skgauges::lvgl_port_init(board, LVGL_BUFFER_LINES, true);
+  skgauges::lvgl_port_init(board, kBufferLines, true);
 
   skgauges::gauge_app_begin({
       GAUGE_HOSTNAME,

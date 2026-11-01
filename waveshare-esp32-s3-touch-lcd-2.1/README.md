@@ -47,13 +47,17 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
   `ARDUINO_USB_CDC_ON_BOOT=0` only keeps Arduino's `Serial` on UART0. On
   the board brought up, the USB-C port is the S3's own USB (a "USB Serial
   Device"); flashing and the log both work there.
-- LVGL renders into one 480×40-pixel buffer in internal RAM (PSRAM if that
-  is short) and copies it into the panel's PSRAM frame buffer, which the
-  panel reads all the time. `common/src/board_start.cpp` sets the pixel
-  clock to 12 MHz (44 Hz refresh) and the RGB bounce buffer to 480×20
+- LVGL renders into one 480×20-pixel buffer in internal RAM (`kBufferLines`
+  in `src/main.cpp`) and copies it into the panel's PSRAM frame buffer,
+  which the panel reads all the time. `common/src/board_start.cpp` sets the
+  pixel clock to 12 MHz (44 Hz refresh) and the RGB bounce buffer to 480×20
   pixels: with the board file's 16 MHz and 10 lines the picture flickered
-  with noise constantly on the real board. It costs internal DMA RAM (the
-  boot log's `heap` line: 27 KB left with WiFi up).
+  with noise constantly on the real board, and with 10 lines at 12 MHz it
+  drifted up and still flickered. The bounce buffer's internal RAM is paid
+  for with the smaller draw buffer: with a 40-line one, the largest free
+  block fell to 7 KB and SensESP could not start its 8 KB connect task, so
+  the unit never reconnected after a Signal K server restart (log:
+  `connect worker spawn failed`). Watch the boot log's `heap` line.
 
 ## First power-up checklist
 

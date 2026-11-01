@@ -148,9 +148,16 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   stalls for good and the loop watchdog restarts the unit. Keep large
   buffers (LVGL's included) in PSRAM on the 4"; the boot log's `heap` line
   shows what is left. The C6 needs ESP-Hosted 2.12.11 (`tools/c6-update`).
+- 2.1" RGB panel: it reads its frame buffer from PSRAM all the time. It
+  needs the 12 MHz pixel clock and the 20-line bounce buffer set in
+  `board_start.cpp` (less flickers and drifts), and the bounce buffer's
+  internal RAM is paid for with a 20-line LVGL draw buffer: SensESP needs
+  an 8 KB contiguous block for every connection attempt, or the unit never
+  reconnects (`connect worker spawn failed`). Check the `heap` line's
+  largest block after any internal-RAM change.
 - PlatformIO's build cache keys each object on its full command line: a
   new global `-D` flag recompiles everything. Pass a per-file setting in
-  code instead.
+  code instead (the draw-buffer sizes are in each `src/main.cpp`).
 
 ## Hardware status
 

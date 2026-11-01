@@ -26,6 +26,11 @@ constexpr uint8_t kDefaultAddress = 0;  // The board file's address
 constexpr uint32_t kRtcMagic = 0x5D14A5C3;
 #if CONFIG_IDF_TARGET_ESP32S3
 constexpr int kRgbPclkHz = 12 * 1000 * 1000;
+// 10 lines (the board file's) let the picture drift and flicker even at
+// 12 MHz. Each line takes 2 x 960 bytes of internal DMA RAM: the 2.1"'s
+// LVGL draw buffer is kept small to pay for it (its main.cpp), or SensESP
+// cannot start its 8 KB connect task and never reconnects after a server
+// restart.
 constexpr int kRgbBounceLines = 20;
 #endif
 
@@ -125,9 +130,9 @@ Board* start_board(uint8_t alternate_touch_address) {
 #endif
 #if CONFIG_IDF_TARGET_ESP32S3
   // RGB panel (the 2.1"): it streams the frame buffer from PSRAM all the
-  // time, and with the board file's 16 MHz and 10-line bounce buffer the
-  // picture flickered with noise (PSRAM shared with LVGL and WiFi). A slower
-  // pixel clock (44 Hz refresh) and a deeper bounce buffer give it slack.
+  // time, and with the board file's 16 MHz the picture flickered with noise
+  // (PSRAM shared with LVGL and WiFi). A slower pixel clock (44 Hz refresh)
+  // and a deeper bounce buffer give it slack.
   if (board->getConfig().lcd.has_value()) {
     auto* rgb = std::get_if<esp_panel::drivers::BusRGB::Config>(
         &const_cast<BoardConfig&>(board->getConfig()).lcd->bus_config);

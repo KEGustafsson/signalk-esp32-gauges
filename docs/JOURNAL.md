@@ -424,3 +424,17 @@ Both boards on the boat's network with a real Signal K server.
 Not yet: readings against another instrument, stale/recovery on hardware,
 OTA. Both devices first try a 5 GHz-only network from `secrets.h` at every boot
 (about 20 s): neither chip has 5 GHz.
+
+Later the same day:
+
+- **2.1" did not reconnect after a Signal K server restart** (the 4" did):
+  `connect worker spawn failed` -- SensESP starts an 8 KB task for each
+  connection attempt, and with the 20-line bounce buffer the largest free
+  block of internal RAM was 7 KB (41 KB free in all). Back to a 10-line
+  bounce buffer the reconnect worked, but the picture drifted up and
+  flickered. Kept at 20 lines; the LVGL draw buffer went from 40 lines to
+  20 (37 KB -> 18 KB) instead: 45 KB free, largest block 27 KB, no flicker.
+- Both boards' draw-buffer size moved from a `-D LVGL_BUFFER_LINES` flag
+  into `src/main.cpp` (`kBufferLines`): only `main.cpp` used it, but as a
+  flag any change recompiled every file (one full rebuild per board to move
+  it).
