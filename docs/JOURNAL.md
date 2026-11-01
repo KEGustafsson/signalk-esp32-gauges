@@ -552,3 +552,20 @@ redrew 180 graduations and 16 rotated labels.
   linker script, "The command line is too long" (Windows), as every
   framework library's full path goes on one command line; the home
   directory path is shorter than `~/.platformio`'s.
+- **Getting the third setting built** took two more tries. The build with
+  `core_dir = ~/.pio21` compiled the framework, then its second stage
+  failed: in the fresh directory the platform had installed the newest
+  PlatformIO (6.2.0.post1) into `~/.pio21/penv`, whose SCons 4.11.1 the
+  platform cannot use (`No module named 'SCons.Tool.FortranCommon'`).
+  With 6.1.19 installed there (`uv pip install platformio==6.1.19`) it
+  linked in 7 min, reusing the framework, but the compiled `sdkconfig.h`
+  still had `CONFIG_LCD_RGB_RESTART_IN_VSYNC 1`: a `sdkconfig.s3_stbd_usb`
+  left in the project folder by the first build at 11:32 was taken as the
+  configuration, and `sdkconfig.defaults` (where `custom_sdkconfig` goes)
+  only fills what it lacks. Deleted it and the compiled framework: the
+  next build (71 min) has all three.
+- **Result:** the user built both units from a fresh clone of `c02a5e4` on
+  another PC and flashed them over the air: the first OTA updates of both,
+  and both came back on Signal K. The 2.1": no flicker and no shift, also
+  while browsing the web UI's configuration pages (which shifted it within
+  half a minute on the stock libraries).

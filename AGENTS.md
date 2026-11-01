@@ -186,8 +186,12 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   it from PowerShell or cmd: from Git Bash ESP-IDF's tool installer
   refuses MSYS, CMake is never installed and the build fails with
   `FileNotFoundError` in `run_cmake`. Running the code
-  from PSRAM costs about 1.4 MB of it. Verified: 60 s of file reads and a
-  save no longer shift the picture.
+  from PSRAM costs about 1.4 MB of it. Verified with all three: no flicker
+  or shift, also while the web UI's configuration pages are browsed. When
+  changing these lines, delete the project's `sdkconfig.<env>` first, or
+  ESP-IDF keeps its old values; if the build's second stage fails with
+  `SCons.Tool.FortranCommon`, `~/.pio21/penv` got PlatformIO 6.2 (board
+  README).
 - PlatformIO's build cache keys each object on its full command line: a
   new global `-D` flag recompiles everything. Pass a per-file setting in
   code instead (the draw-buffer sizes are in each `src/main.cpp`). The
@@ -199,8 +203,9 @@ A logic change in the host-safe files is not done until `tests/` covers it.
 
 **4" and 2.1" starboard: brought up** (2026-10-31 / 11-01,
 `docs/JOURNAL.md`): boot, touch, WiFi, Signal K, live readings with the
-server's zones on all six pages. Readings against another instrument,
-stale/recovery behaviour on hardware and OTA are not verified yet. Follow `docs/BRINGUP.md` and the first power-up
+server's zones on all six pages; OTA updates of both (2026-11-01).
+Readings against another instrument and stale/recovery behaviour on
+hardware are not verified yet. Follow `docs/BRINGUP.md` and the first power-up
 checklists in each board folder's README before trusting a reading.
 
 ## Journal

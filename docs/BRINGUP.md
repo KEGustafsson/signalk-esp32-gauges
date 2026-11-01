@@ -161,6 +161,11 @@ Once the device is on the network:
 pio run -e p4_stbd -t upload
 ```
 
+The computer must be on the device's network and accept the device's
+connection back to it (allow it if a firewall asks). The `_usb` and OTA
+envs keep separate builds, so the first OTA build of a board compiles
+everything once (on the 2.1", the framework too: about an hour).
+
 ## Something wrong?
 
 Copy the serial log from power-on to the problem; the `boot:` and `board:`

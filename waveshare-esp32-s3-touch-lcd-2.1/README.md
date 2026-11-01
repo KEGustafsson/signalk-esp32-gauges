@@ -103,12 +103,29 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
     ("MSys/Mingw is not supported"). PlatformIO only logs that, and the
     build then fails with `FileNotFoundError` while reading the CMake
     configuration.
-- 2026-11-01: with the first two settings the picture stayed in place
-  through 60 s of settings reads every 2 s and a settings save, the load
-  that shifted it within half a minute on the stock libraries. It still
-  shifted once at rest a few minutes later: the driver bug below, which
-  turns any one late interrupt into a lasting shift. The third setting is
-  its fix, under test.
+  - After changing a `custom_sdkconfig` line, delete this folder's
+    `sdkconfig.<env>` (e.g. `sdkconfig.s3_stbd_usb`; generated, gitignored)
+    before building. ESP-IDF keeps the values of an existing one and
+    applies the new settings only where it has none: the build log still
+    says `Replace: ...=y with: ...=n`, but the framework is built with the
+    old value. Check the result in `sdkconfig.<env>` (an option that is off
+    reads `# CONFIG_... is not set`). A fresh clone has none.
+  - The second stage of the build ("Starting Arduino compile ... with
+    custom libraries") runs PlatformIO from `~/.pio21/penv`. In a fresh
+    `~/.pio21` that environment got the newest PlatformIO (6.2.0.post1),
+    whose SCons 4.11.1 the platform cannot use: the build failed after the
+    framework with `No module named 'SCons.Tool.FortranCommon'`. Give it
+    the PlatformIO the rest uses and build again (the framework is kept):
+    `~/.pio21/penv/Scripts/uv pip install --python
+    ~/.pio21/penv/Scripts/python platformio==6.1.19`.
+- Verified 2026-11-01: with the first two settings the picture stayed in
+  place through 60 s of settings reads every 2 s and a settings save, the
+  load that shifted it within half a minute on the stock libraries, but
+  it still shifted once at rest a few minutes later: the driver bug below,
+  which turns any one late interrupt into a lasting shift. With all three
+  (built from a fresh clone on another PC, flashed over the air) the user
+  saw no flicker and no shift, also while browsing the web UI's
+  configuration pages.
 - Why the shift is always exactly 20 lines and stays (ESP-IDF 5.5,
   `components/esp_lcd/rgb/esp_lcd_panel_rgb.c`): the interrupt for "a
   bounce buffer has been sent" refills a buffer chosen by a running count,

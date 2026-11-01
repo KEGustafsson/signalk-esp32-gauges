@@ -294,9 +294,9 @@ rebooting the gauge (board README).
 ## Status
 
 The firmware has been brought up on the 4" and 2.1" starboard units: boot,
-touch, WiFi, Signal K and live readings work. Readings against another
-instrument, stale/recovery behaviour on the hardware and OTA are not
-verified yet (`docs/JOURNAL.md`).
+touch, WiFi, Signal K, live readings and updates over WiFi (OTA) work.
+Readings against another instrument and stale/recovery behaviour on the
+hardware are not verified yet (`docs/JOURNAL.md`).
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every
 pull request and every push to `main`. It:
