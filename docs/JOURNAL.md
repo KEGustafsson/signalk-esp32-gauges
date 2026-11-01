@@ -583,3 +583,7 @@ redrew 180 graduations and 16 rotated labels.
   had put PyPI's new `platformio` 6.2.0 on the runner, and that outer
   `pio` installs `tool-scons ~4.41101` for the platform. CI now installs
   `platformio==6.1.19` for both boards; the top README's setup says so too.
+- With both pins the run passed (`8cece15`): the 2.1" job built the
+  framework with all three settings in 7.5 min (`Replace: ...=n` for
+  `RESTART_IN_VSYNC`), 9 min in all, far inside the 90 min limit. Flash
+  43.5 %, RAM 18.6 %.
