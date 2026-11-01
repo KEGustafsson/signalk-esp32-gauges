@@ -279,9 +279,13 @@ screen update restarts the device.
 
 ## Status
 
-The firmware compiles for both boards, but it has not yet been run on the
-hardware. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), on
-every pull request and every push to `main`:
+The firmware has been brought up on the 4" and 2.1" starboard units: boot,
+touch, WiFi, Signal K and live readings work. Readings against another
+instrument, stale/recovery behaviour on the hardware and OTA are not
+verified yet (`docs/JOURNAL.md`).
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every
+pull request and every push to `main`. It:
 
 - builds both boards (as their starboard devices);
 - runs the host unit tests ([`tests/`](tests/)) with AddressSanitizer and
