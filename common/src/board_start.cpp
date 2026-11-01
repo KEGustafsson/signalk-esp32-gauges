@@ -24,6 +24,15 @@ constexpr const char* kPrefsNamespace = "skgauges";
 constexpr const char* kTouchAddressKey = "touch_addr";
 constexpr uint8_t kDefaultAddress = 0;  // The board file's address
 constexpr uint32_t kRtcMagic = 0x5D14A5C3;
+#if CONFIG_IDF_TARGET_ESP32S3
+constexpr int kRgbPclkHz = 12 * 1000 * 1000;
+// 10 lines (the board file's) let the picture drift and flicker even at
+// 12 MHz. Each line takes 2 x 960 bytes of internal DMA RAM: the 2.1"'s
+// LVGL draw buffer is kept small to pay for it (its main.cpp), or SensESP
+// cannot start its 8 KB connect task and never reconnects after a server
+// restart.
+constexpr int kRgbBounceLines = 20;
+#endif
 
 // Survive esp_restart() but not power loss; the magic tells real values
 // from power-on garbage.
@@ -55,7 +64,16 @@ void save_touch_address(uint8_t address) {
 }  // namespace
 
 Board* start_board(uint8_t alternate_touch_address) {
-  if (rtc_magic != kRtcMagic) {
+  // Only a start that failed moves on to the next option: a crash, a
+  // watchdog or our own restart below. A power-on, a reset button or a USB
+  // reset during the start (flashing, a brief power dip) starts over -- the
+  // 2.1", which has one touch option, otherwise came up without touch after
+  // a single interrupted boot.
+  const esp_reset_reason_t why = esp_reset_reason();
+  const bool start_failed = why == ESP_RST_PANIC || why == ESP_RST_INT_WDT ||
+                            why == ESP_RST_TASK_WDT || why == ESP_RST_WDT ||
+                            why == ESP_RST_SW;
+  if (rtc_magic != kRtcMagic || !start_failed) {
     rtc_magic = kRtcMagic;
     rtc_attempt = 0;
   }
@@ -110,6 +128,24 @@ Board* start_board(uint8_t alternate_touch_address) {
     }
   }
 #endif
+#if CONFIG_IDF_TARGET_ESP32S3
+  // RGB panel (the 2.1"): it streams the frame buffer from PSRAM all the
+  // time, and with the board file's 16 MHz the picture flickered with noise
+  // (PSRAM shared with LVGL and WiFi). A slower pixel clock (44 Hz refresh)
+  // and a deeper bounce buffer give it slack.
+  if (board->getConfig().lcd.has_value()) {
+    auto* rgb = std::get_if<esp_panel::drivers::BusRGB::Config>(
+        &const_cast<BoardConfig&>(board->getConfig()).lcd->bus_config);
+    auto* refresh =
+        rgb ? std::get_if<esp_panel::drivers::BusRGB::RefreshPanelPartialConfig>(
+                  &rgb->refresh_panel)
+            : nullptr;
+    if (refresh) {
+      refresh->pclk_hz = kRgbPclkHz;
+      refresh->bounce_buffer_size_px = refresh->h_res * kRgbBounceLines;
+    }
+  }
+#endif
   bool ok = board->init();
   if (ok && with_touch && plan[attempt] != kDefaultAddress) {
     static_cast<BusI2C*>(board->getTouch()->getBus())
@@ -124,6 +160,13 @@ Board* start_board(uint8_t alternate_touch_address) {
     esp_restart();
   }
   rtc_attempt = 0;
+  if (with_touch && board->getTouch() != nullptr) {
+    ESP_LOGI(kTag, "Display and touch started (touch at 0x%02X)",
+             (unsigned)static_cast<BusI2C*>(board->getTouch()->getBus())
+                 ->getI2cAddress());
+  } else {
+    ESP_LOGI(kTag, "Display started, without touch");
+  }
   if (with_touch && alternate_touch_address != 0 && plan[attempt] != stored) {
     save_touch_address(plan[attempt]);
   }

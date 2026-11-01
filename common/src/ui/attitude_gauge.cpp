@@ -89,8 +89,8 @@ AttitudeGaugePage::AttitudeGaugePage(lv_obj_t* parent, const GaugeDef& def,
   draw_face();
   finish_canvas(face_);
   trim_lcd_.set_prefix("TRIM");
-  trim_lcd_.set_suffix("\xC2\xB0");
-  heel_lcd_.set_suffix("\xC2\xB0");
+  trim_lcd_.set_unit("\xC2\xB0");
+  heel_lcd_.set_unit("\xC2\xB0");
 
   // Stacking: face canvas (with the horizon), boat/pointer overlay, then the
   // LCDs over the window.
@@ -330,9 +330,9 @@ void AttitudeGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
   if (fresh) {
     heel_lcd_.set_value(fabsf(roll), def_.decimals);
     if (fabsf(roll) < 0.05f) {
-      heel_lcd_.set_suffix("\xC2\xB0");
+      heel_lcd_.set_suffix("");
     } else {
-      heel_lcd_.set_suffix(roll < 0.0f ? "\xC2\xB0 PORT" : "\xC2\xB0 STBD");
+      heel_lcd_.set_suffix(roll < 0.0f ? "PORT" : "STBD");
     }
     if (has_pitch) {
       trim_lcd_.set_value(pitch, 1);
@@ -341,7 +341,7 @@ void AttitudeGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
     }
   } else {
     heel_lcd_.set_dashes();
-    heel_lcd_.set_suffix("\xC2\xB0");
+    heel_lcd_.set_suffix("");
     trim_lcd_.set_dashes();
   }
 

@@ -3,7 +3,8 @@
 // Page manager and touch handling.
 //
 //  - Swipe left / right: next / previous gauge (wraps around).
-//  - Tap: info overlay (unit, IP, Signal K connection) for a few seconds.
+//  - Swipe down: info overlay (unit, IP, Signal K connection) for a few
+//    seconds; swipe up or tap closes it (a tap alone opens nothing).
 //  - Long press: cycle backlight brightness 100 / 60 / 30 / 10 %.
 //
 // The current page and brightness survive a reboot (NVS).

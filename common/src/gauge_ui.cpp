@@ -209,7 +209,8 @@ void show_info() {
   text += def.title;
   text += ": ";
   text += gauge_config().sk_path(state->pages[state->current]);
-  text += "\n" LV_SYMBOL_LEFT " swipe " LV_SYMBOL_RIGHT "   hold: brightness";
+  text += "\n" LV_SYMBOL_LEFT " " LV_SYMBOL_RIGHT " pages   " LV_SYMBOL_UP
+          " close\nhold: brightness";
   show_overlay(text.c_str(), kInfoShowMs, true);
 }
 
@@ -237,6 +238,12 @@ void screen_event_cb(lv_event_t* e) {
       show_page((state->current + 1) % n, true);
     } else if (dir == LV_DIR_RIGHT) {
       show_page((state->current + n - 1) % n, true);
+    } else if (dir == LV_DIR_BOTTOM) {
+      // Swipe down for the info box, not a tap: a short sideways swipe
+      // easily registers as a tap and opened it by mistake.
+      show_info();
+    } else if (dir == LV_DIR_TOP && state->info_visible) {
+      hide_overlay(nullptr);
     }
   } else if (swiped) {
     return;
@@ -244,9 +251,7 @@ void screen_event_cb(lv_event_t* e) {
     lv_indev_get_point(indev, &state->press_point);
   } else if (code == LV_EVENT_SHORT_CLICKED) {
     if (state->info_visible) {
-      hide_overlay(nullptr);
-    } else {
-      show_info();
+      hide_overlay(nullptr);  // A tap only closes the info box
     }
   } else if (code == LV_EVENT_LONG_PRESSED) {
     // LVGL fires a long press after the hold time however far the finger

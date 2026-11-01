@@ -37,6 +37,7 @@ class SkData {
   void invalid(GaugeValue* slot);
 
   GaugeValue values_[kMaxPages];
+  bool logged_[kMaxPages] = {};  // The page's first reading has been logged
   // Counts connection state changes, as seen on the loop. SensESP's client
   // generation changes only when it tears a client down itself; the
   // WebSocket library also reconnects the same client on its own.

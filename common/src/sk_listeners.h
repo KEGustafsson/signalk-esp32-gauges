@@ -13,10 +13,12 @@
 // (Same approach as KEGustafsson/drive-remote-controller's
 // include/strict_sk_listeners.h.)
 //
-// Each also takes the path's Signal K metadata (zones, displayScale, units),
-// which SensESP's WebSocket brings in with sendMeta=all, so one subscription
-// per page carries both. The path itself is set in the page's settings card
-// (gauge_settings.h).
+// The path's Signal K metadata (zones, displayScale, units) comes through a
+// separate sensesp::SKMetadataListener on the same path (sk_data.cpp):
+// SensESP hands value deltas only to listeners whose wants_meta() is false,
+// and metadata only to those where it is true. Its subscription merges the
+// two into one entry, so one subscription per page still carries both. The
+// path itself is set in the page's settings card (gauge_settings.h).
 
 #include <ArduinoJson.h>
 #include <math.h>
@@ -27,11 +29,13 @@
 #include "sensesp/signalk/signalk_listener.h"
 #include "sensesp/signalk/signalk_metadata_listener.h"
 #include "sensesp/signalk/signalk_value_listener.h"
+#include "sk_parse.h"
 
 namespace skgauges {
 
-// Callbacks shared by the gauge listeners: a delta whose value is not
-// usable, and metadata for the path. `Base` derives from SKListener.
+// The callback shared by the gauge listeners: a delta whose value is not
+// usable. `Base` derives from SKListener. Never override wants_meta() here:
+// a listener that wants metadata gets no values (see above).
 template <typename Base>
 class GaugeListener : public Base {
  public:
@@ -43,22 +47,6 @@ class GaugeListener : public Base {
     on_invalid_ = std::move(callback);
   }
 
-  void set_meta_callback(
-      std::function<void(const sensesp::SKMetaView&)> callback) {
-    on_meta_ = std::move(callback);
-  }
-
-  bool wants_meta() const override { return true; }
-
-  // On the loop task, with an owned `{path, value: {...meta...}}` document.
-  void parse_meta(
-      const std::shared_ptr<const JsonDocument>& meta_doc) override {
-    if (on_meta_) {
-      on_meta_(sensesp::SKMetaView(
-          (*meta_doc)["value"].as<JsonObjectConst>(), meta_doc));
-    }
-  }
-
  protected:
   void invalid() {
     if (on_invalid_) on_invalid_();
@@ -66,7 +54,6 @@ class GaugeListener : public Base {
 
  private:
   std::function<void()> on_invalid_;
-  std::function<void(const sensesp::SKMetaView&)> on_meta_;
 };
 
 // Emits only for a real JSON number.
@@ -76,12 +63,12 @@ class StrictFloatListener
   using GaugeListener<sensesp::SKValueListener<float>>::GaugeListener;
 
   void parse_value(const JsonObject& json) override {
-    auto value = json["value"];
-    if (!value.is<float>()) {
+    float value;
+    if (!sk_number(json["value"], &value)) {
       invalid();
       return;
     }
-    this->emit(value.as<float>());
+    this->emit(value);
   }
 };
 
@@ -98,15 +85,14 @@ class AttitudeListener : public GaugeListener<sensesp::SKListener> {
         callback_(std::move(callback)) {}
 
   void parse_value(const JsonObject& json) override {
-    JsonVariantConst value = json["value"];
-    if (!value["roll"].is<float>()) {
+    float roll;
+    float pitch;
+    if (!sk_attitude(json["value"], &roll, &pitch)) {
       invalid();
       return;
     }
-    const float pitch =
-        value["pitch"].is<float>() ? value["pitch"].as<float>() : NAN;
     if (callback_) {
-      callback_(value["roll"].as<float>(), pitch);
+      callback_(roll, pitch);
     }
   }
 

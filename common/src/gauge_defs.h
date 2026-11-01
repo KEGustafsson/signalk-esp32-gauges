@@ -65,6 +65,9 @@ struct GaugeDef {
   const char* unit = "";  // Lower text on the dial face, e.g. "rpm"
   float scale = 1.0f;     // display = raw * scale + offset
   float offset = 0.0f;
+  // A dial's scale numbers are value / label_divisor, and its unit then
+  // reads e.g. "rpm x100" (label_divisor()); the LCD shows the full value.
+  float label_divisor = 1.0f;
 };
 
 // How many pages a device can have (the web UI's "Number of pages", 1..12).

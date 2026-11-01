@@ -15,7 +15,8 @@ constexpr float kTickOuter = 0.80f;
 constexpr float kMajorTickLen = 0.10f;
 constexpr float kMinorTickLen = 0.05f;
 constexpr float kZoneWidth = 0.05f;
-constexpr float kLabelRadius = 0.585f;
+// Close inside the major ticks (0.70), as on the reference gauges.
+constexpr float kLabelRadius = 0.625f;
 constexpr float kLabelFont = 0.085f;
 constexpr float kTitleY = -0.30f;
 constexpr float kTitleFont = 0.10f;
@@ -118,11 +119,17 @@ void RadialGaugePage::draw_face() {
     lv_draw_line(&layer, &line);
   }
 
-  // Title and unit, upright.
+  // Title and unit, upright; "rpm x100" when the numbers are divided.
   draw_text(&layer, def_.title, font_for_px(g_.px(kTitleFont)),
             color::kMarking, g_.cx, g_.cy + g_.px(kTitleY));
-  draw_text(&layer, def_.unit, font_for_px(g_.px(kUnitFont)),
-            color::kMarking, g_.cx, g_.cy + g_.px(kUnitY));
+  char unit[32];
+  if (def_.label_divisor > 1.0f) {
+    snprintf(unit, sizeof(unit), "%s x%.0f", def_.unit, def_.label_divisor);
+  } else {
+    snprintf(unit, sizeof(unit), "%s", def_.unit);
+  }
+  draw_text(&layer, unit, font_for_px(g_.px(kUnitFont)), color::kMarking,
+            g_.cx, g_.cy + g_.px(kUnitY));
 
   // Needle stop pins just past both ends of the scale.
   const float pin_angles[2] = {kStartAngle - kPinAngleOffset,
@@ -140,7 +147,8 @@ void RadialGaugePage::draw_face() {
     const float value = def_.min + def_.major_step * (float)i;
     const float angle = value_to_angle(value);
     char text[12];
-    format_label(text, sizeof(text), value, def_.major_step);
+    format_label(text, sizeof(text), value / def_.label_divisor,
+                 def_.major_step / def_.label_divisor);
     lv_point_precise_t p = polar(g_, angle, g_.pxf(kLabelRadius));
     draw_text_on_canvas_rotated(face_, text, label_font, color::kMarking,
                                 p.x, p.y, angle);

@@ -47,6 +47,8 @@ float to_lv_arc_angle(float dial_angle_deg);
 
 // Largest built-in Montserrat font whose size is <= px (min 12).
 const lv_font_t* font_for_px(int32_t px);
+// The largest font font_for_px() has (LV_FONT_MONTSERRAT_48).
+constexpr int32_t kMaxFontPx = 48;
 
 // A canvas for a static dial face, freed with the object. It starts as
 // XRGB8888 so gradients are drawn at full precision; call finish_canvas()
@@ -78,15 +80,20 @@ void draw_text(lv_layer_t* layer, const char* text, const lv_font_t* font,
 // rotated (lv_draw_image). Owns its buffer.
 class TextImage {
  public:
-  TextImage(const char* text, const lv_font_t* font, uint32_t color);
+  // tabular_digits: every digit in a cell as wide as the widest one, so a
+  // changing number does not shift (291 -> 292 keeps its place).
+  TextImage(const char* text, const lv_font_t* font, uint32_t color,
+            bool tabular_digits = false);
   ~TextImage();
   TextImage(const TextImage&) = delete;
   TextImage& operator=(const TextImage&) = delete;
 
-  // Draw centred on (cx, cy), rotated by rotation_deg (clockwise).
+  // Draw centred on (cx, cy), rotated by rotation_deg (clockwise) and scaled
+  // by `scale` (for text larger than the largest font).
   void draw(lv_layer_t* layer, float cx, float cy, float rotation_deg,
-            lv_opa_t opa = LV_OPA_COVER) const;
+            lv_opa_t opa = LV_OPA_COVER, float scale = 1.0f) const;
   bool valid() const { return buf_ != nullptr; }
+  int32_t width() const { return buf_ != nullptr ? buf_->header.w : 0; }
   // Half the diagonal: no rotation draws outside this radius of the centre.
   float radius() const;
 

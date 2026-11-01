@@ -19,7 +19,7 @@ Arduino examples ([ESP32-P4-WIFI6-Touch-LCD-XC](https://github.com/waveshareteam
 | MCU | ESP32-P4 (dual-core RISC-V up to 360/400 MHz), 32 MB PSRAM, 32 MB flash | yes |
 | Wireless | ESP32-C6-MINI-1 over SDIO (esp-hosted): WiFi 6 2.4 GHz, BLE 5 | WiFi, through Arduino's `WiFi.h` |
 | Display | 4" round IPS 720×720, JD9365, 2-lane MIPI-DSI at 1500 Mbps/lane, 80 MHz DPI clock, reset GPIO27, DSI PHY on LDO channel 3 | yes |
-| Touch | GT9271 (GT911-compatible) on I2C SDA 7 / SCL 8, address 0x5D (0x14 alternative), reset/INT not routed | swipe / tap / hold |
+| Touch | GT9271 (GT911-compatible) on I2C SDA 7 / SCL 8, address 0x5D (0x14 alternative), reset/INT not routed | swipe / hold |
 | Backlight | GPIO26, LEDC PWM, active low | brightness (long press) |
 | Audio | ES8311 codec + NS4150B amplifier (speaker), ES7210 mic ADC; I2S MCLK 13, SCLK 12, LRCK 10, DOUT 9, DIN 11, PA enable GPIO53 | not used |
 | microSD | 4-bit SDIO: D0–D3 GPIO39–42, CLK 43, CMD 44 | not used |
@@ -67,8 +67,17 @@ examples.
   flip `ESP_PANEL_BOARD_BACKLIGHT_ON_LEVEL` in
   `include/esp_panel_board_custom_conf.h`; Waveshare's BSP drives this pin
   inverted.
-- If WiFi never connects, check the boot log for esp-hosted errors: the
-  ESP32-C6 firmware must be compatible with the esp-hosted version in
-  Arduino-ESP32 3.3.11. Waveshare's documentation covers updating the C6.
-- Tap shows the IP address; it should match the one your router gave the
+- The ESP32-C6 must run the ESP-Hosted firmware of Arduino-ESP32 3.3.11
+  (2.12.11). A boot log with `Slave firmware version: 0.0.0` or `Version on
+  Host is NEWER than version on co-processor` needs `tools/c6-update` once:
+  with an older C6 firmware WiFi connects, but the C6 does not answer some
+  requests (the first board brought up shipped with such a firmware).
+- Internal DMA-capable RAM belongs to the ESP-Hosted link: it allocates its
+  SDIO buffers there while data flows. With the LVGL draw buffer in internal
+  RAM, 9 KB was left once WiFi was up and the Signal K connection took the
+  rest; the link then stalled for good (every request to the C6 unanswered,
+  no network traffic) and the loop watchdog restarted the unit every few
+  seconds after it reached Signal K. The draw buffer is in PSRAM for this
+  reason (`common/src/lvgl_port.cpp`).
+- A swipe down shows the IP address; it should match the one your router gave the
   device (or the static address in `secrets.h`).

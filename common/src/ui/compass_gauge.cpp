@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 namespace skgauges {
 namespace ui {
@@ -74,7 +75,14 @@ CompassGaugePage::CompassGaugePage(lv_obj_t* parent, const GaugeDef& def,
   card_obj_ = create_overlay(card_draw_cb);
   lv_obj_move_to_index(card_obj_, 1);
   set_stale_look(card_obj_, true);  // Until the first heading arrives
-  lcd_.set_prefix(def.unit);
+  // "291° T": the degree sign with the digits, the reference after them
+  // (def.unit is "°T" or "°M").
+  lcd_.set_unit("\xC2\xB0");
+  const char* unit = def.unit;
+  if (strncmp(unit, "\xC2\xB0", 2) == 0) {
+    unit += 2;
+  }
+  lcd_.set_suffix(unit);
 }
 
 void CompassGaugePage::draw_face() {

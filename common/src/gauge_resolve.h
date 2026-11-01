@@ -63,6 +63,11 @@ float nice_step(float min, float max, uint8_t* minor_per_major);
 // e.g. 32..248 F -> 0..250).
 void nice_range(float* min, float* max);
 
+// What a dial's scale numbers are divided by, as on a tachometer: 1 below
+// 1000; from 1000 on, a power of ten from 100 up that leaves them under 100
+// (0..3000 rpm -> 100: 0, 5, 10 ... 30 "rpm x100"; 0..20000 -> 1000).
+float label_divisor(float min, float max);
+
 // Converts a range given in display unit `from_id` to `to_id` (rounded out to
 // a tidy scale), for a page whose unit is changed; "SI" (as sent) counts as
 // the other unit's SI unit. Units of different quantities give 0..100.

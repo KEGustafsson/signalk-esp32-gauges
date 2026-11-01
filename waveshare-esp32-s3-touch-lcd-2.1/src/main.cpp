@@ -20,6 +20,10 @@ using esp_panel::board::Board;
 
 namespace {
 Board* board = nullptr;
+// LVGL draw buffer: 480 x 20 px (RGB565, 19 KB of internal RAM). Kept small:
+// the RGB panel's 20-line bounce buffer and SensESP's tasks need the
+// internal RAM (common/src/board_start.cpp).
+constexpr int kBufferLines = 20;
 }  // namespace
 
 void setup() {
@@ -27,7 +31,7 @@ void setup() {
   sensesp::SetupLogging(ESP_LOG_INFO);
 
   board = skgauges::start_board(0);  // CST820: one address
-  skgauges::lvgl_port_init(board, LVGL_BUFFER_LINES);
+  skgauges::lvgl_port_init(board, kBufferLines);
 
   skgauges::gauge_app_begin({
       GAUGE_HOSTNAME,

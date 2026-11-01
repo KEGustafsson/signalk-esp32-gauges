@@ -20,7 +20,7 @@ struct GaugeValue {
   bool seen = false;
   // The Signal K connection the last sample came from, and the replay
   // window opened by the first sample of each new connection (see
-  // SkData::store). conn_known is false until the first sample, so the very
+  // value_gate.h). conn_known is false until the first sample, so the very
   // first connection after boot opens a window too.
   bool conn_known = false;
   uint32_t conn_gen = 0;
@@ -28,7 +28,7 @@ struct GaugeValue {
   bool replaying = false;
   uint32_t replay_until_ms = 0;
   // A null arrived while a recent valid value was held: blank once it has
-  // gone kInvalidGraceMs without a valid sample (see SkData::invalid).
+  // gone kInvalidGraceMs without a valid sample (see value_gate.h).
   bool invalid_pending = false;
   uint32_t invalid_ms = 0;
 

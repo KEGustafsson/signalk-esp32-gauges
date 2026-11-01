@@ -82,21 +82,40 @@ void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
   }
 }
 
-void* alloc_draw_buffer(size_t bytes) {
-  // Internal RAM renders fastest; fall back to PSRAM if WiFi and friends
-  // have left too little.
-  void* buf = heap_caps_aligned_alloc(64, bytes,
-                                      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  if (buf == nullptr) {
+// Internal DMA-capable RAM the draw buffer must leave free for WiFi, which
+// takes its share only after the buffer is allocated.
+constexpr size_t kWifiReserve = 128 * 1024;
+
+void* alloc_draw_buffer(size_t bytes, bool psram_only) {
+  // Internal RAM renders fastest, but only if WiFi keeps its reserve;
+  // PSRAM otherwise. The 4" asks for PSRAM only: the ESP-Hosted link to its
+  // C6 allocates SDIO buffers from internal DMA RAM while data flows, and
+  // with the 720 x 72 buffer there (326 KB free at this point, 9 KB once
+  // WiFi was up) it ran out seconds after the Signal K connection opened.
+  // The link stalled for good and the loop watchdog restarted the unit,
+  // over and over.
+  const size_t internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL |
+                                                  MALLOC_CAP_DMA);
+  void* buf = nullptr;
+  if (!psram_only && internal >= bytes + kWifiReserve) {
+    buf = heap_caps_aligned_alloc(64, bytes,
+                                  MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  }
+  const bool in_psram = buf == nullptr;
+  if (in_psram) {
     buf = heap_caps_aligned_alloc(64, bytes,
                                   MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   }
+  ESP_LOGI(kTag, "Draw buffer: %u KB in %s (internal RAM free: %u KB)",
+           (unsigned)(bytes >> 10), in_psram ? "PSRAM" : "internal RAM",
+           (unsigned)(internal >> 10));
   return buf;
 }
 
 }  // namespace
 
-lv_display_t* lvgl_port_init(Board* board, int buffer_lines) {
+lv_display_t* lvgl_port_init(Board* board, int buffer_lines,
+                             bool buffer_in_psram) {
   LCD* lcd = board->getLCD();
   const int32_t width = lcd->getFrameWidth();
   const int32_t height = lcd->getFrameHeight();
@@ -109,9 +128,9 @@ lv_display_t* lvgl_port_init(Board* board, int buffer_lines) {
   lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
   // One buffer: the flush blocks until the copy is done, so a second buffer
   // would never be rendered into while the first is sent -- and internal RAM
-  // is better left to WiFi.
+  // is better left to WiFi (alloc_draw_buffer()).
   const size_t bytes = (size_t)width * buffer_lines * 2;
-  void* buf = alloc_draw_buffer(bytes);
+  void* buf = alloc_draw_buffer(bytes, buffer_in_psram);
   LV_ASSERT_MALLOC(buf);
   lv_display_set_buffers(display, buf, nullptr, bytes,
                          LV_DISPLAY_RENDER_MODE_PARTIAL);
