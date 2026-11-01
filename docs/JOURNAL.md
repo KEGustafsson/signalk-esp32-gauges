@@ -481,3 +481,70 @@ redrew 180 graduations and 16 rotated labels.
   ESP-IDF's documented setup for an RGB panel in PSRAM next to WiFi (code
   and read-only data from PSRAM, an IRAM-safe RGB interrupt, a larger data
   cache) needs a rebuilt framework (`custom_sdkconfig`): to try next.
+
+## 2026-11-01 — A 4" watchdog reboot; what shifts the 2.1" picture
+
+- **The 4" rebooted by itself** after about 6 h (reset reason: task
+  watchdog). Its core dump (read with esptool from the `coredump`
+  partition, opened in `riscv32-esp-elf-gdb` with the build's
+  `firmware.elf`): the loop was in SensESP's status-page timer, in
+  `WiFi.SSID()`, waiting in ESP-Hosted's `wait_for_sync_response` for the
+  C6 to answer `wifi_sta_get_ap_info`. The same place as on the first
+  night, but this time with 78 KB of internal RAM free and the C6 on
+  2.12.11: one lost reply, not a dead link. ESP-Hosted waits 5 s for a
+  reply (`DEFAULT_RPC_RSP_TIMEOUT`) and the loop watchdog was 5 s
+  (`CONFIG_ESP_TASK_WDT_TIMEOUT_S`), so the watchdog fired as the call was
+  about to give up.
+- **Fix (both boards, shared code):** the loop watchdog is reconfigured to
+  12 s at start (`kLoopWatchdogMs`, `esp_task_wdt_reconfigure()`, keeping
+  core 0's idle task watched and the panic with a core dump). A lost reply
+  now freezes the picture for 5 s instead of rebooting. A link that never
+  answers again would leave the loop running but stalling 5 s at a time,
+  which no watchdog sees; so three SensESP passes of 4 s or more within a
+  minute log why and restart (`gauge_app_loop()`, not during an OTA
+  upload).
+- **What shifts the 2.1" picture, found by trying it:** the 20-line shift
+  came back at rest, on the stock build, several times. With the unit
+  freshly restarted and steady, reading the page settings over the web API
+  every 2 s (`GET /api/config/Pages/<n>`, files on SPIFFS) shifted it
+  within half a minute (the user watching the screen). On the S3 a flash
+  read or write takes the shared bus away from PSRAM and holds off the
+  RGB interrupt (not IRAM-safe in the stock build) for longer than a
+  bounce buffer lasts. Whatever touches the filesystem can do it: the web
+  UI's configuration page, a saved setting, WiFi saving its settings.
+- **Fix (2.1" only):** `custom_sdkconfig` in its
+  `platformio.ini` rebuilds the framework with
+  `CONFIG_SPIRAM_XIP_FROM_PSRAM=y` (code and read-only data run from PSRAM,
+  so flash access no longer stops PSRAM) and
+  `CONFIG_LCD_RGB_ISR_IRAM_SAFE=y` (the RGB interrupt runs during flash
+  access), as ESP-IDF's RGB LCD guide describes for a PSRAM frame buffer.
+  The first attempt failed after 3.5 min with `FileNotFoundError` in
+  `run_cmake`: the build was started from Git Bash, where ESP-IDF's
+  `idf_tools.py` refuses to run ("MSys/Mingw is not supported"), so CMake
+  and Ninja were never installed and PlatformIO only logged it. Installed
+  from PowerShell, and the build runs from PowerShell: 63 min the first
+  time. Result on the 2.1": PSRAM free 4878 -> 3459 KB (the code in PSRAM),
+  DMA RAM 46 KB free (largest block 28 KB), all pages live. The same test
+  as before, longer (60 s of reads every 2 s, a save, 20 s more reads),
+  with the user watching: the picture stayed in place, no lines. CI's
+  firmware job gets 90 min instead of 30 for this build.
+- **Why some builds were slow:** the build cache is keyed on the compile
+  command, which includes the env's own library folder
+  (`.pio/libdeps/<env>`). Building `p4_stbd` after only `p4_stbd_usb` had
+  been built compiled all 778 files (21 min). Build and flash with the env
+  already built.
+- **The shift came back at rest**, a few minutes after that test, with
+  nothing touching the flash. ESP-IDF's RGB driver source (downloaded for
+  the rebuild) explains it and the user's "always the same height": the
+  bounce-buffer refill picks its buffer by a running count
+  (`bb_eof_count % 2`); one late "buffer sent" interrupt (two merged into
+  one) puts the count one behind, and every later refill goes into the
+  other buffer, 20 lines out of step. The VSYNC handler resets the count
+  only when `CONFIG_LCD_RGB_RESTART_IN_VSYNC` is off; the Arduino libraries
+  turn it on (ESP-IDF's default is off), so the restart in every VSYNC
+  never repaired it. Third setting: `CONFIG_LCD_RGB_RESTART_IN_VSYNC=n`.
+- **The two boards' builds undid each other:** the rebuild replaces the
+  framework's libraries inside `~/.platformio`, so the 4"'s next build
+  reinstalled the stock framework, which the 2.1"'s next build would have
+  rebuilt again. The 2.1" project now has its own `core_dir`
+  (`../.pio-core-2.1in`, gitignored, cached in CI too).

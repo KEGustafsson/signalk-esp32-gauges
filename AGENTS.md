@@ -35,7 +35,10 @@ are about never showing a wrong number with confidence.
    time (`GaugeValue::updated_ms`), never on the value.
 3. **Recover, don't freeze.** An unattended gauge must reboot rather than hang
    on a stale picture: display init failure restarts, the LVGL assert handler
-   restarts on ESP targets.
+   restarts on ESP targets, the loop runs under a 12 s watchdog, and a loop
+   that keeps stalling 4 s or more (three times a minute) restarts
+   (`gauge_app.cpp`). Keep the watchdog longer than any single call the loop
+   may legitimately wait on (the 4"'s WiFi requests: 5 s).
 4. **Never commit a credential.** `secrets.h` is gitignored anywhere in the
    tree; the committed `secrets.example.h` keeps `SECRET_OTA_PASSWORD`,
    `SECRET_ADMIN_PASSWORD` and `SECRET_AP_PASSWORD` empty so a build without
@@ -148,6 +151,11 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   stalls for good and the loop watchdog restarts the unit. Keep large
   buffers (LVGL's included) in PSRAM on the 4"; the boot log's `heap` line
   shows what is left. The C6 needs ESP-Hosted 2.12.11 (`tools/c6-update`).
+- 4" WiFi calls block: `WiFi.SSID()`, `WiFi.RSSI()` and the like are
+  requests to the C6, answered within ESP-Hosted's 5 s
+  (`DEFAULT_RPC_RSP_TIMEOUT`) or given up. SensESP makes them from the loop.
+  Do not add such calls to the loop, and keep the loop watchdog above 5 s
+  (`kLoopWatchdogMs`): at 5 s one lost reply rebooted the unit.
 - 2.1" RGB panel: it reads its frame buffer from PSRAM all the time. It
   needs the 12 MHz pixel clock and the 20-line bounce buffer set in
   `board_start.cpp` (less flickers and drifts), and the bounce buffer's
@@ -158,13 +166,33 @@ A logic change in the host-safe files is not done until `tests/` covers it.
 - 2.1" PSRAM bandwidth is the panel's: its bounce-buffer interrupt must
   read PSRAM in time, over the bus the S3 shares between PSRAM and flash.
   A missed read shifts the picture by one bounce buffer (20 lines) until a
-  reboot. Memory-heavy per-frame drawing (a 1 MB lookup per compass step)
-  and code compiled for speed (-O2: more flash fetches) both caused it on
-  the real panel. Make drawing cheaper in CPU, not in memory traffic, and
-  look at the panel after any drawing or build-flag change.
+  reboot. Flash access stops that interrupt and PSRAM outright (a file
+  read every 2 s shifted it within half a minute); memory-heavy per-frame
+  drawing (a 1 MB lookup per compass step) and code compiled for speed
+  (-O2: more flash fetches) did it too. Make drawing cheaper in CPU, not in
+  memory traffic, and look at the panel after any drawing or build-flag
+  change.
+- 2.1" framework: its `platformio.ini` rebuilds the Arduino libraries with
+  `custom_sdkconfig`: `CONFIG_SPIRAM_XIP_FROM_PSRAM` and
+  `CONFIG_LCD_RGB_ISR_IRAM_SAFE` so flash access no longer stops the panel,
+  and `CONFIG_LCD_RGB_RESTART_IN_VSYNC=n`: with it on (Arduino's choice)
+  ESP-IDF's RGB driver never resets the counter that picks which bounce
+  buffer to refill, so one late interrupt shifts the picture 20 lines for
+  good (board README). The project has its own `core_dir`
+  (`.pio-core-2.1in`): the rebuild replaces the framework in place, and in
+  a shared `~/.platformio` the two boards' builds undid each other. The first build of each env, and any change to those lines,
+  compiles ESP-IDF (63 min the first time on the first PC). On Windows run
+  it from PowerShell or cmd: from Git Bash ESP-IDF's tool installer
+  refuses MSYS, CMake is never installed and the build fails with
+  `FileNotFoundError` in `run_cmake`. Running the code
+  from PSRAM costs about 1.4 MB of it. Verified: 60 s of file reads and a
+  save no longer shift the picture.
 - PlatformIO's build cache keys each object on its full command line: a
   new global `-D` flag recompiles everything. Pass a per-file setting in
-  code instead (the draw-buffer sizes are in each `src/main.cpp`).
+  code instead (the draw-buffer sizes are in each `src/main.cpp`). The
+  command line includes the env's own library folder (`.pio/libdeps/<env>`),
+  so the cache does not carry over between envs (`p4_stbd` vs
+  `p4_stbd_usb`): build and flash with the env already built.
 
 ## Hardware status
 

@@ -79,5 +79,24 @@ examples.
   no network traffic) and the loop watchdog restarted the unit every few
   seconds after it reached Signal K. The draw buffer is in PSRAM for this
   reason (`common/src/lvgl_port.cpp`).
+- A single unanswered request to the C6 must not reboot the gauge. SensESP
+  asks for the WiFi network name and signal strength from the main loop
+  (for its status page); on this board each is a request to the C6, and the
+  loop waits up to 5 s for the reply (ESP-Hosted's
+  `DEFAULT_RPC_RSP_TIMEOUT`). The loop watchdog used to be 5 s too, so one
+  lost reply restarted the unit (seen once, after about 6 h, with plenty of
+  internal RAM free: the core dump showed the loop in `WiFi.SSID()` waiting
+  for the C6). The loop watchdog is now 12 s (`kLoopWatchdogMs` in
+  `common/src/gauge_app.cpp`): a lost reply freezes the picture for about
+  5 s and the gauge carries on. A link that stopped answering for good
+  makes every such request take 5 s; three SensESP passes of 4 s or more
+  within a minute restart the unit, with `loop: SensESP held the loop over
+  4 s 3 times in 60 s (a WiFi link not answering?): restarting` in the log.
+- After an unexplained restart, the boot log's reset reason and the core
+  dump tell why: read the core dump partition (`coredump` at 0x1FF0000 in
+  `partitions_32MB.csv`) with `esptool read-flash 0x1FF0000 0x10000
+  core.bin`, drop its first 24 bytes, and open the rest in
+  `riscv32-esp-elf-gdb` with the `firmware.elf` of the build that ran
+  (`thread apply all bt`). Reading it restarts the unit once.
 - A swipe down shows the IP address; it should match the one your router gave the
   device (or the static address in `secrets.h`).

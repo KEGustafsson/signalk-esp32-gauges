@@ -216,6 +216,13 @@ second, when connected.
    pio run -e p4_stbd_usb -t upload
    ```
 
+   The 2.1"'s first build takes about an hour: it rebuilds the framework's
+   libraries with two settings that keep its picture steady (its README). On
+   Windows, run it from PowerShell or cmd, not Git Bash. Build and flash with
+   the same env each time (the `_usb` one over USB): PlatformIO keeps each
+   env's libraries apart, so the build cache does not carry over between
+   `s3_stbd_usb` and `s3_stbd`, and switching rebuilds everything once.
+
 4. In the Signal K server admin UI, approve the device's access request
    (**Security → Access Requests**; the device is named after its hostname, e.g.
    `gauge-4c-stbd`). Read access is enough.
@@ -259,9 +266,13 @@ The same erase is the way back to a device that cannot be reached at all
 (wrong saved WiFi and no access point): the 4" has no button for SensESP's
 reset; on the 2.1", holding BOOT for 5 s resets SensESP's settings.
 
-The devices also reboot rather than freeze: the main loop runs under a 5 s
-watchdog (paused during OTA uploads), and a failed display start or a stuck
-screen update restarts the device.
+The devices also reboot rather than freeze: the main loop runs under a
+12 s watchdog (paused during OTA uploads), the device restarts when the loop
+keeps stalling for 4 s or more (three times within a minute: a WiFi link
+that stopped answering), and a failed display start or a stuck screen update
+restarts it too. The watchdog is longer than a WiFi request may take on the
+4" (5 s), so one lost reply from its WiFi chip pauses the picture instead of
+rebooting the gauge (board README).
 
 ## How it is built
 
@@ -275,7 +286,10 @@ screen update restarts the device.
   readouts are redrawn as values change.
 - **Data**: SensESP (main branch) subscribes to the Signal K paths over WebSocket. SensESP
   and LVGL run on the same Arduino loop task, so they share data without locks.
-- **Framework**: Arduino-ESP32 3.3.11 through the pioarduino platform.
+- **Framework**: Arduino-ESP32 3.3.11 through the pioarduino platform. The
+  4" uses its precompiled libraries; the 2.1" rebuilds them with its code
+  run from PSRAM and an RGB interrupt kept in internal RAM
+  (`custom_sdkconfig`, board README).
 
 ## Status
 

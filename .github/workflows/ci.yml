@@ -36,7 +36,11 @@ jobs:
   firmware-build:
     name: Build ${{ matrix.env }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The 2.1" rebuilds the framework's libraries (custom_sdkconfig in its
+    # platformio.ini): ESP-IDF's CMake pass is not in PlatformIO's build
+    # cache and compiles anew each run (63 min on a Windows PC, the first
+    # time).
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -62,11 +66,15 @@ jobs:
           python-version: '3.12'
 
       # Keyed on platformio.ini, which names the platform and library sources.
-      # Per-env keys keep the jobs from racing to write one entry.
+      # Per-env keys keep the jobs from racing to write one entry. The 2.1"
+      # keeps its packages in .pio-core-2.1in (core_dir in its
+      # platformio.ini: its framework is rebuilt).
       - name: Cache PlatformIO
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.platformio
+          path: |
+            ~/.platformio
+            ${{ github.workspace }}/.pio-core-2.1in
           key: pio-${{ matrix.env }}-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', matrix.project)) }}
           restore-keys: pio-${{ matrix.env }}-${{ runner.os }}-
 
