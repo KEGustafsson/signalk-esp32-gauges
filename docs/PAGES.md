@@ -23,7 +23,7 @@ reflashed.
 | Style | What you see | Use it for |
 |---|---|---|
 | **Dial** | A steel dial with needle, numbered scale, coloured zones and an LCD readout | Anything that is a single number: engine rpm, temperatures, speed, pressure, depth, voltage, tank level, wind speed... |
-| **Compass** | A rotating compass card with an LCD heading; °T, or °M when the path is a magnetic one | A heading, e.g. `navigation.headingTrue` or `navigation.headingMagnetic` |
+| **Compass** | A rotating compass card with an LCD heading; °T, or °M when the path is a magnetic one. The card ignores changes under 0.3° (the LCD shows the heading as it is) | A heading, e.g. `navigation.headingTrue` or `navigation.headingMagnetic` |
 | **Sea horizon** | A boat symbol on a level horizon; heel in degrees PORT/STBD on a ±40° scale, and trim | `navigation.attitude` (its `roll` and `pitch`) |
 
 ## Opening the web UI

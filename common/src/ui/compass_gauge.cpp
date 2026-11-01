@@ -28,6 +28,12 @@ constexpr float kLcdY = 0.28f;
 constexpr float kLcdW = 0.74f;
 constexpr float kLcdH = 0.23f;
 constexpr uint32_t kNorthRed = 0xE01418;
+constexpr float kDegToRad = 0.017453292519943295f;
+// The card does not follow heading changes smaller than this: at the dock
+// the heading wanders by tenths of a degree, and every step of the card
+// redraws all of it (~1 px at the card's edge; the LCD shows the heading as
+// it is).
+constexpr float kCardDeadbandDeg = 0.3f;
 
 }  // namespace
 
@@ -37,7 +43,8 @@ CompassGaugePage::CompassGaugePage(lv_obj_t* parent, const GaugeDef& def,
       card_obj_(nullptr),
       lcd_(root_, geometry.cx, geometry.cy + geometry.px(kLcdY),
            geometry.px(kLcdW), geometry.px(kLcdH), 3),
-      shown_heading_(NAN) {
+      shown_heading_(NAN),
+      card_target_(NAN) {
   draw_face();
   finish_canvas(face_);
 
@@ -70,6 +77,17 @@ CompassGaugePage::CompassGaugePage(lv_obj_t* parent, const GaugeDef& def,
     labels_.push_back(std::move(label));
   }
 
+  // What the card's marks sweep as it turns: from the inside edge of the
+  // innermost label to the graduations' outer end. Only that ring is
+  // redrawn when the card turns; the title, the centre ring and the LCD
+  // stay as they are.
+  float inner = g_.pxf(kCardOuter);
+  for (const CardLabel& label : labels_) {
+    inner = fminf(inner, g_.pxf(label.radius_frac) - label.image->radius());
+  }
+  ring_in_ = (int32_t)floorf(inner) - 2;
+  ring_out_ = g_.px(kCardOuter) + LV_MAX(2, g_.px(0.014f)) + 2;
+
   // Stacking: face canvas, card, LCD. The LCD already exists (member init),
   // so slot the card in directly above the canvas.
   card_obj_ = create_overlay(card_draw_cb);
@@ -101,22 +119,32 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
   // stays bright.
   const lv_opa_t opa = layer->opa;
 
-  // Graduations every 2 degrees, longer and heavier every 10.
-  for (int b = 0; b < 360; b += 2) {
-    const bool ten = (b % 10) == 0;
-    const float angle = (float)b - heading;
+  // Graduations every 2 degrees, longer and heavier every 10. This runs for
+  // every strip of the screen the card is drawn in: each mark's direction
+  // is the previous one turned by 2 degrees, not a sine and cosine of its
+  // own (dial angle: x = sin, y = -cos, as polar()).
+  constexpr float kStep = 2.0f * kDegToRad;
+  const float step_sin = sinf(kStep), step_cos = cosf(kStep);
+  float dir_sin = sinf(-heading * kDegToRad);
+  float dir_cos = cosf(-heading * kDegToRad);
+  const float outer = g_.pxf(kCardOuter);
+  for (int i = 0; i < 180; i++) {
+    const bool ten = (i % 5) == 0;
+    const float inner = g_.pxf(kCardOuter - (ten ? kTick10Len : kTick2Len));
     lv_draw_line_dsc_t line;
     lv_draw_line_dsc_init(&line);
-    line.color = lv_color_hex(color::kMarking);
-    line.opa = opa;
     line.width = ten ? LV_MAX(2, g_.px(0.014f)) : LV_MAX(1, g_.px(0.006f));
-    line.p1 = polar(g_, angle, g_.pxf(kCardOuter));
-    line.p2 = polar(g_, angle, g_.pxf(kCardOuter - (ten ? kTick10Len
-                                                         : kTick2Len)));
+    line.p1 = {g_.cx + outer * dir_sin, g_.cy - outer * dir_cos};
+    line.p2 = {g_.cx + inner * dir_sin, g_.cy - inner * dir_cos};
+    const float next_sin = dir_sin * step_cos + dir_cos * step_sin;
+    dir_cos = dir_cos * step_cos - dir_sin * step_sin;
+    dir_sin = next_sin;
     if (!in_clip(layer, line.p1.x, line.p1.y, line.p2.x, line.p2.y,
                  line.width + 1.0f)) {
       continue;
     }
+    line.color = lv_color_hex(color::kMarking);
+    line.opa = opa;
     lv_draw_line(layer, &line);
   }
 
@@ -161,12 +189,6 @@ void CompassGaugePage::card_draw_cb(lv_event_t* e) {
   self->draw_card(lv_event_get_layer(e));
 }
 
-void CompassGaugePage::invalidate_card() {
-  const int32_t r = g_.px(kLubberBase) + 2;
-  lv_area_t area = {g_.cx - r, g_.cy - r, g_.cx + r, g_.cy + r};
-  lv_obj_invalidate_area(card_obj_, &area);
-}
-
 void CompassGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
   const bool fresh = value.fresh(now_ms);
   // Without a live heading the card stays where it was, dimmed, and the LCD
@@ -181,8 +203,13 @@ void CompassGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
     return;
   }
   lcd_.set_value((float)(lroundf(value.value) % 360), 0, true);
-  if (smooth_toward(&shown_heading_, value.value, 0.2f, 0.1f, true)) {
-    invalidate_card();
+  const float off =
+      fmodf(value.value - card_target_ + 540.0f, 360.0f) - 180.0f;
+  if (isnan(card_target_) || fabsf(off) >= kCardDeadbandDeg) {
+    card_target_ = value.value;
+  }
+  if (smooth_toward(&shown_heading_, card_target_, 0.2f, 0.1f, true)) {
+    invalidate_ring(card_obj_, g_.cx, g_.cy, ring_in_, ring_out_);
   }
 }
 

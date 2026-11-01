@@ -58,6 +58,13 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
   block fell to 7 KB and SensESP could not start its 8 KB connect task, so
   the unit never reconnected after a Signal K server restart (log:
   `connect worker spawn failed`). Watch the boot log's `heap` line.
+- Known: the picture can shift up by 20 lines (one bounce buffer) and stay
+  so until a restart, with horizontal lines while it happens. The
+  interrupt that copies the frame buffer into the bounce buffers missed a
+  copy: PSRAM, on the bus the S3 shares with flash, was not readable in
+  time (a flash write, heavy PSRAM traffic). A restart puts it right.
+  Without bounce buffers single frames jump sideways instead, several
+  times a second. See `docs/JOURNAL.md` (2026-11-01) for what was tried.
 
 ## First power-up checklist
 

@@ -2,9 +2,11 @@
 // once with a live sample (out/<size>_<n>_<id>.ppm) and once after the sample
 // has gone stale (out/stale<size>_<n>_<id>.ppm).
 #include <lvgl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 #include <chrono>
 #include <vector>
 #include <string>
@@ -131,15 +133,20 @@ static std::vector<PreviewPage> preview_pages() {
 
 int main(int argc, char** argv) {
   W = H = argc > 1 ? atoi(argv[1]) : 480;
+  const bool bench = argc > 2 && strcmp(argv[2], "bench") == 0;
   if (W < 64 || W > 4096) {
-    fprintf(stderr, "usage: %s [size in px, 64..4096; default 480]\n", argv[0]);
+    fprintf(stderr, "usage: %s [size in px, 64..4096; default 480] [bench]\n",
+            argv[0]);
     return 2;
   }
   fb.assign(W * H, 0);
   lv_init();
   lv_tick_set_cb(now_ms);
   lv_display_t* d = lv_display_create(W, H);
-  static std::vector<uint8_t> buf(W * 60 * 2);
+  // Rendered in strips as tall as the boards' draw buffers (kBufferLines in
+  // each src/main.cpp): draw callbacks run once per strip.
+  const int lines = W <= 480 ? 20 : 72;
+  static std::vector<uint8_t> buf(W * lines * 2);
   lv_display_set_buffers(d, buf.data(), nullptr, buf.size(), LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_set_flush_cb(d, flush_cb);
   lv_obj_t* scr = lv_screen_active();
@@ -170,6 +177,29 @@ int main(int argc, char** argv) {
       return 1;
     }
     printf("saved %s\n", path);
+
+    if (bench) {
+      // A live value swinging around the sample, as heading and heel do on
+      // the water: the cost of one redraw (host time, relative only).
+      const float swing = (def.max - def.min) * 0.01f + 1.0f;
+      constexpr int kFrames = 240;
+      std::vector<double> us(kFrames);
+      for (int k = 0; k < kFrames; k++) {
+        v.value = p.sample + swing * sinf(k * 0.15f);
+        v.updated_ms = now_ms();
+        const auto t0 = std::chrono::steady_clock::now();
+        page->update(v, now_ms());
+        lv_refr_now(d);
+        us[k] = std::chrono::duration<double, std::micro>(
+                    std::chrono::steady_clock::now() - t0)
+                    .count();
+      }
+      // The median: a PC's timing is noisy, the median much less so.
+      std::sort(us.begin(), us.end());
+      printf("bench %d %-14s median %6.2f ms/frame (fastest %5.2f)\n", W,
+             p.id, us[kFrames / 2] / 1000.0, us[0] / 1000.0);
+      v.value = p.sample;
+    }
 
     // The same page once the sample is older than kStaleAfterMs.
     for (int k = 0; k < 60; k++) {

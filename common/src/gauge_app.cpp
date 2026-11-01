@@ -60,6 +60,11 @@ std::vector<sensesp::ClientSSIDConfig> wifi_clients(const char* address) {
 bool loop_watchdog_on = false;
 bool ota_started = false;  // An upload got past authentication
 
+// The longest pass of each side of the loop since the last "loop" log line:
+// how close to a stall the gauge runs, not only when it crosses one.
+uint32_t slowest_sensesp_ms = 0;
+uint32_t slowest_lvgl_ms = 0;
+
 void loop_watchdog(bool on) {
   if (on == loop_watchdog_on) return;  // ArduinoOTA may report one error twice
   loop_watchdog_on = on;
@@ -245,6 +250,10 @@ void gauge_app_begin(const GaugeAppConfig& config) {
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_DMA) >> 10),
              (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_DMA) >> 10),
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >> 10));
+    ESP_LOGI("loop",
+             "Slowest pass in the last minute: LVGL %u ms, SensESP %u ms",
+             (unsigned)slowest_lvgl_ms, (unsigned)slowest_sensesp_ms);
+    slowest_lvgl_ms = slowest_sensesp_ms = 0;
   });
   start_loop_watchdog();
   ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
@@ -258,12 +267,14 @@ void gauge_app_loop() {
   uint32_t start = millis();
   sensesp::event_loop()->tick();
   uint32_t took = millis() - start;
+  if (took > slowest_sensesp_ms) slowest_sensesp_ms = took;
   if (took >= kStallMs) {
     ESP_LOGW("loop", "SensESP held the loop for %u ms", (unsigned)took);
   }
   start = millis();
   const uint32_t wait_ms = lv_timer_handler();
   took = millis() - start;
+  if (took > slowest_lvgl_ms) slowest_lvgl_ms = took;
   if (took >= kStallMs) {
     ESP_LOGW("loop", "LVGL held the loop for %u ms", (unsigned)took);
   }

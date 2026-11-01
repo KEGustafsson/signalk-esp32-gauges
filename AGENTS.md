@@ -155,6 +155,13 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   an 8 KB contiguous block for every connection attempt, or the unit never
   reconnects (`connect worker spawn failed`). Check the `heap` line's
   largest block after any internal-RAM change.
+- 2.1" PSRAM bandwidth is the panel's: its bounce-buffer interrupt must
+  read PSRAM in time, over the bus the S3 shares between PSRAM and flash.
+  A missed read shifts the picture by one bounce buffer (20 lines) until a
+  reboot. Memory-heavy per-frame drawing (a 1 MB lookup per compass step)
+  and code compiled for speed (-O2: more flash fetches) both caused it on
+  the real panel. Make drawing cheaper in CPU, not in memory traffic, and
+  look at the panel after any drawing or build-flag change.
 - PlatformIO's build cache keys each object on its full command line: a
   new global `-D` flag recompiles everything. Pass a per-file setting in
   code instead (the draw-buffer sizes are in each `src/main.cpp`).

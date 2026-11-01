@@ -438,3 +438,46 @@ Later the same day:
   into `src/main.cpp` (`kBufferLines`): only `main.cpp` used it, but as a
   flag any change recompiled every file (one full rebuild per board to move
   it).
+
+## 2026-11-01 — The 2.1" compass, and why its picture shifts
+
+Both boards ran ~6 h after the reflash with no restart and ~12 Signal K
+deltas a second each. The 2.1" logged "LVGL held the loop" (150-175 ms)
+5-10 times a minute on the compass page: each step of the turning card
+redrew 180 graduations and 16 rotated labels.
+
+- **Tried and dropped: the card turned by table lookup.** The card drawn
+  once (at 2x, averaged down), resampled into a polar strip, each angle
+  a lookup per pixel. It looked the same as the drawn card and built in
+  slices, but every step read and wrote ~1 MB of PSRAM in a burst, and the
+  2.1"'s panel (fed from PSRAM) flickered and shifted up. Lesson for the
+  2.1": no memory-heavy per-frame work, however fast.
+- **Tried and dropped: LVGL and the pages compiled at -O2** (the framework
+  builds everything -Os). Larger code means more flash fetches on the
+  S3's bus shared by flash and PSRAM; the picture shifted even at rest.
+- **Kept, CPU only:** the card is redrawn as the ring its marks sweep
+  (`invalidate_ring()`, up to 16 bands) instead of its bounding square; it
+  ignores heading changes under 0.3 degrees (the LCD shows the heading as
+  it is), so at the dock it does not redraw at all; the 180 graduations are
+  placed by turning one direction by 2 degrees at a time, not with a sine
+  and cosine each, per screen strip. Measured with the card stepping all
+  the time (course over ground at the dock): 137 ms a step (180 marks
+  ~32 ms, 16 labels ~42 ms, the rest ~62 ms); at rest the slowest pass is
+  16-21 ms. The preview renders the compass pixel for pixel as before.
+- **Once a minute, `loop: Slowest pass in the last minute`** next to the
+  heap line: how close to a stall the gauge runs, not only when it
+  crosses 150 ms.
+- **`preview <size> bench`** times one redraw of each page (median), in
+  strips as tall as the boards' draw buffers.
+- **The 2.1" picture shift, explained.** The panel is fed by an interrupt
+  that copies the PSRAM frame buffer into two 20-line bounce buffers. One
+  missed copy leaves the picture one bounce buffer (20 lines) out of step,
+  and it stays so (ESP-IDF's restart at every VSYNC, on in this build, does
+  not catch it); late copies are the horizontal lines. A copy is missed
+  when PSRAM cannot be read in time: flash writes (WiFi connect, a file or
+  preference saved) and heavy PSRAM traffic. Without bounce buffers (the
+  panel's DMA reads PSRAM itself) the shift cannot stay, but single frames
+  then jumped sideways several times a second: worse. Back at 20 lines.
+  ESP-IDF's documented setup for an RGB panel in PSRAM next to WiFi (code
+  and read-only data from PSRAM, an IRAM-safe RGB interrupt, a larger data
+  cache) needs a rebuilt framework (`custom_sdkconfig`): to try next.
