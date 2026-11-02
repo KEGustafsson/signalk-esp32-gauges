@@ -81,8 +81,9 @@ reports the ESP32-C6's ESP-Hosted firmware. `Slave firmware version: 0.0.0`
 (or `Version on Host is NEWER than version on co-processor`) means the C6
 runs an older firmware than the P4 expects: WiFi connects, but the C6 does
 not answer some of the P4's requests. Update the C6 once with
-`tools/c6-update` (its README), then flash the gauge again. Afterwards the
-log says `Versions Match!`.
+`tools/c6-update`, then flash the gauge again: [Update the WiFi chip's
+firmware](../waveshare-esp32-p4-wifi6-touch-lcd-4c/README.md#update-the-wifi-chips-firmware-once-per-board)
+in the board README. Afterwards the log says `Versions Match!`.
 
 Expected, not a fault:
 

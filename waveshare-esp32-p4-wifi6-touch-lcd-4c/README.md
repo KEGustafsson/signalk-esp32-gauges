@@ -8,6 +8,78 @@ Signal K steel gauges for the 4" round board. See the
 | starboard | `pio run -e p4_stbd -t upload` | `pio run -e p4_stbd_usb -t upload` |
 | port | `pio run -e p4_port -t upload` | `pio run -e p4_port_usb -t upload` |
 
+## Update the WiFi chip's firmware (once per board)
+
+**Every 4" board needs this once, before it is used.** Its WiFi is a separate
+chip, an ESP32-C6, with a firmware of its own (ESP-Hosted). That firmware
+must be the version the gauge firmware is built for: **ESP-Hosted 2.12.11**
+(Arduino-ESP32 3.3.11). Boards leave the factory with an older one. Flashing
+the gauge does not update the C6.
+
+**How to tell.** The gauge's boot log (USB serial, 115200 baud), right after
+`Gauge on screen`:
+
+| Log | Meaning |
+|---|---|
+| `Slave firmware version: 2.12.11` and `Versions Match!` | Up to date: nothing to do |
+| `Slave firmware version: 0.0.0`, `Could not get slave firmware version: ESP_FAIL`, `Version on Host is NEWER than version on co-processor` | **Update it** |
+
+With the old firmware WiFi still connects, so the gauge looks almost
+right. But the C6 does not answer some of the P4's requests, and each one
+holds the gauge for up to 5 s. The unit may fail to reach the Signal K
+server, freeze for seconds at a time, or restart.
+
+**When.** Once per board, and again whenever a platform update changes the
+ESP-Hosted version (the boot log then shows the warning again).
+
+**What it needs.** USB, and WiFi with internet access: the tool joins the
+first network in `include/secrets.h` that answers and downloads the C6
+image from Espressif (`espressif.github.io`). The image is checked against
+the SHA-256 pinned in `tools/c6-update/src/main.cpp` before anything is
+written. An interrupted update leaves the old firmware in place; run it
+again.
+
+**Steps**, over USB (`--upload-port COMn` if more than one board is
+plugged in):
+
+1. Flash the update tool. **The board then runs the tool, not the gauge**,
+   until step 4:
+
+   ```bash
+   cd tools/c6-update
+   pio run -t upload
+   ```
+
+   On ESP32-P4 silicon before v3.0 (the chip-id check in `docs/BRINGUP.md`)
+   use `pio run -e c6_update_pre_v3 -t upload`.
+2. Open the monitor and press RESET:
+
+   ```bash
+   pio device monitor
+   ```
+
+3. Wait for `DONE: the co-processor is up to date, nothing to do` after the
+   restart (download, check and write take a minute or two). The full
+   expected output is in [`tools/c6-update/README.md`](../tools/c6-update/README.md).
+4. Flash the gauge again, the side this board is:
+
+   ```bash
+   cd waveshare-esp32-p4-wifi6-touch-lcd-4c
+   pio run -e p4_stbd_usb -t upload    # or p4_port_usb
+   ```
+
+   Its settings (pages, WiFi, Signal K token) are kept: they are in the
+   gauge's filesystem at 16 MB (`partitions_32MB.csv`), and the tool only
+   writes inside the gauge's firmware slot below it.
+5. Check the boot log for `Versions Match!`.
+
+**Units:**
+
+| Unit | C6 firmware |
+|---|---|
+| 4" starboard | 2.12.11, updated 2026-10-31 |
+| 4" port | 2.12.11, updated 2026-11-03 (had the factory firmware, 0.0.0) |
+
 ## Hardware
 
 From the [Waveshare wiki](https://www.waveshare.com/wiki/ESP32-P4-WIFI6-Touch-LCD-4C),
@@ -67,11 +139,9 @@ examples.
   flip `ESP_PANEL_BOARD_BACKLIGHT_ON_LEVEL` in
   `include/esp_panel_board_custom_conf.h`; Waveshare's BSP drives this pin
   inverted.
-- The ESP32-C6 must run the ESP-Hosted firmware of Arduino-ESP32 3.3.11
-  (2.12.11). A boot log with `Slave firmware version: 0.0.0` or `Version on
-  Host is NEWER than version on co-processor` needs `tools/c6-update` once:
-  with an older C6 firmware WiFi connects, but the C6 does not answer some
-  requests (the first board brought up shipped with such a firmware).
+- The ESP32-C6 runs ESP-Hosted 2.12.11: `Versions Match!` in the boot log.
+  If not, update it first: [Update the WiFi chip's firmware](#update-the-wifi-chips-firmware-once-per-board).
+  Both boards brought up so far shipped with an older one.
 - Internal DMA-capable RAM belongs to the ESP-Hosted link: it allocates its
   SDIO buffers there while data flows. With the LVGL draw buffer in internal
   RAM, 9 KB was left once WiFi was up and the Signal K connection took the

@@ -224,6 +224,16 @@ second, when connected.
    env's libraries apart, so the build cache does not carry over between
    `s3_stbd_usb` and `s3_stbd`, and switching rebuilds everything once.
 
+   **4" only: update the WiFi chip's firmware once.** The 4"'s WiFi is a
+   separate chip (ESP32-C6) with its own firmware, and boards leave the
+   factory with an older one than the gauge needs. If the boot log says
+   `Slave firmware version: 0.0.0` or `Version on Host is NEWER than version
+   on co-processor` instead of `Versions Match!`, update it with
+   `tools/c6-update` and flash the gauge again:
+   [steps in the 4" README](waveshare-esp32-p4-wifi6-touch-lcd-4c/README.md#update-the-wifi-chips-firmware-once-per-board).
+   Without it WiFi connects, but the gauge stalls for seconds at a time and
+   may not reach the Signal K server.
+
 4. In the Signal K server admin UI, approve the device's access request
    (**Security → Access Requests**; the device is named after its hostname, e.g.
    `gauge-4c-stbd`). Read access is enough.

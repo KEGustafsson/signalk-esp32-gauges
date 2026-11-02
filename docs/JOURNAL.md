@@ -716,3 +716,12 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
 - A build mistake on the way: `esp_hosted_misc.h` has no `extern "C"`
   guard, so the heartbeat call did not link from C++ until the includes
   were wrapped.
+- **The port unit's C6 updated** to 2.12.11 with `tools/c6-update` (USB,
+  COM6). The first run was interrupted from the PC side but had already
+  written and activated the image; the second found it up to date. Gauge
+  flashed again: `Versions Match!`, heartbeats from 25.8 s, back on Signal
+  K with its `prt_engine` pages, so its settings survived (the gauge's
+  filesystem is at 16 MB, beyond the tool's default partition table).
+- The C6 update is now a section of its own at the top of the 4" README,
+  with a step in the top README's setup, instead of a checklist bullet:
+  both boards shipped with the factory C6 firmware.
