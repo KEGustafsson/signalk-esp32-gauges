@@ -92,6 +92,11 @@ examples.
   makes every such request take 5 s; three SensESP passes of 4 s or more
   within a minute restart the unit, with `loop: SensESP held the loop over
   4 s 3 times in 60 s (a WiFi link not answering?): restarting` in the log.
+  That restart skips ESP-IDF's shutdown steps: one of them tells the C6 to
+  stop WiFi and waits for its answer, so with a dead link the unit hung
+  there until the watchdog reset it 12 s later (seen once, after about
+  19.5 h: reset reason "Task watchdog"). ESP-Hosted resets the C6 at every
+  boot.
 - After an unexplained restart, the boot log's reset reason and the core
   dump tell why: read the core dump partition (`coredump` at 0x1FF0000 in
   `partitions_32MB.csv`), drop its first 24 bytes, and open the rest in
@@ -102,7 +107,7 @@ examples.
   ```bash
   pio pkg exec -p tool-esptoolpy -- esptool --chip esp32p4 read-flash 0x1FF0000 0x10000 core.bin
   tail -c +25 core.bin > core.elf
-  pio pkg exec -p riscv32-esp-elf-gdb -- riscv32-esp-elf-gdb .pio/build/p4_stbd/firmware.elf core.elf
+  pio pkg exec -p tool-riscv32-esp-elf-gdb -- riscv32-esp-elf-gdb .pio/build/p4_stbd/firmware.elf core.elf
   ```
 - A swipe down shows the IP address; it should match the one your router gave the
   device (or the static address in `secrets.h`).

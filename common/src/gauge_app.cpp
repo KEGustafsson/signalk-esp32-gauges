@@ -6,6 +6,7 @@
 #include <SPIFFS.h>
 #include <esp_heap_caps.h>
 #include <esp_psram.h>
+#include <esp_private/system_internal.h>
 #include <esp_task_wdt.h>
 #include <lvgl.h>
 
@@ -310,7 +311,14 @@ void gauge_app_loop() {
                (unsigned)(kSlowPassMs / 1000), (unsigned)slow_passes,
                (unsigned)(kSlowPassWindowMs / 1000));
       delay(100);  // Let the log line out
-      esp_restart();
+      // Not esp_restart(): its shutdown handlers include ESP-Hosted's WiFi
+      // stop, a request to the C6 that is not answering either, so the 4"
+      // waited there until the loop watchdog reset it (core dump,
+      // 2026-11-02). The rest of esp_restart() without them; nothing else
+      // registered (esp_timer's, and TinyUSB's, not used here) is needed
+      // for a restart, and ESP-Hosted resets the C6 at every boot
+      // (CONFIG_ESP_HOSTED_SLAVE_RESET_ON_EVERY_HOST_BOOTUP).
+      esp_restart_noos();
     }
   }
   start = millis();

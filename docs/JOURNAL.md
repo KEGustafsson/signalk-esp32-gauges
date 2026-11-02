@@ -643,3 +643,24 @@ redrew 180 graduations and 16 rotated labels.
   both zones; a meta in another unit draws none, and back in Hz the zones
   return. With each delta taken as the whole metadata (the bug before
   `1c34764`) it fails.
+
+## 2026-11-02 — The 4"'s slow-pass restart hung on the dead C6
+
+- **Seen (user):** the 4" restarted, "Last reset reason: Task watchdog",
+  about 19.5 h after the 2026-11-01 USB flash (uptime 4.5 h when read).
+- **Core dump:** the loop task in `esp_restart()` (`gauge_app.cpp`, the
+  slow-pass restart) -> shutdown handler -> `rpc_wifi_stop()` ->
+  `wait_for_sync_response()`. The C6 had stopped answering, three SensESP
+  passes of 4 s or more in a minute fired the restart as intended, and
+  ESP-Hosted's shutdown handler then asked the C6 to stop WiFi and waited;
+  the 12 s loop watchdog reset the unit. It recovered, 12 s late and
+  labelled as a watchdog reset. DMA RAM was not short (78 KB free after
+  the reboot); why the C6 stopped answering is not known.
+- **Fix:** that restart calls `esp_restart_noos()`, the rest of
+  `esp_restart()` without the shutdown handlers. Registered ones, from the
+  libraries' symbols: `esp_wifi_remote` (the WiFi stop), `esp_timer`, and
+  TinyUSB's in the Arduino core (not used: USB Serial/JTAG). ESP-Hosted
+  resets the C6 at every boot (`CONFIG_ESP_HOSTED_SLAVE_RESET_ON_EVERY_HOST_BOOTUP`,
+  GPIO 54), which is why the unit came back.
+- The 4" README's core-dump steps named the GDB package wrong: it is
+  `tool-riscv32-esp-elf-gdb`.
