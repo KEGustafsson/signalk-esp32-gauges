@@ -9,6 +9,7 @@ The shared library's logic that needs no board, run on a PC:
 | `test_page_rules.cpp` | What a page card holds, the rules a save follows (style change, unit change, empty path, validation) and the card's schema (`page_rules`) |
 | `test_value_gate.cpp` | The replay window after a (re)connect, `null` handling, staleness and `millis()` wraparound (`value_gate`) |
 | `test_card_store.cpp` | A card's file replaced all or nothing: with a failure at any one or two steps (a failed rollback too), and a power cut at every step, then the boot's recovery, a swap ends with both cards old or both new (`card_store`) |
+| `test_link_policy.cpp` | When a dead link restarts the unit: Signal K unreachable 5 min with WiFi up, only after it worked this boot, across `millis()` wraparound; the C6's start at boot is not a restart, one after a heartbeat is, a link failure always is (`link_policy`) |
 | `test_sk_parse.cpp` | Only a real JSON number is a reading; attitude parsing; a path's unit from its metadata (a missing one is no unit, not `"null"`) (`sk_parse`), against the firmware's ArduinoJson |
 
 ```bash

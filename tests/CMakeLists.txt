@@ -28,6 +28,7 @@ add_executable(gauge_tests
   test_value_gate.cpp
   test_sk_parse.cpp
   test_card_store.cpp
+  test_link_policy.cpp
   ${COMMON}/card_store.cpp
   ${COMMON}/gauge_defs.cpp
   ${COMMON}/gauge_resolve.cpp

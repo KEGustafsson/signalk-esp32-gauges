@@ -664,3 +664,55 @@ redrew 180 graduations and 16 rotated labels.
   GPIO 54), which is why the unit came back.
 - The 4" README's core-dump steps named the GDB package wrong: it is
   `tool-riscv32-esp-elf-gdb`.
+
+## 2026-11-02 — Fixes adopted from espOS
+
+[espOS](https://github.com/signalk-espOS/espOS) is an ESP-IDF 6 runtime for
+Signal K devices, in daily use on ESP32-P4 panels. A review of its fixes for
+what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
+
+- **Split WebSocket messages** (15 lost on the 2.1" in 3.5 h, 1 on the 4";
+  8 within one second during a burst at 23:00): esp_websocket_client posts
+  a message larger than its 1 KB buffer, or one TCP split, in pieces, and
+  SensESP parsed each piece as a whole message (`deserializeJson error:
+  IncompleteInput` then `InvalidInput`). espOS joins frames up to 16 KB.
+  Fixed in SensESP itself (the user's fork, branch
+  `fix/ws-message-reassembly`, commit `5ff25ad`): `SKWSMessageAssembler`,
+  13 native tests; messages up to `SENSESP_SK_WS_MAX_MESSAGE_SIZE` (4096).
+  Both boards build from that branch.
+- **The C6's heartbeat** (espOS `hosted_watchdog.c`): the 4" asks for one
+  every 20 s; 60 s without one restarts it. espOS found a wedged SDIO link
+  produces no error at all, so only an absence shows it. A C6 start after
+  the first heartbeat restarts too (the one at boot does not: espOS
+  boot-looped a P4 on it), and so does `TRANSPORT_FAILURE`. Our restart uses
+  `esp_restart_noos()`; espOS calls `esp_restart()` from tasks no watchdog
+  watches.
+- **Signal K stalled with WiFi up** (espOS `skLinkStalled`): 5 min, only
+  after it worked this boot, so a server that is down does not loop the
+  gauge.
+- **SensESP's WiFi watchdog** turned on (restart after 3 min without the
+  network, armed by the first connection), covering espOS's `wifiStalled`.
+- **WiFi power save off**: Arduino's default (modem sleep) lets the access
+  point hold frames back and deliver them in bursts; espOS runs without.
+- **Lowest free DMA RAM** in the heap line (espOS `memoryTrough`).
+- Rules in `link_policy.h`, 7 host tests (56 in all).
+- **Not taken, for now:** ESP-Hosted 2.12.12's fix for a dead link going
+  unnoticed (esp-hosted-mcu #220) needs Arduino-ESP32 3.3.12 and the C6
+  updated to 2.12.13, a separate step; espOS's link settings
+  (`WIFI_RMT_RX_BA_WIN=6`, ESP-Hosted's buffers in PSRAM) need a 4"
+  framework rebuild; the C6 updated over its own link (we have
+  `tools/c6-update`); core dumps over HTTP.
+- **On the units** (2026-11-03, USB): all three flashed (`p4_stbd_usb`,
+  `p4_port_usb`, `s3_stbd_usb`) with SensESP `5ff25ad`. Both 4" log
+  `link: Watching the WiFi chip (C6)` at about 6 s and `First heartbeat`
+  20 s later: the C6 on 2.12.11 sends heartbeats, and so does the port
+  unit's C6 on its factory firmware. All three back on Signal K with their
+  zones. Lowest free DMA RAM since boot: 2.1" 43 KB, 4" 53 KB.
+- **The 4" port unit's C6 still runs its factory firmware**: `Slave firmware
+  version: 0.0.0`, `Version on Host is NEWER than version on co-processor`,
+  and the version request goes unanswered (`Response not received for
+  [0x15e]`). That is the state `tools/c6-update` exists for; the unit had
+  been failing to reach Signal K before this flash.
+- A build mistake on the way: `esp_hosted_misc.h` has no `extern "C"`
+  guard, so the heartbeat call did not link from C++ until the includes
+  were wrapped.

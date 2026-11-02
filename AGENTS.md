@@ -38,7 +38,12 @@ are about never showing a wrong number with confidence.
    restarts on ESP targets, the loop runs under a 12 s watchdog, and a loop
    that keeps stalling 4 s or more (three times a minute) restarts
    (`gauge_app.cpp`). Keep the watchdog longer than any single call the loop
-   may legitimately wait on (the 4"'s WiFi requests: 5 s).
+   may legitimately wait on (the 4"'s WiFi requests: 5 s). A link that stops
+   working restarts the unit too (`link_watch.cpp`, rules in
+   `link_policy.h`): 3 min without the network (SensESP's WiFi watchdog),
+   5 min without Signal K while WiFi is up, and on the 4" 60 s without a
+   heartbeat from the C6. These restarts use `esp_restart_noos()`, not
+   `esp_restart()`, whose shutdown steps wait on the C6.
 4. **Never commit a credential.** `secrets.h` is gitignored anywhere in the
    tree; the committed `secrets.example.h` keeps `SECRET_OTA_PASSWORD`,
    `SECRET_ADMIN_PASSWORD` and `SECRET_AP_PASSWORD` empty so a build without
@@ -68,12 +73,14 @@ If a task would require breaking one of these, stop and flag it.
     `null` grace, staleness), `sk_parse.h` (only a JSON number is a
     reading) and `card_store.*` (a card's file replaced all or nothing; at
     boot, a save a power cut interrupted before it was done is undone, and
-    one that was done is kept). Put new logic of this kind there, with a test, rather than in
+    one that was done is kept), `link_policy.h` (when a dead link restarts
+    the unit). Put new logic of this kind there, with a test, rather than in
     the Arduino glue.
   - `ui/` -- pure LVGL drawing. No Arduino, no SensESP: it must keep compiling
     on the host for `tools/preview`, which CI runs.
   - `sk_data.*`, `sk_listeners.h`, `status_led.h`, `gauge_app.*`, `gauge_ui.*`,
-    `lvgl_port.*` -- SensESP / Arduino / ESP32_Display_Panel glue.
+    `link_watch.*`, `lvgl_port.*` -- SensESP / Arduino / ESP32_Display_Panel
+    glue.
 - **`waveshare-*/`** -- one PlatformIO project per board: `platformio.ini`
   (one env per device and side), `src/main.cpp` (board bring-up only), `include/lv_conf.h`,
   and for the 4" `include/esp_panel_board_custom_conf.h`.
@@ -114,9 +121,13 @@ A logic change in the host-safe files is not done until `tests/` covers it.
 
 ## SensESP v3 API rules
 
-- SensESP comes from its git main branch (unpinned, as in drive-remote-
-  controller). Record the resolved revision from the build log when a build
-  matters.
+- SensESP comes from the maintainer's fork, `KEGustafsson/SensESP`, branch
+  `fix/ws-message-reassembly`: SignalK/SensESP main plus the fixes the gauges
+  need that are not upstream yet (received WebSocket messages joined before
+  parsing). A SensESP fix goes there, with its test in SensESP's
+  `test/native`, not as a patch in this repo; back to SignalK/SensESP once
+  merged. Unpinned, as in drive-remote-controller: record the resolved
+  revision from the build log when a build matters.
 - **Event loop:** SensESP owns its `reactesp::EventLoop`. Call
   `event_loop()->tick()` and `lv_timer_handler()` from the same Arduino
   `loop()` (`gauge_app_loop()`); listener callbacks run there too, which is why

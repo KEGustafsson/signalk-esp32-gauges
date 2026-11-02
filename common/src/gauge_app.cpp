@@ -16,6 +16,7 @@
 #include "gauge_secrets.h"
 #include "gauge_settings.h"
 #include "gauge_ui.h"
+#include "link_watch.h"
 #include "sensesp/system/resettable.h"
 #include "sensesp/ui/config_item.h"
 #include "sensesp_app_builder.h"
@@ -234,12 +235,18 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   lv_timer_handler();
   ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());
 
+  link_watch_before_wifi();
   sensesp::SensESPAppBuilder builder;
   builder.set_hostname(config.hostname)
       ->set_wifi_clients(wifi_clients(config.address))
       // SensESP's status LED, shown as the dot at the bottom of the bezel.
       ->set_system_status_led(std::make_shared<ScreenStatusLed>())
-      ->set_button_pin(config.button_pin);
+      ->set_button_pin(config.button_pin)
+      // Restart after 3 min without the network, once it has been up this
+      // boot (so an access point that is off does not restart it over and
+      // over). Not a dead C6 on the 4": WiFi then still looks connected;
+      // link_watch.cpp watches that.
+      ->enable_wifi_watchdog();
   if (SECRET_SK_SERVER_ADDRESS[0] != '\0') {
     builder.set_sk_server(SECRET_SK_SERVER_ADDRESS, SECRET_SK_SERVER_PORT);
   }
@@ -269,11 +276,16 @@ void gauge_app_begin(const GaugeAppConfig& config) {
 
   gauge_config().add_config_items();
   sk_data().begin();
+  link_watch_begin();
   // Internal DMA RAM is what WiFi runs out of first (on the 4" its link to
-  // the C6 stalls for good when it does): log it once a minute.
+  // the C6 stalls for good when it does): log it once a minute, with the
+  // lowest it has been since boot (a dip between two lines shows there).
   sensesp::event_loop()->onRepeat(60000, []() {
-    ESP_LOGI("heap", "DMA RAM %u KB free (largest block %u KB), PSRAM %u KB",
+    ESP_LOGI("heap",
+             "DMA RAM %u KB free (lowest %u KB, largest block %u KB), "
+             "PSRAM %u KB",
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_DMA) >> 10),
+             (unsigned)(heap_caps_get_minimum_free_size(MALLOC_CAP_DMA) >> 10),
              (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_DMA) >> 10),
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >> 10));
     ESP_LOGI("loop",

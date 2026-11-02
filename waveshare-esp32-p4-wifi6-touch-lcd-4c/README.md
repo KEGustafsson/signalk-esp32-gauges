@@ -97,6 +97,18 @@ examples.
   there until the watchdog reset it 12 s later (seen once, after about
   19.5 h: reset reason "Task watchdog"). ESP-Hosted resets the C6 at every
   boot.
+- The C6 is also asked for a heartbeat every 20 s (`common/src/link_watch.cpp`,
+  as espOS does): 60 s without one restarts the unit, even when nothing on
+  the P4 noticed the link die (a wedged SDIO link raises no error, and
+  WiFi still looks connected). The boot log says `link: Watching the WiFi
+  chip (C6)` and, a little later, `First heartbeat from the WiFi chip (C6)`.
+  ESP-Hosted's own link-failure event and a C6 that restarts under a
+  running link restart the unit too; its start at every boot does not.
+- ESP-Hosted 2.12.11 (Arduino-ESP32 3.3.11) does not notice a dead SDIO
+  link by itself; 2.12.12 fixes that (esp-hosted-mcu #220, a P4 + C6 that
+  wedged 43 times in 21 h on 2.12.11 and not at all with the fix). Arduino-ESP32
+  3.3.12 ships 2.12.13; moving to it needs the C6 updated to match
+  (`tools/c6-update`).
 - After an unexplained restart, the boot log's reset reason and the core
   dump tell why: read the core dump partition (`coredump` at 0x1FF0000 in
   `partitions_32MB.csv`), drop its first 24 bytes, and open the rest in
