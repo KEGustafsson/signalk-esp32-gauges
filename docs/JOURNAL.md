@@ -725,3 +725,24 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
 - The C6 update is now a section of its own at the top of the 4" README,
   with a step in the top README's setup, instead of a checklist bullet:
   both boards shipped with the factory C6 firmware.
+
+## 2026-11-03 — A dead C6 link, recovered by the new restart
+
+- **06:43:00**, the 4" starboard at 6.6 h of uptime: from one request to
+  the next, the C6 answered nothing (`Response not received for
+  [0x126](Req_WifiStaGetApInfo)`, SensESP asking for the signal strength).
+  Nothing unusual before it; DMA RAM 77 KB free, lowest 53 KB.
+- Each SensESP pass then held the loop 10 s (two 5 s timeouts), and the
+  third made the slow-pass rule restart the unit at **06:43:30**:
+  `SW_CPU_RESET`, a clean restart through `esp_restart_noos()`, no hang in
+  the shutdown handlers as on 2026-11-02. The heartbeat watchdog would have
+  fired by about 06:44; the slow-pass rule came first.
+- Back: `Versions Match!` at 5 s, first heartbeat at 25.7 s, Signal K and
+  live readings with zones at **06:44:13**, about 70 s after the link died.
+- The third dead link on a 4" (about 6 h and 19.5 h before, on 2.12.11
+  each time): the restart recovers, it does not prevent. ESP-Hosted
+  2.12.12 fixes the failure going unnoticed (esp-hosted-mcu #220);
+  Arduino-ESP32 3.3.12 ships 2.12.13.
+- Close call: two unanswered requests per pass made 10 s passes against
+  the 12 s loop watchdog; a third request in one pass would have been a
+  watchdog reset instead (still a restart, with a core dump).
