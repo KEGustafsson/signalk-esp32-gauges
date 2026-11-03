@@ -98,6 +98,9 @@ If a task would require breaking one of these, stop and flag it.
   `scripts/ota_quiet.py` (post:) drops the builder's espota `--debug`, which
   would print the password into the upload log.
 - **`tools/preview/`** -- renders every page on the host from `common/src/ui`.
+- **`tools/copy-pages/`** -- copies one unit's page cards to another over the
+  web API (with `--replace` for the other side's paths), carrying the
+  target's `_rev`; the login from secrets.h.
 - **`tests/`** -- host unit tests (`tests/README.md`).
 - **`docs/`** -- `PAGES.md` (end-user guide to the pages), `BRINGUP.md`
   (first power-up of a device), `ADDING_GAUGES.md` (another page, another

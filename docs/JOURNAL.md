@@ -849,3 +849,11 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   pages; a third unit by a hostname of its own), a new page style (the
   files to change, in order, with tests and the preview) and a new board;
   and where the factory pages are. Linked from the README and AGENTS.md.
+- **`tools/copy-pages`**: copies a unit's Pages card and page cards to
+  another over the web API, `--replace` for the engine paths and titles,
+  each card with the target's `_rev`, `--restart` when the target needs
+  one (new page slots exist only after a restart with the new count, and
+  page settings apply at the next restart), `--dry-run`. Tried from the
+  2.1" starboard to the 2.1" port (`stb_engine` -> `prt_engine`): six
+  cards written, 200 each. `ADDING_GAUGES.md` section 1 now walks through
+  an example page (exhaust temperature) setting by setting.

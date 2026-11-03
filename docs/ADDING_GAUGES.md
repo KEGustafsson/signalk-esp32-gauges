@@ -15,21 +15,47 @@ Changing the six factory pages a fresh unit starts with is in
 
 ## 1. Another page on a unit
 
-Up to 12 pages per unit, set up in the unit's web UI, no build:
+Up to 12 pages per unit, set up in the unit's web UI, no build. An example:
+the engine's exhaust temperature as page 7, on the port 2.1".
 
-1. Open the unit's web UI (`http://gauge-21-port.local`, or its IP from the
-   info overlay: swipe down on the gauge). Log in with `SECRET_ADMIN_USER` /
-   `SECRET_ADMIN_PASSWORD` from `secrets.h`.
-2. **Configuration → Pages**: raise **Number of pages** (e.g. 6 → 7), save.
-3. Restart when asked. The new page appears as **Page 7**, a dial with no
-   path (dashes on the gauge).
-4. In the **Page 7** card set the style, title, Signal K path (the server's
-   Data Browser lists every path), display unit, decimals, data timeout;
-   save and restart.
+1. **Find the path.** In the Signal K server's admin UI, **Data Browser**:
+   the boat's own path, e.g. `propulsion.prt_engine.exhaustTemperature`,
+   and its unit (K). A path with no data there will show dashes.
+2. **Open the unit's web UI**: `http://gauge-21-port.local`, or the IP the
+   info overlay shows (swipe down on the gauge). Log in with
+   `SECRET_ADMIN_USER` / `SECRET_ADMIN_PASSWORD` from `secrets.h`.
+3. **Configuration → Pages**: **Number of pages** 6 → 7, **Save**, and
+   restart when the web UI asks. Pages are swiped through in order; the new
+   one is last, a dial with no path (dashes).
+4. **Configuration → Page 7**, the settings ([PAGES.md](PAGES.md#the-settings-of-a-page)
+   explains each):
 
-Zones and the scale come from the Signal K server's metadata for the path
-(`meta.zones`, `meta.displayScale`): set them on the server, not on the
-unit. Every setting is described in [PAGES.md](PAGES.md), with examples.
+   | Setting | Example | Note |
+   |---|---|---|
+   | Style | Dial | Compass for a heading, Sea horizon for `navigation.attitude` |
+   | Title | `Exhaust` | On the dial face |
+   | Signal K path | `propulsion.prt_engine.exhaustTemperature` | Exactly as in the Data Browser |
+   | Display unit | °C | Must measure what the path does (K: °C, °F or K) |
+   | Set the scale by hand | off | Off: the server's `displayScale` if it has one, else the minimum / maximum below |
+   | Scale minimum / maximum | 0 / 600 | In the display unit |
+   | Show Signal K zones | on | The server's zones for the path |
+   | Decimals | 0 | In the LCD readout |
+   | Data timeout | 10 s | Longer for a slow sender, e.g. a tank every 30 s |
+
+   **Save**, restart when asked.
+5. **Zones and scale on the server** (optional): in the Signal K admin UI,
+   the path's metadata (Data Browser → the path → meta): `zones` (e.g.
+   `warn` from 723.15 K, `alarm` from 773.15 K, always in SI) and
+   `displayScale`. Every display that reads the path, this unit included,
+   draws them; the unit picks up a change without a restart
+   ([PAGES.md](PAGES.md#zones-and-scale-from-the-signal-k-server)).
+6. **Check on the gauge**: swipe to the new page. The needle and LCD follow
+   the value; dashes mean no value within the data timeout (wrong path, no
+   data, or a slow source).
+
+**Another position**: **Swap with page** in a page's card moves it (e.g.
+page 7 with page 2). **The same page on other units**: repeat on each, or
+copy a unit's pages to another with `tools/copy-pages` (below).
 
 ## 2. Another unit of an existing board
 
@@ -54,11 +80,17 @@ which it is.
    name (`2.1in PORT`) and the network name (`gauge-21-port`).
 4. **Approve it in Signal K**: server admin UI, **Security → Access
    Requests**, the request named after the unit; read access is enough.
-5. **Its pages**: as in section 1. To copy another unit's pages, set the
-   same fields card by card, or through the web API: `GET` then `PUT`
-   `http://<unit>/api/config/Pages/<n>` (digest login as above) with the
-   other unit's card, but keep the target's own `_rev` value in it, or
-   the save is refused as out of date.
+5. **Its pages**: as in section 1, or copied from a unit that has them,
+   with the engine swapped for the other side
+   ([tools/copy-pages](../tools/copy-pages/README.md)):
+
+   ```bash
+   python tools/copy-pages/copy_pages.py --from gauge-21-stbd.local --to gauge-21-port.local \
+       --replace stb_engine=prt_engine --replace "STB Engine=PRT Engine" --restart
+   ```
+
+   It writes each card with the target's own `_rev` (the gauge refuses a
+   save from an out-of-date form) and restarts the target when needed.
 6. **`secrets.h`**: `SECRET_OTA_HOST_<ENV>_STBD` / `_PORT` hold each side's
    address. They are used for over-the-air updates by side
    (`pio run -e s3 -t upload --upload-port port`) and, with
