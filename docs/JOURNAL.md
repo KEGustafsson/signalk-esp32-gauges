@@ -827,3 +827,13 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   file: 198 s before. Any edit of `platformio.ini` deletes the build folder
   (PlatformIO's `project.checksum` covers the whole config), and the
   objects come back from the cache: 190 s on the 4".
+- **The Unit card:** a Starboard / Port dropdown in the web UI
+  (`unit_card.*`, labels in `unit_identity.h`, tested). It shows the side
+  of the current hostname and, on a change, sets SensESP's hostname to
+  `gauge-<board>-stbd` / `-port`; the web UI asks for the restart that
+  applies it. Tried on the 2.1" port: Starboard -> `gauge-21-stbd`, Port
+  -> back, an invalid value refused (400). The docs now say "choose Port
+  in the Unit card" instead of editing `/system/hostname`.
+- **OTA by side:** the 2.1" port, the 2.1" starboard and both 4" units
+  were updated over WiFi with `--upload-port port` / `stbd`: 99-106 s
+  each from a built firmware, 174 s with two files to compile.

@@ -49,9 +49,9 @@ pio device monitor -p COM3
 ```
 
 A fresh unit comes up as its board's starboard unit (`gauge-4c-stbd`). For
-a port unit, set its hostname to `gauge-4c-port` (`gauge-21-port`) in the
-web UI (Configuration, the `/system/hostname` card) and restart it; the boot line then says
-`4in PORT`.
+a port unit, choose **Port** in the **Unit** card of its web UI
+(Configuration), save, and restart it when asked: it is then
+`gauge-4c-port` (`gauge-21-port`), and the boot line says `4in PORT`.
 
 The 2.1"'s first build rebuilds the framework's libraries (its README):
 expect about an hour the first time, and on Windows run it from PowerShell

@@ -16,6 +16,7 @@ reflashed.
 - [Zones and scale from the Signal K server](#zones-and-scale-from-the-signal-k-server)
 - [Examples](#examples)
 - [Factory pages](#factory-pages)
+- [Starboard or port: the Unit card](#starboard-or-port-the-unit-card)
 - [Troubleshooting](#troubleshooting)
 
 ## The three page styles
@@ -249,8 +250,8 @@ by hand 0 to 50, Decimals 1.
 
 ## Factory pages
 
-A freshly flashed device has six pages. The engine pages read the side the
-device was built for (`port` or `starboard`):
+A freshly flashed device has six pages. The engine pages read the unit's
+side, set in the **Unit** card (below):
 
 | Page | Style | Title | Signal K path | Unit | Range |
 |---|---|---|---|---|---|
@@ -264,6 +265,17 @@ device was built for (`port` or `starboard`):
 Pages 7–12 start as dials with no path. **Reset to factory settings** in a
 page's card puts that page back to this table. Erasing the device's flash
 (see the main README) resets every page, and every other setting, at once.
+
+## Starboard or port: the Unit card
+
+The **Unit** card, above the page cards, has one dropdown: **Starboard** or
+**Port**. Every unit of a board runs the same firmware; the side decides
+which engine the factory pages show (pages you have already set keep their
+paths), the unit's name in the info overlay (`2.1in PORT`) and its network
+name (`gauge-21-port`, which is also how it appears in the Signal K admin
+UI). A fresh unit is Starboard. Choose the side, **Save**, and restart the
+unit when the web UI asks; it comes back on the new side. Erasing the
+device's flash puts it back to Starboard.
 
 ## Troubleshooting
 

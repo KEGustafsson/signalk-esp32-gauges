@@ -39,6 +39,24 @@ inline Side side_from_hostname(const std::string& hostname) {
   return Side::kPort;
 }
 
+// The web UI's Unit dropdown: "Starboard" / "Port".
+inline const char* side_label(Side side) {
+  return side == Side::kPort ? "Port" : "Starboard";
+}
+
+// A dropdown value back to a side; false for anything else.
+inline bool parse_side_label(const std::string& label, Side* side) {
+  if (label == "Port") {
+    *side = Side::kPort;
+    return true;
+  }
+  if (label == "Starboard") {
+    *side = Side::kStarboard;
+    return true;
+  }
+  return false;
+}
+
 // The label shown in the info overlay, e.g. "2.1in PORT".
 inline std::string unit_name(const char* board_label, Side side) {
   return std::string(board_label) +

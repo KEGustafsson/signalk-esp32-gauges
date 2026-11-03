@@ -25,6 +25,19 @@ TEST(side_follows_the_hostname) {
   CHECK(side_from_hostname("") == Side::kStarboard);
 }
 
+TEST(dropdown_labels) {
+  Side side = Side::kBoth;
+  CHECK(parse_side_label(side_label(Side::kPort), &side) &&
+        side == Side::kPort);
+  CHECK(parse_side_label(side_label(Side::kStarboard), &side) &&
+        side == Side::kStarboard);
+  side = Side::kPort;
+  CHECK(!parse_side_label("port", &side));  // Exactly as the dropdown sends it
+  CHECK(!parse_side_label("", &side));
+  CHECK(!parse_side_label("Both", &side));
+  CHECK(side == Side::kPort);               // Untouched
+}
+
 TEST(round_trip_and_unit_names) {
   for (Side side : {Side::kStarboard, Side::kPort}) {
     CHECK(side_from_hostname(unit_hostname("21", side)) == side);

@@ -24,6 +24,7 @@
 #include "sensesp_app_builder.h"
 #include "sk_data.h"
 #include "status_led.h"
+#include "unit_card.h"
 #include "unit_identity.h"
 
 namespace skgauges {
@@ -327,6 +328,7 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   ESP_LOGI("boot", "SensESP set up at %u ms", (unsigned)millis());
   apply_web_ui_login();
 
+  add_unit_card(config.board);
   gauge_config().add_config_items();
   sk_data().begin();
   link_watch_begin();

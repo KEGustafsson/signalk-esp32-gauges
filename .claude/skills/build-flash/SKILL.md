@@ -32,7 +32,7 @@ gitignored `include/secrets.h` (`SECRET_OTA_HOST_<ENV>_<SIDE>`,
 
 - **First flash** (or a unit not on WiFi): over USB-C,
   `pio run -e <env> -t upload --upload-port COMn`. A new port unit then
-  needs its hostname set to `gauge-<4c|21>-port` (web UI, Configuration, `/system/hostname`) and a
+  needs Port chosen in its web UI's Unit card (Configuration), and a
   restart.
 - **Later**: `pio run -e <env> -t upload --upload-port port` (or `stbd`, or
   an address) goes over the air.
