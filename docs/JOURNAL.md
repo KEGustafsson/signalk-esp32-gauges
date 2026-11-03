@@ -746,3 +746,11 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
 - Close call: two unanswered requests per pass made 10 s passes against
   the 12 s loop watchdog; a third request in one pass would have been a
   watchdog reset instead (still a restart, with a core dump).
+- **07:29:35, the 4" port** at 7.0 h of uptime, the same way: every
+  request to the C6 unanswered, three 10 s passes, slow-pass restart at
+  07:30:05 (`SW_CPU_RESET`), `Versions Match!`, first heartbeat at 25.7 s,
+  Signal K back at 07:30:44 (about 70 s). Its C6 had been on 2.12.11 since
+  00:31. Both 4" units dead-linked within 50 min of each other, at 6.6 h
+  and 7.0 h: on ESP-Hosted 2.12.11 it looks like a regular event every 6-7
+  hours of running, recovered each time, which makes the move to 2.12.13
+  (Arduino-ESP32 3.3.12) worth doing.
