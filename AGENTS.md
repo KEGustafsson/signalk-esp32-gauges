@@ -83,7 +83,7 @@ If a task would require breaking one of these, stop and flag it.
     `link_watch.*`, `lvgl_port.*` -- SensESP / Arduino / ESP32_Display_Panel
     glue.
 - **`waveshare-*/`** -- one PlatformIO project per board: `platformio.ini`
-  (one env per device and side), `src/main.cpp` (board bring-up only), `include/lv_conf.h`,
+  (one env for both sides), `src/main.cpp` (board bring-up only), `include/lv_conf.h`,
   and for the 4" `include/esp_panel_board_custom_conf.h`.
 - **`include/secrets.example.h`** -- template for the gitignored, shared
   `include/secrets.h`: WiFi, Signal K server, OTA password, device addresses.
@@ -100,7 +100,8 @@ If a task would require breaking one of these, stop and flag it.
 - **`tools/preview/`** -- renders every page on the host from `common/src/ui`.
 - **`tests/`** -- host unit tests (`tests/README.md`).
 - **`docs/`** -- `PAGES.md` (end-user guide to the pages), `BRINGUP.md`
-  (first power-up of a device), `JOURNAL.md`.
+  (first power-up of a device), `ADDING_GAUGES.md` (another page, another
+  unit, a new page style, a new board: what to change), `JOURNAL.md`.
 
 ## Commands
 

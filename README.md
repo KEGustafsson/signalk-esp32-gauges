@@ -59,7 +59,8 @@ A page is one of three styles:
 
 **[docs/PAGES.md](docs/PAGES.md) is the full guide**: adding, removing,
 changing and reordering pages, every setting, zones on the Signal K server,
-examples and troubleshooting. In short:
+examples and troubleshooting. Another display unit, a new kind of page or a
+new board: [docs/ADDING_GAUGES.md](docs/ADDING_GAUGES.md). In short:
 
 In the SensESP web UI (**Configuration**), the **Pages** card sets the
 **Number of pages** to swipe through, 1 to 12 (6 on a fresh device). Each of

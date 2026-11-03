@@ -844,3 +844,8 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   (`firmware 0.1.0`), on the info overlay (`Firmware 0.1.0`) and on the
   web UI's Status page ("Gauge firmware", Software). All four units
   updated over WiFi and report 0.1.0 (boot log and `/api/info`).
+- **`docs/ADDING_GAUGES.md`**: how to add a page (web UI), another unit
+  of a board (flash the existing build, Unit card, Signal K approval,
+  pages; a third unit by a hostname of its own), a new page style (the
+  files to change, in order, with tests and the preview) and a new board;
+  and where the factory pages are. Linked from the README and AGENTS.md.
