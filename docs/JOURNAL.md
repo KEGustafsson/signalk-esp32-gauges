@@ -790,3 +790,40 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   (lowest 32 KB), PSRAM 3456 KB (code from PSRAM, as before). The picture
   (no flicker, no shift) is still to be confirmed by eye over time.
 - Builds: 4" 31 min (full), C6 tool 3 min, 2.1" 1 h 28 min.
+
+## 2026-11-03 — One firmware per board; a fourth unit
+
+- **Why:** a new 2.1" port unit (COM9) needed `s3_port_usb`, which
+  compiled everything (~22 min) although `s3_stbd_usb` was built: the
+  side, hostname, name and address were global `-D` flags in every compile
+  command, and each env has its own `.pio/libdeps/<env>` on the include
+  path, which the build cache keys on. Four envs per board, four full
+  builds.
+- **Now:** one env per board, `p4` and `s3`. The side comes from the
+  hostname saved on the unit (SensESP's `/system/hostname`; `-port` suffix
+  = port, `unit_identity.h`, 3 host tests), which picks the factory pages'
+  engine, the unit name and its `secrets.h` address. The upload port picks
+  the method: `COMn` USB, `port` / `stbd` that unit's
+  `SECRET_OTA_HOST_<ENV>_<SIDE>` over WiFi (`ota_auth.py`), an IP or
+  `.local` name OTA.
+- **Migration:** before the new firmware, each unit's current hostname
+  was written back through the config API so it is saved (a unit that
+  never changed it had none on file, and would have come back as
+  starboard).
+- **A crash on the way:** reading the hostname with SensESP's
+  `PersistingObservableValue` before the app existed panicked at every
+  boot (`LoadProhibited` in `event_loop()`, from its constructor). Read
+  with a bare `FileSystemSaveable` instead.
+- **The fourth unit, 2.1" port:** flashed, hostname set to
+  `gauge-21-port`, its six cards written through the API from the 2.1"
+  starboard's with `stb_engine` -> `prt_engine` (each with the unit's own
+  `_rev`, which a save must carry), restarted: `2.1in PORT
+  (gauge-21-port)`, zones, live `prt_engine` readings.
+- **All four units** on the single firmware, each with the right identity.
+- **Build time, measured on the 4":** a build with nothing to compile took
+  139 s: 10 s start, 47 s PlatformIO's library scan, 80 s SCons checking
+  ~1000 objects. `scripts/fast_scons.py` (`Decider("MD5-timestamp")`,
+  `implicit_cache`) took the last part to 11 s: 66 s in all. One changed
+  file: 198 s before. Any edit of `platformio.ini` deletes the build folder
+  (PlatformIO's `project.checksum` covers the whole config), and the
+  objects come back from the cache: 190 s on the 4".

@@ -42,8 +42,9 @@
 //    unit can still be set up from its web UI at 192.168.4.1.
 #define SECRET_AP_PASSWORD ""
 
-// The address of each gauge. scripts/ota_auth.py uploads to it; the suffix is
-// the PlatformIO environment name in upper case: env:p4_stbd -> ..._P4_STBD.
+// The address of each gauge: scripts/ota_auth.py uploads to it for
+// `--upload-port port` / `stbd` (env:p4 + port -> SECRET_OTA_HOST_P4_PORT),
+// and the gauge picks its own entry by the side its hostname gives it.
 // The defaults are the gauges' mDNS names (their hostname + ".local"); put an
 // IP address here instead if your computer does not resolve .local names.
 // With SECRET_USE_STATIC_IP below, each gauge also configures its own entry

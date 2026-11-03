@@ -25,7 +25,7 @@ enum class GaugeKind : uint8_t {
   kAttitude,  // Sea-horizon heel/trim indicator (navigation.attitude)
 };
 
-// The engine a device's factory pages show (GAUGE_SIDE in platformio.ini).
+// The engine a unit's factory pages show (from its hostname: unit_identity.h).
 // Only the defaults depend on it: every page can be repointed in the web UI.
 enum class Side : uint8_t {
   kBoth,

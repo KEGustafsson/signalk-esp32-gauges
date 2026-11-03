@@ -38,11 +38,13 @@ void setup() {
   board = skgauges::start_board(kGt911BackupAddress);
   skgauges::lvgl_port_init(board, kBufferLines, true);
 
+  // One firmware for both sides: the unit's saved hostname says which it is
+  // (common/src/unit_identity.h).
   skgauges::gauge_app_begin({
-      GAUGE_HOSTNAME,
-      GAUGE_UNIT_NAME,
-      GAUGE_SIDE,
-      GAUGE_ADDRESS,
+      "4c",
+      "4in",
+      SECRET_OTA_HOST_P4_STBD,
+      SECRET_OTA_HOST_P4_PORT,
       -1,  // No SensESP button
       [](int percent) {
         auto* backlight = board->getBacklight();

@@ -28,9 +28,9 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # One job per board, built as its starboard unit. The port envs differ only
-  # in -D flags (side, hostname, address) and the *_usb envs only in the upload
-  # method, so the starboard build proves the code compiles for both sides.
+  # One job per board, which has one env: both sides run the same firmware
+  # (a unit's side comes from its saved hostname, unit_identity.h), so this
+  # build is the one every unit of the board is flashed from.
   # fail-fast is off so a break shows for every board it hits.
   #
   # Off on pushes and pull requests: too heavy to run on every change. Run it
@@ -51,9 +51,9 @@ jobs:
       matrix:
         include:
           - project: waveshare-esp32-p4-wifi6-touch-lcd-4c
-            env: p4_stbd
+            env: p4
           - project: waveshare-esp32-s3-touch-lcd-2.1
-            env: s3_stbd
+            env: s3
     defaults:
       run:
         working-directory: ${{ matrix.project }}

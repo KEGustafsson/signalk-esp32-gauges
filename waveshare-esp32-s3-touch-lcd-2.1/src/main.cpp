@@ -33,11 +33,13 @@ void setup() {
   board = skgauges::start_board(0);  // CST820: one address
   skgauges::lvgl_port_init(board, kBufferLines);
 
+  // One firmware for both sides: the unit's saved hostname says which it is
+  // (common/src/unit_identity.h).
   skgauges::gauge_app_begin({
-      GAUGE_HOSTNAME,
-      GAUGE_UNIT_NAME,
-      GAUGE_SIDE,
-      GAUGE_ADDRESS,
+      "21",
+      "2.1in",
+      SECRET_OTA_HOST_S3_STBD,
+      SECRET_OTA_HOST_S3_PORT,
       0,  // SensESP button: the BOOT key (GPIO0)
       [](int percent) {
         auto* backlight = board->getBacklight();

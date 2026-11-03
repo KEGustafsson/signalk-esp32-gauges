@@ -3,10 +3,14 @@
 Signal K steel gauges for the 4" round board. See the
 [top-level README](../README.md) for the gauges, touch controls and setup.
 
-| Side | OTA | First flash |
-|---|---|---|
-| starboard | `pio run -e p4_stbd -t upload` | `pio run -e p4_stbd_usb -t upload` |
-| port | `pio run -e p4_port -t upload` | `pio run -e p4_port_usb -t upload` |
+One firmware for both units (`env:p4`); a unit's side is its saved
+hostname (top README, Devices).
+
+| Upload | Command |
+|---|---|
+| USB | `pio run -e p4 -t upload --upload-port COM3` |
+| OTA, port unit | `pio run -e p4 -t upload --upload-port port` |
+| OTA, starboard unit | `pio run -e p4 -t upload --upload-port stbd` |
 
 ## Update the WiFi chip's firmware (once per board)
 
@@ -61,11 +65,11 @@ plugged in):
 3. Wait for `DONE: the co-processor is up to date, nothing to do` after the
    restart (download, check and write take a minute or two). The full
    expected output is in [`tools/c6-update/README.md`](../tools/c6-update/README.md).
-4. Flash the gauge again, the side this board is:
+4. Flash the gauge again (the same firmware for either side):
 
    ```bash
    cd waveshare-esp32-p4-wifi6-touch-lcd-4c
-   pio run -e p4_stbd_usb -t upload    # or p4_port_usb
+   pio run -e p4 -t upload --upload-port COM3
    ```
 
    Its settings (pages, WiFi, Signal K token) are kept: they are in the

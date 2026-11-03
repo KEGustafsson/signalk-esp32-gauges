@@ -11,6 +11,7 @@
 #include <lvgl.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "gauge_secrets.h"
@@ -18,10 +19,12 @@
 #include "gauge_ui.h"
 #include "link_watch.h"
 #include "sensesp/system/resettable.h"
+#include "sensesp/system/saveable.h"
 #include "sensesp/ui/config_item.h"
 #include "sensesp_app_builder.h"
 #include "sk_data.h"
 #include "status_led.h"
+#include "unit_identity.h"
 
 namespace skgauges {
 
@@ -206,6 +209,52 @@ bool wifi_configured() {
          (SECRET_WIFI_SSID_3[0] != '\0' && SECRET_WIFI_PASSWORD_3[0] != '\0');
 }
 
+// SensESP's saved hostname (its PersistingObservableValue at
+// /system/hostname, {"value": "..."}), read from the file alone: the
+// PersistingObservableValue itself needs SensESP's event loop, which does
+// not exist this early (constructing one here panicked at every boot).
+class SavedHostname : public sensesp::FileSystemSaveable {
+ public:
+  SavedHostname() : sensesp::FileSystemSaveable("/system/hostname") {}
+  bool from_json(const JsonObject& config) override {
+    if (!config["value"].is<const char*>()) {
+      return false;
+    }
+    value = config["value"].as<const char*>();
+    return true;
+  }
+  std::string value;
+};
+
+struct Identity {
+  Side side = Side::kStarboard;
+  std::string hostname;
+  std::string unit_name;
+  const char* address = nullptr;
+};
+
+// The unit, from SensESP's hostname as saved on it (/system/hostname; the
+// web UI's hostname setting), read here the way SensESP reads it later. A
+// unit with none saved is its board's starboard unit until a port name is
+// set (and the unit restarted).
+Identity read_identity(const GaugeAppConfig& config) {
+  // SensESP mounts the same filesystem later; mounting again is a no-op.
+  if (!SPIFFS.begin(true)) {
+    ESP_LOGE("boot", "Filesystem not mounted; starting as the starboard unit");
+  }
+  SavedHostname saved;
+  saved.load();  // Leaves it empty without a saved one
+  Identity id;
+  id.hostname = saved.value.empty()
+                    ? unit_hostname(config.board, Side::kStarboard)
+                    : saved.value;
+  id.side = side_from_hostname(id.hostname);
+  id.unit_name = unit_name(config.board_label, id.side);
+  id.address =
+      id.side == Side::kPort ? config.address_port : config.address_stbd;
+  return id;
+}
+
 }  // namespace
 
 void gauge_app_begin(const GaugeAppConfig& config) {
@@ -213,10 +262,14 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   // Touch only answers once setup() returns and the loop runs, so the boot
   // milestones are logged to show where that time goes.
   // The display itself was started in main.cpp before this.
+  // Which unit this is: the hostname saved on it, read before anything
+  // that depends on the side (unit_identity.h).
+  static Identity id;
+  id = read_identity(config);
   // What the board is, for the first power-up checklists (README).
   ESP_LOGI("boot", "%s (%s): %s rev %u.%02u, %u MHz, flash %u MB, PSRAM %u MB "
            "(%u KB free), built " __DATE__ " " __TIME__,
-           config.unit_name, config.hostname, ESP.getChipModel(),
+           id.unit_name.c_str(), id.hostname.c_str(), ESP.getChipModel(),
            (unsigned)(ESP.getChipRevision() / 100),
            (unsigned)(ESP.getChipRevision() % 100),
            (unsigned)ESP.getCpuFreqMHz(),
@@ -226,19 +279,19 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   ESP_LOGI("boot", "Display ready, building the gauge at %u ms",
            (unsigned)millis());
   // The page settings (web UI) decide what the first page looks like.
-  gauge_config().begin(config.side);
+  gauge_config().begin(id.side);
   ESP_LOGI("boot", "%u pages; filesystem %u of %u KB used",
            (unsigned)gauge_config().pages().size(),
            (unsigned)(SPIFFS.usedBytes() >> 10),
            (unsigned)(SPIFFS.totalBytes() >> 10));
-  ui_begin({config.unit_name, config.set_brightness});
+  ui_begin({id.unit_name.c_str(), config.set_brightness});
   lv_timer_handler();
   ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());
 
   link_watch_before_wifi();
   sensesp::SensESPAppBuilder builder;
-  builder.set_hostname(config.hostname)
-      ->set_wifi_clients(wifi_clients(config.address))
+  builder.set_hostname(id.hostname.c_str())
+      ->set_wifi_clients(wifi_clients(id.address))
       // SensESP's status LED, shown as the dot at the bottom of the bezel.
       ->set_system_status_led(std::make_shared<ScreenStatusLed>())
       ->set_button_pin(config.button_pin)
@@ -259,7 +312,7 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   // nothing configured it keeps SensESP's default so a fresh unit can still
   // be set up.
   if (SECRET_AP_PASSWORD[0] != '\0') {
-    builder.set_wifi_access_point(config.hostname, SECRET_AP_PASSWORD);
+    builder.set_wifi_access_point(id.hostname.c_str(), SECRET_AP_PASSWORD);
   } else if (wifi_configured()) {
     builder.set_wifi_access_point("", "");
   }

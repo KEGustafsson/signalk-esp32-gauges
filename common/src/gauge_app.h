@@ -11,14 +11,17 @@
 
 namespace skgauges {
 
+// The board, not the unit: one firmware per board serves both sides. Which
+// unit it is (side, hostname, name) comes from the hostname saved on it
+// (unit_identity.h), so a build is never per side.
 struct GaugeAppConfig {
-  const char* hostname;   // mDNS name, SensESP AP name, SK client name
-  const char* unit_name;  // Human label shown in the info overlay
-  Side side;              // Which engine the factory pages show
-  // This unit's address (its SECRET_OTA_HOST_* entry). Used as a static IP
+  const char* board;        // In the hostname: "4c" -> "gauge-4c-port"
+  const char* board_label;  // In the unit name: "4in" -> "4in PORT"
+  // Each side's address (its SECRET_OTA_HOST_* entry). Used as a static IP
   // when secrets.h sets SECRET_USE_STATIC_IP to 1.
-  const char* address;
-  int button_pin;         // SensESP's button input (-1 = none)
+  const char* address_stbd;
+  const char* address_port;
+  int button_pin;           // SensESP's button input (-1 = none)
   std::function<void(int percent)> set_brightness;
 };
 

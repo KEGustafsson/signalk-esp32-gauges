@@ -3,10 +3,14 @@
 Signal K steel gauges for the 2.1" round board. See the
 [top-level README](../README.md) for the gauges, touch controls and setup.
 
-| Side | OTA | First flash |
-|---|---|---|
-| starboard | `pio run -e s3_stbd -t upload` | `pio run -e s3_stbd_usb -t upload` |
-| port | `pio run -e s3_port -t upload` | `pio run -e s3_port_usb -t upload` |
+One firmware for both units (`env:s3`); a unit's side is its saved
+hostname (top README, Devices).
+
+| Upload | Command |
+|---|---|
+| USB | `pio run -e s3 -t upload --upload-port COM4` |
+| OTA, port unit | `pio run -e s3 -t upload --upload-port port` |
+| OTA, starboard unit | `pio run -e s3 -t upload --upload-port stbd` |
 
 ## Hardware
 
@@ -84,8 +88,9 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
     (ESP-IDF's CMake configure ~10 min, its components, then the Arduino
     core, the libraries and the gauge). Later builds of that env with the
     same settings recompile only what changed; changing a
-    `custom_sdkconfig` line rebuilds the libraries again. Each env (`s3_stbd`,
-    `s3_stbd_usb`, the port ones) builds them once for itself.
+    `custom_sdkconfig` line rebuilds the libraries again. A new env with
+    the same settings reuses them (seen 2026-11-03); the project has one
+    env, `s3`, for both units.
   - The project has its own PlatformIO directory, `~/.pio21` (`core_dir`):
     platform, toolchain and framework. Keep its path short: on Windows,
     generating the linker script passes every framework library's full
@@ -104,7 +109,7 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
     build then fails with `FileNotFoundError` while reading the CMake
     configuration.
   - After changing a `custom_sdkconfig` line, delete this folder's
-    `sdkconfig.<env>` (e.g. `sdkconfig.s3_stbd_usb`; generated, gitignored)
+    `sdkconfig.<env>` (`sdkconfig.s3`; generated, gitignored)
     before building. ESP-IDF keeps the values of an existing one and
     applies the new settings only where it has none: the build log still
     says `Replace: ...=y with: ...=n`, but the framework is built with the

@@ -3,7 +3,7 @@ name: build-flash
 description: >
   Build gauge firmware, flash it to a unit, and monitor serial output. Use
   when user wants to test, upload, flash, or "try it on the device".
-argument-hint: "[optional: p4_stbd, p4_port, s3_stbd or s3_port]"
+argument-hint: "[optional: 4in port, 4in stbd, 2.1in port or 2.1in stbd]"
 ---
 
 # Build, Flash, and Monitor
@@ -12,15 +12,15 @@ argument-hint: "[optional: p4_stbd, p4_port, s3_stbd or s3_port]"
 
 Ask which one if it was not given:
 
-| Device | Project | OTA env | USB env |
-|---|---|---|---|
-| 4" starboard | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_stbd` | `p4_stbd_usb` |
-| 4" port | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_port` | `p4_port_usb` |
-| 2.1" starboard | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_stbd` | `s3_stbd_usb` |
-| 2.1" port | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_port` | `s3_port_usb` |
+| Device | Project | env |
+|---|---|---|
+| 4" (either side) | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4` |
+| 2.1" (either side) | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3` |
 
-The OTA env's address and password come from the gitignored
-`include/secrets.h` (`SECRET_OTA_HOST_<ENV>`, `SECRET_OTA_PASSWORD`).
+One build per board serves both units: the side is the hostname saved on
+the unit (`-port` suffix). The OTA address and password come from the
+gitignored `include/secrets.h` (`SECRET_OTA_HOST_<ENV>_<SIDE>`,
+`SECRET_OTA_PASSWORD`).
 
 ## Phase 1: Build
 
@@ -30,9 +30,12 @@ The OTA env's address and password come from the gitignored
 
 ## Phase 2: Flash
 
-- **First flash** (or a unit not on WiFi): the `_usb` env over USB-C,
-  `pio run -e <env>_usb -t upload`.
-- **Later**: `pio run -e <env> -t upload` goes over the air.
+- **First flash** (or a unit not on WiFi): over USB-C,
+  `pio run -e <env> -t upload --upload-port COMn`. A new port unit then
+  needs its hostname set to `gauge-<4c|21>-port` (web UI, Configuration, `/system/hostname`) and a
+  restart.
+- **Later**: `pio run -e <env> -t upload --upload-port port` (or `stbd`, or
+  an address) goes over the air.
 
 If an OTA upload fails:
 - `ota_auth: … does not exist` -> no `include/secrets.h`; create it from

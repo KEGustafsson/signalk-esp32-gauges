@@ -19,8 +19,13 @@ include/secrets.example.h for the template:
     #define SECRET_OTA_HOST_S3_STBD "..."
     #define SECRET_OTA_HOST_S3_PORT "..."
 
-The suffix is the environment name in upper case: env:p4_stbd ->
-SECRET_OTA_HOST_P4_STBD.
+Each board has one environment (p4, s3) for both of its units; which unit an
+upload goes to is the upload port:
+
+    pio run -e p4 -t upload --upload-port port    # SECRET_OTA_HOST_P4_PORT, over WiFi
+    pio run -e p4 -t upload --upload-port stbd    # SECRET_OTA_HOST_P4_STBD, over WiFi
+    pio run -e p4 -t upload --upload-port 1.2.3.4 # that address, over WiFi
+    pio run -e p4 -t upload --upload-port COM3    # over USB (no password)
 
 Wiring, from platformio/builder/main.py:
 
@@ -34,11 +39,12 @@ checkout without secrets.h still builds. The address is also set on a plain
 build when available, which silences the espressif32 builder's "Please specify
 IP address or host name of ESP device" message on every espota build.
 
-Overrides still work: `pio run -e p4_stbd -t upload --upload-port 1.2.3.4` sets
-UPLOAD_PORT before this runs, and it is left alone.
+An IP address or .local name given as the port is left as it is; "port" and
+"stbd" are replaced by that unit's address from secrets.h, and the upload
+switched to espota.
 
-It does nothing unless the upload goes over the air: the *_usb environments
-flash over serial with esptool, which would reject an --auth= flag.
+It does nothing unless the upload goes over the air: a serial port is flashed
+with esptool, which would reject an --auth= flag.
 """
 
 import os
@@ -85,8 +91,11 @@ def main():
 
     protocol = env.subst("$UPLOAD_PROTOCOL")  # noqa: F821
     given_port = env.subst("$UPLOAD_PORT")  # noqa: F821
+    # "port" / "stbd": that unit of this board, over the air.
+    side = given_port.strip('"').lower()
+    side = side if side in ("port", "stbd") else ""
     # The builder switches to espota for such a port whatever the protocol.
-    if protocol != "espota" and not LOOKS_OTA.match(given_port):
+    if protocol != "espota" and not side and not LOOKS_OTA.match(given_port):
         return
 
     project_dir = env.subst("$PROJECT_DIR")  # noqa: F821
@@ -140,14 +149,29 @@ def main():
         # also drops the builder's espota --debug, which would log it.
         env.Append(UPLOAD_FLAGS=["--auth=%s" % password])  # noqa: F821
 
-    # --- the address of the gauge this env flashes ---------------------------
+    # --- the address of the gauge this upload goes to -------------------------
+    pioenv = env.subst("$PIOENV")  # noqa: F821 -- e.g. "p4"
+    if side:
+        key = "SECRET_OTA_HOST_%s_%s" % (pioenv.upper(), side.upper())
+        match = _define(key).search(text)
+        if not match or not match.group(1):
+            if uploading:
+                _fail("%s defines no non-empty %s for --upload-port %s."
+                      % (secrets, key, side))
+            return
+        env.Replace(UPLOAD_PORT=match.group(1),  # noqa: F821
+                    UPLOAD_PROTOCOL="espota")
+        if uploading:
+            print("ota_auth: OTA password and %s taken from include/secrets.h"
+                  % key)
+        return
+
     if given_port:
         if uploading:
             print("ota_auth: OTA password from include/secrets.h; "
                   "upload port left as given")
         return
 
-    pioenv = env.subst("$PIOENV")  # noqa: F821 -- e.g. "p4_stbd"
     key = "SECRET_OTA_HOST_%s" % pioenv.upper()
     match = _define(key).search(text)
     if not match or not match.group(1):

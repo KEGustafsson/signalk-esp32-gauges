@@ -8,16 +8,17 @@
 ## What this is
 
 Signal K instrument gauges (classic steel style) for Waveshare round touch
-displays. Two boards (4" and 2.1"), each built as a starboard or a port
-device (the side only picks the engine of the factory pages), two firmware
-projects, one shared library:
+displays. Two boards (4" and 2.1"), two firmware projects, one shared
+library. Each board has one env and one firmware for both of its units;
+a unit is starboard or port by the hostname saved on it (`-port` suffix,
+`unit_identity.h`), which picks the factory pages' engine, its name and
+its `secrets.h` address. Never add a per-side or per-upload env or `-D`
+flag: each such env compiles everything again.
 
-| Device | Side | Project | env (OTA / USB) |
+| Device | Project | env | Upload |
 |---|---|---|---|
-| 4" | starboard | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_stbd` / `p4_stbd_usb` |
-| 4" | port | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4_port` / `p4_port_usb` |
-| 2.1" | starboard | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_stbd` / `s3_stbd_usb` |
-| 2.1" | port | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3_port` / `s3_port_usb` |
+| 4" | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4` | `--upload-port COMn` (USB), `port` / `stbd` / an address (OTA) |
+| 2.1" | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3` | the same |
 
 The gauges only *display*: nothing here commands a machine. The rules below
 are about never showing a wrong number with confidence.
@@ -98,22 +99,21 @@ If a task would require breaking one of these, stop and flag it.
 ## Commands
 
 ```bash
-cd waveshare-esp32-p4-wifi6-touch-lcd-4c && pio run -e p4_stbd     # build one unit
-cd waveshare-esp32-s3-touch-lcd-2.1 && pio run -e s3_stbd_usb -t upload  # first flash
-cd waveshare-esp32-s3-touch-lcd-2.1 && pio run -e s3_stbd -t upload      # OTA
+cd waveshare-esp32-p4-wifi6-touch-lcd-4c && pio run -e p4                  # build the 4"
+cd waveshare-esp32-s3-touch-lcd-2.1 && pio run -e s3 -t upload --upload-port COM4  # USB
+cd waveshare-esp32-s3-touch-lcd-2.1 && pio run -e s3 -t upload --upload-port port  # OTA
 cmake -S tools/preview -B build/preview && cmake --build build/preview -j
 mkdir -p out && build/preview/preview 480 && build/preview/preview 720
 cmake -S tests -B build/tests && cmake --build build/tests -j && build/tests/gauge_tests
 ```
 
-Building one env per board is enough to prove the code compiles: the port and
-starboard envs differ only in `-D` flags, and the `_usb` envs only in the
-upload method. CI (`.github/workflows/ci.yml`) runs the host unit tests,
+Each board has one env, so building it builds every unit's firmware.
+CI (`.github/workflows/ci.yml`) runs the host unit tests,
 renders the preview at both sizes, and checks the scripts and credential
 rules on every push to `main` and every pull request. The firmware builds
-(the starboard unit of each board, `p4_stbd`, `s3_stbd`) are too heavy for
-every change: they run only when the workflow is started by hand, so build
-a firmware change locally, one env per board. Run the relevant check locally
+(`p4`, `s3`) are too heavy for every change: they run only when the
+workflow is started by hand, so build a firmware change locally, both
+boards. Run the relevant check locally
 anyway: CI is the backstop, not the first place to find out.
 
 A UI change is not done until the preview has been rendered and looked at.
@@ -212,8 +212,17 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   new global `-D` flag recompiles everything. Pass a per-file setting in
   code instead (the draw-buffer sizes are in each `src/main.cpp`). The
   command line includes the env's own library folder (`.pio/libdeps/<env>`),
-  so the cache does not carry over between envs (`p4_stbd` vs
-  `p4_stbd_usb`): build and flash with the env already built.
+  so the cache never carries over between envs: that is why each board has
+  one env, with the side read on the unit and the upload method chosen by
+  the upload port (until 2026-11-03 there were four envs per board, and a
+  port unit's build took as long as a fresh one).
+- Any edit of a `platformio.ini`, a comment included, deletes that
+  project's `.pio/build/<env>` (PlatformIO hashes the whole config into
+  `project.checksum`): every object is copied back from the build cache,
+  about 2 min on the 4". Batch such edits. `scripts/fast_scons.py` (pre:)
+  makes SCons trust unchanged timestamps and reuse its header scan: a
+  4" build with nothing to compile went from 139 s to 66 s, most of the
+  rest being PlatformIO's library scan (`Scanning dependencies`, 45 s).
 
 ## Hardware status
 

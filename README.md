@@ -28,17 +28,21 @@ code from `common/`, scaled to the panel's size.
 
 ## Devices
 
-Each board builds as a starboard or a port device:
+Each board has one firmware, for both sides, built once and flashed to
+every unit of that board:
 
-| Device | Side | Project | OTA env | First flash (USB) |
-|---|---|---|---|---|
-| 4" | starboard | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4_stbd` | `p4_stbd_usb` |
-| 4" | port | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4_port` | `p4_port_usb` |
-| 2.1" | starboard | `waveshare-esp32-s3-touch-lcd-2.1` | `s3_stbd` | `s3_stbd_usb` |
-| 2.1" | port | `waveshare-esp32-s3-touch-lcd-2.1` | `s3_port` | `s3_port_usb` |
+| Device | Project | env |
+|---|---|---|
+| 4" | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4` |
+| 2.1" | `waveshare-esp32-s3-touch-lcd-2.1` | `s3` |
 
-The side only picks the engine of the factory pages (below); every page can
-be changed in the web UI.
+A unit is starboard or port by its hostname, saved on the unit: one ending
+in `-port` (`gauge-4c-port`, `gauge-21-port`) is a port unit, anything else
+starboard. A fresh unit starts as its board's starboard unit; to make it a
+port unit, set its hostname in the web UI (Configuration, the `/system/hostname` card) and
+restart it. Erasing the flash clears the hostname too. The side picks the engine of the factory pages (below),
+the unit's name and its address in `secrets.h`; every page can be changed
+in the web UI.
 
 ## Pages
 
@@ -175,14 +179,15 @@ not change it), and it resets SensESP's settings once: WiFi comes back from
 `secrets.h`, but Signal K paths changed in the web UI go back to their
 defaults and the device has to be approved again in the Signal K admin UI
 (**Security → Access Requests**). Erasing first is cleanest; use each device's
-`_usb` env in its board project, for example from the repository root:
+board's env over USB, for example from the repository root (a port unit
+then needs its hostname set again):
 
 ```bash
-pio run -d waveshare-esp32-p4-wifi6-touch-lcd-4c -e p4_stbd_usb -t erase
+pio run -d waveshare-esp32-p4-wifi6-touch-lcd-4c -e p4 -t erase --upload-port COM3
 ```
 
 ```bash
-pio run -d waveshare-esp32-p4-wifi6-touch-lcd-4c -e p4_stbd_usb -t upload
+pio run -d waveshare-esp32-p4-wifi6-touch-lcd-4c -e p4 -t upload --upload-port COM3
 ```
 
 The small dot at the
@@ -211,22 +216,23 @@ second, when connected.
    device to configure its address statically instead of using DHCP. These values only seed a
    device with no saved settings: once WiFi or the Signal K server has been
    saved on the device, its saved values win.
-3. First flash of each device over USB, for example a 4" starboard one:
+3. First flash of each device over USB, for example a 4" (its serial port
+   as `--upload-port`; `pio device list` shows them):
 
    ```bash
    cd waveshare-esp32-p4-wifi6-touch-lcd-4c
    ```
 
    ```bash
-   pio run -e p4_stbd_usb -t upload
+   pio run -e p4 -t upload --upload-port COM3
    ```
 
-   The 2.1"'s first build takes about an hour: it rebuilds the framework's
-   libraries with two settings that keep its picture steady (its README). On
-   Windows, run it from PowerShell or cmd, not Git Bash. Build and flash with
-   the same env each time (the `_usb` one over USB): PlatformIO keeps each
-   env's libraries apart, so the build cache does not carry over between
-   `s3_stbd_usb` and `s3_stbd`, and switching rebuilds everything once.
+   Every unit of a board is flashed from the same build, so only the first
+   build of a board compiles everything. The 2.1"'s first build takes about
+   an hour: it rebuilds the framework's libraries with the settings that
+   keep its picture steady (its README). On Windows, run it from PowerShell
+   or cmd, not Git Bash. For a port unit, set its hostname afterwards (see
+   [Devices](#devices)).
 
    **4" only: update the WiFi chip's firmware once.** The 4"'s WiFi is a
    separate chip (ESP32-C6) with its own firmware, and boards leave the
@@ -241,10 +247,11 @@ second, when connected.
 4. In the Signal K server admin UI, approve the device's access request
    (**Security → Access Requests**; the device is named after its hostname, e.g.
    `gauge-4c-stbd`). Read access is enough.
-5. After that, update over WiFi:
+5. After that, update over WiFi: `port` or `stbd` as the upload port is
+   that unit's address in `secrets.h` (or give an IP or `.local` name):
 
    ```bash
-   pio run -e p4_stbd -t upload
+   pio run -e p4 -t upload --upload-port port
    ```
 
    `scripts/ota_auth.py` (adapted from
@@ -270,11 +277,11 @@ reflashes. To apply new ones, erase the flash and flash again over USB, which
 also clears every other setting (the Signal K token too):
 
 ```bash
-pio run -e p4_stbd_usb -t erase
+pio run -e p4 -t erase --upload-port COM3
 ```
 
 ```bash
-pio run -e p4_stbd_usb -t upload
+pio run -e p4 -t upload --upload-port COM3
 ```
 
 The same erase is the way back to a device that cannot be reached at all

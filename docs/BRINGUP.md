@@ -17,8 +17,9 @@ in each board folder's README under *First power-up checklist*.
 
 ## 2. Flash over USB and open the log
 
-From the board's folder, with the device's `_usb` env (here a 4" starboard
-one; the 2.1" is `waveshare-esp32-s3-touch-lcd-2.1` and `s3_stbd_usb`):
+From the board's folder, with the board's env and the unit's serial port
+(here a 4" on COM3; the 2.1" is `waveshare-esp32-s3-touch-lcd-2.1` and
+`s3`; `pio device list` shows the ports):
 
 ```bash
 cd waveshare-esp32-p4-wifi6-touch-lcd-4c
@@ -36,16 +37,21 @@ It prints `Chip type: ESP32-P4 (revision v3.x)`. Below v3.0, set
 `board = esp32-p4` in `platformio.ini` before flashing.
 
 ```bash
-pio run -e p4_stbd_usb -t erase
+pio run -e p4 -t erase --upload-port COM3
 ```
 
 ```bash
-pio run -e p4_stbd_usb -t upload
+pio run -e p4 -t upload --upload-port COM3
 ```
 
 ```bash
-pio device monitor -e p4_stbd_usb
+pio device monitor -p COM3
 ```
+
+A fresh unit comes up as its board's starboard unit (`gauge-4c-stbd`). For
+a port unit, set its hostname to `gauge-4c-port` (`gauge-21-port`) in the
+web UI (Configuration, the `/system/hostname` card) and restart it; the boot line then says
+`4in PORT`.
 
 The 2.1"'s first build rebuilds the framework's libraries (its README):
 expect about an hour the first time, and on Windows run it from PowerShell
@@ -159,13 +165,13 @@ For each page, compare the value with the Signal K server's Data Browser
 Once the device is on the network:
 
 ```bash
-pio run -e p4_stbd -t upload
+pio run -e p4 -t upload --upload-port stbd
 ```
 
-The computer must be on the device's network and accept the device's
-connection back to it (allow it if a firewall asks). The `_usb` and OTA
-envs keep separate builds, so the first OTA build of a board compiles
-everything once (on the 2.1", the framework too: about an hour).
+(`port` / `stbd` is that unit's address in `secrets.h`; an IP or `.local`
+name works too.) The computer must be on the device's network and accept
+the device's connection back to it (allow it if a firewall asks). It is the
+same build as over USB, so nothing is compiled again.
 
 ## Something wrong?
 
