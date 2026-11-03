@@ -12,8 +12,8 @@ Signal K steel gauges for the 4" round board. See the
 
 **Every 4" board needs this once, before it is used.** Its WiFi is a separate
 chip, an ESP32-C6, with a firmware of its own (ESP-Hosted). That firmware
-must be the version the gauge firmware is built for: **ESP-Hosted 2.12.11**
-(Arduino-ESP32 3.3.11). Boards leave the factory with an older one. Flashing
+must be the version the gauge firmware is built for: **ESP-Hosted 2.12.13**
+(Arduino-ESP32 3.3.12). Boards leave the factory with an older one. Flashing
 the gauge does not update the C6.
 
 **How to tell.** The gauge's boot log (USB serial, 115200 baud), right after
@@ -21,8 +21,8 @@ the gauge does not update the C6.
 
 | Log | Meaning |
 |---|---|
-| `Slave firmware version: 2.12.11` and `Versions Match!` | Up to date: nothing to do |
-| `Slave firmware version: 0.0.0`, `Could not get slave firmware version: ESP_FAIL`, `Version on Host is NEWER than version on co-processor` | **Update it** |
+| `Slave firmware version: 2.12.13` and `Versions Match!` | Up to date: nothing to do |
+| `Slave firmware version: 0.0.0` or `2.12.11`, `Could not get slave firmware version: ESP_FAIL`, `Version on Host is NEWER than version on co-processor` | **Update it** |
 
 With the old firmware WiFi still connects, so the gauge looks almost
 right. But the C6 does not answer some of the P4's requests, and each one
@@ -77,8 +77,8 @@ plugged in):
 
 | Unit | C6 firmware |
 |---|---|
-| 4" starboard | 2.12.11, updated 2026-10-31 |
-| 4" port | 2.12.11, updated 2026-11-03 (had the factory firmware, 0.0.0) |
+| 4" starboard | 2.12.13, updated 2026-11-03 (2.12.11 since 2026-10-31) |
+| 4" port | 2.12.13, updated 2026-11-03 (factory firmware 0.0.0 until that morning) |
 
 ## Hardware
 
@@ -139,7 +139,7 @@ examples.
   flip `ESP_PANEL_BOARD_BACKLIGHT_ON_LEVEL` in
   `include/esp_panel_board_custom_conf.h`; Waveshare's BSP drives this pin
   inverted.
-- The ESP32-C6 runs ESP-Hosted 2.12.11: `Versions Match!` in the boot log.
+- The ESP32-C6 runs ESP-Hosted 2.12.13: `Versions Match!` in the boot log.
   If not, update it first: [Update the WiFi chip's firmware](#update-the-wifi-chips-firmware-once-per-board).
   Both boards brought up so far shipped with an older one.
 - Internal DMA-capable RAM belongs to the ESP-Hosted link: it allocates its
@@ -174,11 +174,17 @@ examples.
   chip (C6)` and, a little later, `First heartbeat from the WiFi chip (C6)`.
   ESP-Hosted's own link-failure event and a C6 that restarts under a
   running link restart the unit too; its start at every boot does not.
-- ESP-Hosted 2.12.11 (Arduino-ESP32 3.3.11) does not notice a dead SDIO
-  link by itself; 2.12.12 fixes that (esp-hosted-mcu #220, a P4 + C6 that
-  wedged 43 times in 21 h on 2.12.11 and not at all with the fix). Arduino-ESP32
-  3.3.12 ships 2.12.13; moving to it needs the C6 updated to match
-  (`tools/c6-update`).
+- Arduino-ESP32 3.3.12 (ESP-Hosted 2.12.13), since 2026-11-03. On 3.3.11
+  (ESP-Hosted 2.12.11) both units lost the link to their C6 every 6-7 h:
+  2.12.11 does not notice a dead SDIO link by itself, 2.12.12 fixes that
+  (esp-hosted-mcu #220, a P4 + C6 that wedged 43 times in 21 h on 2.12.11
+  and not at all with the fix). The restart recovered each time in about
+  70 s (`docs/JOURNAL.md`). 3.3.12 also leaves far more internal DMA RAM
+  free: 289 KB a minute after boot, against 78 KB.
+- While WiFi associates after boot, the log shows a few
+  `RPC_WRAP: rpc_wifi_sta_get_ap_info: failed, status [12303]`: SensESP
+  asks for the signal strength and the C6 answers at once that there is no
+  access point yet. Expected; they stop once WiFi is up.
 - After an unexplained restart, the boot log's reset reason and the core
   dump tell why: read the core dump partition (`coredump` at 0x1FF0000 in
   `partitions_32MB.csv`), drop its first 24 bytes, and open the rest in

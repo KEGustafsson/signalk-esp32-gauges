@@ -163,7 +163,8 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   internal DMA-capable RAM while data flows; when that runs out the link
   stalls for good and the loop watchdog restarts the unit. Keep large
   buffers (LVGL's included) in PSRAM on the 4"; the boot log's `heap` line
-  shows what is left. The C6 needs ESP-Hosted 2.12.11 (`tools/c6-update`).
+  shows what is left. The C6 needs ESP-Hosted 2.12.13, the version of
+  Arduino-ESP32 3.3.12 (`tools/c6-update`; 4" README).
 - 4" WiFi calls block: `WiFi.SSID()`, `WiFi.RSSI()` and the like are
   requests to the C6, answered within ESP-Hosted's 5 s
   (`DEFAULT_RPC_RSP_TIMEOUT`) or given up. SensESP makes them from the loop.
@@ -202,9 +203,11 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   from PSRAM costs about 1.4 MB of it. Verified with all three: no flicker
   or shift, also while the web UI's configuration pages are browsed. When
   changing these lines, delete the project's `sdkconfig.<env>` first, or
-  ESP-IDF keeps its old values; if the build's second stage fails with
-  `SCons.Tool.FortranCommon`, `~/.pio21/penv` got PlatformIO 6.2 (board
-  README).
+  ESP-IDF keeps its old values. PlatformIO must be pioarduino 6.2.0, in
+  the `pio` you run and in `~/.pio21/penv`: the platform (55.03.312)
+  refuses 6.2.0.post1, the newest (board README). Both boards are on
+  Arduino-ESP32 3.3.12 since 2026-11-03; the first 2.1" build on it took
+  1 h 28 min.
 - PlatformIO's build cache keys each object on its full command line: a
   new global `-D` flag recompiles everything. Pass a per-file setting in
   code instead (the draw-buffer sizes are in each `src/main.cpp`). The

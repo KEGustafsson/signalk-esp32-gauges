@@ -111,15 +111,21 @@ status LED instead (`common/src/status_led.h`), so nothing drives GPIO48.
     old value. Check the result in `sdkconfig.<env>` (an option that is off
     reads `# CONFIG_... is not set`). A fresh clone has none.
   - The second stage of the build ("Starting Arduino compile ... with
-    custom libraries") runs PlatformIO from `~/.pio21/penv`. In a fresh
-    `~/.pio21` that environment got the newest PlatformIO (6.2.0.post1),
-    whose SCons 4.11.1 the platform cannot use: the build failed after the
-    framework with `No module named 'SCons.Tool.FortranCommon'`. Give it
-    the PlatformIO the rest uses and build again (the framework is kept):
-    `~/.pio21/penv/Scripts/uv pip install --python
-    ~/.pio21/penv/Scripts/python platformio==6.1.19`. The `pio` you run
-    must be 6.1.19 as well (`pio --version`): PyPI's `platformio` is 6.2
-    since 2026-11-01, and CI failed the same way with only the penv pinned.
+    custom libraries") runs PlatformIO from `~/.pio21/penv`. Both it and
+    the `pio` you run must be pioarduino 6.2.0 (`pio --version` says
+    `6.2.0`): the platform (55.03.312) needs 6.2.0 or newer and refuses
+    the newest, `6.2.0.post1`, as a pre-release of 6.2.0. A fresh
+    `~/.pio21` gets 6.2.0.post1; replace it and build again (the framework
+    is kept): `~/.pio21/penv/Scripts/uv pip uninstall --python
+    ~/.pio21/penv/Scripts/python platformio pioarduino`, then
+    `... uv pip install --python ~/.pio21/penv/Scripts/python
+    pioarduino==6.2.0`. (On the previous platform, 55.03.311, it was the
+    other way round: PlatformIO 6.2's SCons broke the build with
+    `No module named 'SCons.Tool.FortranCommon'`, and 6.1.19 was needed.)
+  - Two builds started at once on a just-upgraded PlatformIO both install
+    the platform's Python packages into the same environment, and break it
+    (`certifi` gone, `Failed to install Python dependencies into penv`).
+    Build one board at a time after a platform or PlatformIO change.
 - Verified 2026-11-01: with the first two settings the picture stayed in
   place through 60 s of settings reads every 2 s and a settings save, the
   load that shifted it within half a minute on the stock libraries, but

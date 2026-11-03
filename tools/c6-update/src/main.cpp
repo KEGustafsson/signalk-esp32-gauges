@@ -43,6 +43,9 @@ struct Image {
 constexpr Image kImages[] = {
     {2, 12, 11, 1226800,
      "5b05e1530e122881ffeeea3ce2e930963cef6fcc79f930cf0994bf9cb9d709cb"},
+    // Arduino-ESP32 3.3.12 (pioarduino 55.03.312-1), 2026-11-03.
+    {2, 12, 13, 1226976,
+     "f8509949826c197a4fa3c7958943b4e8985cffdfdf4204c2847d8953905121c9"},
 };
 
 void print_versions() {

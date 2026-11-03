@@ -754,3 +754,39 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   and 7.0 h: on ESP-Hosted 2.12.11 it looks like a regular event every 6-7
   hours of running, recovered each time, which makes the move to 2.12.13
   (Arduino-ESP32 3.3.12) worth doing.
+
+## 2026-11-03 — All three units on Arduino-ESP32 3.3.12 (ESP-Hosted 2.12.13)
+
+- **Why:** both 4" units lost their C6 link every 6-7 h on ESP-Hosted
+  2.12.11; 2.12.12 fixes a dead SDIO link going unnoticed
+  (esp-hosted-mcu #220). pioarduino 55.03.312-1 = Arduino-ESP32 3.3.12,
+  ESP-Hosted 2.12.13 (its P4 `dependencies.lock`). The user chose to move
+  both boards, so one toolchain builds both.
+- **PlatformIO:** 55.03.312 needs PlatformIO Core >=6.2.0 (6.1.19:
+  `IncompatiblePlatform`). pioarduino's newest, 6.2.0.post1, reports
+  `6.2.0-post.1`, a pre-release below 6.2.0, and is refused the same way;
+  `pioarduino==6.2.0` alone (no `platformio` package beside it) works, in
+  `~/.platformio/penv` and `~/.pio21/penv`. CI pins it too.
+- **A mistake on the way:** the two boards built at once on the
+  just-upgraded PlatformIO both installed the platform's Python packages
+  into `~/.platformio/penv` and broke it (`certifi` removed, `Failed to
+  install Python dependencies into penv`). Repaired with uv; one build at
+  a time since.
+- **C6 image 2.12.13** pinned in `tools/c6-update`: 1226976 bytes, SHA-256
+  `f8509949...5121c9`, identical from espressif.github.io and from
+  raw.githubusercontent.com (gh-pages).
+- **4" starboard and port:** C6 updated 2.12.11 -> 2.12.13 (download,
+  checked, written, confirmed after its restart), gauge flashed:
+  `Versions Match!`, display and touch as before (0x14 and 0x5D), first
+  heartbeat at 26 s, Signal K with zones. Internal DMA RAM 289-290 KB free
+  a minute after boot (78 KB on 3.3.11; internal RAM at the draw buffer's
+  allocation 453 KB against 325 KB). New at boot only: a few
+  `rpc_wifi_sta_get_ap_info: failed, status [12303]` while WiFi
+  associates, answered at once (not timeouts).
+- **2.1":** framework rebuilt with the three `custom_sdkconfig` settings
+  (stale `sdkconfig.s3_stbd_usb` deleted first), 1 h 28 min in all; the
+  `qio_opi` variant's `sdkconfig.h` has `XIP_FROM_PSRAM` and no
+  `RGB_RESTART_IN_VSYNC`. Flashed: Signal K with zones, DMA RAM 55 KB free
+  (lowest 32 KB), PSRAM 3456 KB (code from PSRAM, as before). The picture
+  (no flicker, no shift) is still to be confirmed by eye over time.
+- Builds: 4" 31 min (full), C6 tool 3 min, 2.1" 1 h 28 min.

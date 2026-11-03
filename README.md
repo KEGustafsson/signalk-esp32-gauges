@@ -192,9 +192,13 @@ second, when connected.
 
 ## Setup
 
-1. Install [PlatformIO](https://platformio.org/install) (VS Code extension or
-   `pip install platformio==6.1.19`). PlatformIO 6.2 brings an SCons the
-   board platform cannot use (`No module named 'SCons.Tool.FortranCommon'`).
+1. Install PlatformIO Core 6.2.0 from pioarduino: `pip install
+   pioarduino==6.2.0` (or the pioarduino VS Code extension). The board
+   platform (pioarduino 55.03.312) needs 6.2.0 or newer and refuses
+   `6.2.0.post1`, which reports itself as a pre-release of 6.2.0
+   (`IncompatiblePlatform ... depends on PlatformIO Core >=6.2.0`); check
+   with `pio --version`. In an environment that has both `platformio` and
+   `pioarduino`, uninstall both and install `pioarduino==6.2.0` alone.
 2. Copy `include/secrets.example.h` to `include/secrets.h` and fill in the WiFi,
    the Signal K server, an OTA password (letters, digits and
    `. _ ~ + = @ : , / -` only: it goes on a shell command line) and a web UI
@@ -297,7 +301,8 @@ rebooting the gauge (board README).
   readouts are redrawn as values change.
 - **Data**: SensESP (main branch) subscribes to the Signal K paths over WebSocket. SensESP
   and LVGL run on the same Arduino loop task, so they share data without locks.
-- **Framework**: Arduino-ESP32 3.3.11 through the pioarduino platform. The
+- **Framework**: Arduino-ESP32 3.3.12 (ESP-IDF 5.5.5) through the pioarduino
+  platform 55.03.312-1, for the 4"'s ESP-Hosted 2.12.13. The
   4" uses its precompiled libraries; the 2.1" rebuilds them with its code
   run from PSRAM and an RGB interrupt kept in internal RAM
   (`custom_sdkconfig`, board README).
