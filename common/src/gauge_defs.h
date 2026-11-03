@@ -25,12 +25,15 @@ enum class GaugeKind : uint8_t {
   kAttitude,  // Sea-horizon heel/trim indicator (navigation.attitude)
 };
 
-// The engine a unit's factory pages show (from its hostname: unit_identity.h).
-// Only the defaults depend on it: every page can be repointed in the web UI.
+// What a unit is for (from its hostname: unit_identity.h): a starboard or a
+// port engine display, or a general display with no engine (navigation,
+// wind, battery). Only the defaults depend on it: every page can be
+// repointed in the web UI.
 enum class Side : uint8_t {
   kBoth,
   kPort,
   kStarboard,
+  kGeneral,
 };
 
 // A coloured band on the dial (e.g. the red zone of a temperature gauge),

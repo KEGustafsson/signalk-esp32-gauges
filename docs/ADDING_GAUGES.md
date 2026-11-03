@@ -75,9 +75,10 @@ which it is.
 
    It joins WiFi from `secrets.h` and comes up as the board's starboard unit
    (`gauge-21-stbd`).
-3. **Its side**: web UI, **Configuration → Unit** → **Port** (or
-   Starboard), save, restart. The side picks the factory pages' engine, the
-   name (`2.1in PORT`) and the network name (`gauge-21-port`).
+3. **What it is**: web UI, **Configuration → Unit**: the role (Starboard,
+   Port or General), the hostname and the display name; save, restart.
+   The role picks the factory pages; the hostname follows it while it is a
+   built-in one (`gauge-21-port`).
 4. **Approve it in Signal K**: server admin UI, **Security → Access
    Requests**, the request named after the unit; read access is enough.
 5. **Its pages**: as in section 1, or copied from a unit that has them,
@@ -99,15 +100,16 @@ which it is.
 After that, updates go over WiFi: `--upload-port port` or `stbd`, or the
 unit's address.
 
-**A third unit of the same board** (say a helm display): a unit's identity is
-its hostname, and only `-port` makes it a port unit. Give it a name of its
-own in the web UI, **Configuration → `/system/hostname`** (e.g.
-`gauge-4c-helm`), and restart: it is a starboard-side unit (starboard
-factory pages, which you then change) under its own name, and the Unit
-card keeps that name unless you switch its side. Update it with its address:
-`--upload-port gauge-4c-helm.local`. With `SECRET_USE_STATIC_IP 1` it would
-take the starboard unit's static address: keep that setting at 0 (DHCP), or
-add an address for it in the code (`main.cpp`, `unit_identity.h`).
+**A unit for something else than an engine** (say a navigation display at
+the helm): in its Unit card choose the role **General**, a hostname of its
+own (e.g. `gauge-4c-nav`) and a display name (e.g. `Helm NAV`), save and
+restart. Its factory pages are then speed, heading, depth, wind, heel and
+battery (PAGES.md, Factory pages), all changeable. It has no address in
+`secrets.h` and gets one by DHCP whatever `SECRET_USE_STATIC_IP` says.
+Update it by its name, `--upload-port gauge-4c-nav.local`, or give it a
+short one: `#define SECRET_OTA_HOST_P4_NAV "gauge-4c-nav.local"` in
+`secrets.h`, then `--upload-port nav`. A board can have any number of
+units; only their hostnames must differ.
 
 ## 3. A new page style
 

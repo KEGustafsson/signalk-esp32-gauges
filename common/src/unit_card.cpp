@@ -13,49 +13,118 @@ namespace skgauges {
 
 namespace {
 constexpr const char* kTag = "unit";
+
+std::string current_hostname() {
+  return sensesp::SensESPBaseApp::get_hostname().c_str();
+}
 }  // namespace
 
-UnitCard::UnitCard(const char* board)
-    : sensesp::FileSystemSaveable("/Unit"), board_(board) {}
+bool UnitSettings::to_json(JsonObject& root) {
+  if (has_role) {
+    root["role"] = side_label(role);
+  }
+  root["name"] = name.c_str();
+  return true;
+}
+
+bool UnitSettings::from_json(const JsonObject& config) {
+  Side parsed;
+  if (config["role"].is<const char*>() &&
+      parse_side_label(config["role"].as<const char*>(), &parsed)) {
+    role = parsed;
+    has_role = true;
+  }
+  if (config["name"].is<const char*>()) {
+    const std::string value = config["name"].as<const char*>();
+    name = valid_display_name(value) ? value : "";
+  }
+  return true;
+}
+
+UnitSettings& unit_settings() {
+  static UnitSettings settings;
+  return settings;
+}
+
+UnitCard::UnitCard(const char* board, const char* board_label, Side role)
+    : sensesp::FileSystemSaveable("/Unit"),
+      board_(board),
+      board_label_(board_label),
+      role_(role) {}
 
 bool UnitCard::to_json(JsonObject& root) {
-  const std::string hostname =
-      sensesp::SensESPBaseApp::get_hostname().c_str();
-  root["side"] = side_label(side_from_hostname(hostname));
+  const UnitSettings& s = unit_settings();
+  root["role"] = side_label(role_);
+  root["hostname"] = current_hostname().c_str();
+  root["name"] = s.name.empty() ? unit_name(board_label_, role_).c_str()
+                                : s.name.c_str();
   return true;
 }
 
 bool UnitCard::from_json(const JsonObject& config) {
-  if (!config["side"].is<const char*>()) {
-    return true;  // Nothing to change
-  }
-  Side side;
-  if (!parse_side_label(config["side"].as<const char*>(), &side)) {
+  Side role = role_;
+  if (config["role"].is<const char*>() &&
+      !parse_side_label(config["role"].as<const char*>(), &role)) {
     return false;
   }
-  const std::string current =
-      sensesp::SensESPBaseApp::get_hostname().c_str();
-  if (side_from_hostname(current) == side) {
-    return true;  // Already that side (a name of the user's own is kept)
+  std::string hostname;
+  if (config["hostname"].is<const char*>()) {
+    hostname = config["hostname"].as<const char*>();
+    if (!hostname.empty() && !valid_hostname(hostname)) {
+      ESP_LOGW(kTag, "Not saved: \"%s\" is not a hostname (a-z, 0-9, '-')",
+               hostname.c_str());
+      return false;
+    }
   }
-  const std::string hostname = unit_hostname(board_, side);
-  // SensESP's own hostname setting: saved at once, used from the restart.
-  sensesp::SensESPBaseApp::get()->get_hostname_observable()->set(
-      hostname.c_str());
-  ESP_LOGI(kTag, "Side set to %s: hostname %s from the next restart",
-           side_label(side), hostname.c_str());
+  std::string name;
+  if (config["name"].is<const char*>()) {
+    name = config["name"].as<const char*>();
+    if (!name.empty() && !valid_display_name(name)) {
+      ESP_LOGW(kTag, "Not saved: the display name must be 1-24 characters");
+      return false;
+    }
+  }
+
+  const std::string current = current_hostname();
+  const std::string next =
+      hostname_after_save(board_, current, role_, role, hostname);
+  if (next != current) {
+    // SensESP's own hostname setting: saved at once, used from the restart.
+    sensesp::SensESPBaseApp::get()->get_hostname_observable()->set(
+        next.c_str());
+  }
+  UnitSettings& s = unit_settings();
+  // The old role's default name (sent back unchanged by the form) follows
+  // the role; anything else is the user's own.
+  if (name.empty() || name == unit_name(board_label_, role_)) {
+    s.name.clear();
+  } else {
+    s.name = name;
+  }
+  s.role = role;
+  s.has_role = true;
+  role_ = role;
+  ESP_LOGI(kTag, "Unit: %s, hostname %s, name %s (from the next restart)",
+           side_label(role), next.c_str(),
+           s.name.empty() ? unit_name(board_label_, role).c_str()
+                          : s.name.c_str());
   return true;
 }
 
-void add_unit_card(const char* board) {
-  static std::shared_ptr<UnitCard> card = std::make_shared<UnitCard>(board);
+bool UnitCard::save() { return unit_settings().save(); }
+
+void add_unit_card(const char* board, const char* board_label, Side role) {
+  static std::shared_ptr<UnitCard> card =
+      std::make_shared<UnitCard>(board, board_label, role);
   sensesp::ConfigItem(card)
       ->set_title("Unit")
       ->set_description(
-          "Which side this unit is: its factory pages show that engine, "
-          "and its name and network name follow it (gauge-...-stbd or "
-          "gauge-...-port). Saving the other side sets the hostname; it "
-          "takes effect when the unit restarts.")
+          "What this unit is. Role: a starboard or a port engine display, "
+          "or a general one (no engine); it picks the pages a reset page "
+          "goes back to and the unit's address in secrets.h. Hostname: its "
+          "network name (it follows the role while it is a built-in name). "
+          "Display name: shown on the gauge. Takes effect when the unit "
+          "restarts.")
       ->set_requires_restart(true)
       ->set_sort_order(98);
 }
@@ -65,7 +134,11 @@ void add_unit_card(const char* board) {
 namespace sensesp {
 
 const String ConfigSchema(const skgauges::UnitCard&) {
-  return R"J({"type":"object","properties":{"side":{"title":"Side","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Starboard","Port"]},"description":"Starboard or Port."}}})J";
+  return R"J({"type":"object","properties":{)J"
+         R"J("role":{"title":"Role","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Starboard","Port","General"]},"description":"Starboard or Port: an engine display for that side. General: no engine (navigation, wind, battery)."},)J"
+         R"J("hostname":{"title":"Hostname","type":"string","description":"The unit's network name (name.local), a-z, 0-9 and '-', up to 32. Leave it as it is to let it follow the role while it is a built-in name."},)J"
+         R"J("name":{"title":"Display name","type":"string","description":"Shown on the gauge's info overlay, up to 24 characters."})J"
+         R"J(}})J";
 }
 
 }  // namespace sensesp

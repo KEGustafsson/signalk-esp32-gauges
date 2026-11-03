@@ -36,14 +36,18 @@ every unit of that board:
 | 4" | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4` |
 | 2.1" | `waveshare-esp32-s3-touch-lcd-2.1` | `s3` |
 
-A unit is starboard or port by its hostname, saved on the unit: one ending
-in `-port` (`gauge-4c-port`, `gauge-21-port`) is a port unit, anything else
-starboard. A fresh unit starts as its board's starboard unit; to make it a
-port unit, choose **Port** in the **Unit** card of its web UI
-(Configuration), save, and restart it when the web UI asks. That sets the
-hostname. Erasing the flash clears it too. The side picks the engine of the factory pages (below),
-the unit's name and its address in `secrets.h`; every page can be changed
-in the web UI.
+The **Unit** card in the web UI (Configuration) says what a unit is, and
+all of it can be changed there:
+
+| Field | What it does | A fresh unit |
+|---|---|---|
+| **Role** | **Starboard** or **Port**: an engine display for that side, its factory pages read that engine. **General**: no engine (navigation, wind, battery). Also picks the unit's address in `secrets.h`. | Starboard |
+| **Hostname** | Its network name (`<hostname>.local`, and how it appears in the Signal K admin UI): a-z, 0-9 and `-`. While it is a built-in name it follows the role (`gauge-21-stbd`, `-port`, `-gen`); a name of your own is kept. | `gauge-<board>-stbd` |
+| **Display name** | Shown on the gauge's info overlay and in the boot log, up to 24 characters | `2.1in STBD` (`PORT`, `GEN`) |
+
+Save, and restart the unit when the web UI asks. Pages you have already set
+keep their paths: the role only decides the pages a fresh or reset page
+starts from. Erasing the flash puts all of it back to a fresh unit's.
 
 ## Pages
 
@@ -182,7 +186,7 @@ not change it), and it resets SensESP's settings once: WiFi comes back from
 defaults and the device has to be approved again in the Signal K admin UI
 (**Security → Access Requests**). Erasing first is cleanest; use each device's
 board's env over USB, for example from the repository root (a port unit
-then needs **Port** chosen again in its Unit card):
+then needs its role and names set again in its Unit card):
 
 ```bash
 pio run -d waveshare-esp32-p4-wifi6-touch-lcd-4c -e p4 -t erase --upload-port COM3
@@ -233,7 +237,7 @@ second, when connected.
    build of a board compiles everything. The 2.1"'s first build takes about
    an hour: it rebuilds the framework's libraries with the settings that
    keep its picture steady (its README). On Windows, run it from PowerShell
-   or cmd, not Git Bash. For a port unit, choose Port in its Unit card afterwards (see
+   or cmd, not Git Bash. Then set its role and names in its Unit card (see
    [Devices](#devices)).
 
    **4" only: update the WiFi chip's firmware once.** The 4"'s WiFi is a

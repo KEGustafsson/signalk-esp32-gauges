@@ -48,10 +48,11 @@ pio run -e p4 -t upload --upload-port COM3
 pio device monitor -p COM3
 ```
 
-A fresh unit comes up as its board's starboard unit (`gauge-4c-stbd`). For
-a port unit, choose **Port** in the **Unit** card of its web UI
-(Configuration), save, and restart it when asked: it is then
-`gauge-4c-port` (`gauge-21-port`), and the boot line says `4in PORT`.
+A fresh unit comes up as its board's starboard unit (`gauge-4c-stbd`). Set
+what it is in the **Unit** card of its web UI (Configuration): role
+(Starboard, Port or General), hostname, display name; save, and restart it
+when asked. A port unit is then `gauge-4c-port` (`gauge-21-port`), and the
+boot line says `4in PORT`.
 
 The 2.1"'s first build rebuilds the framework's libraries (its README):
 expect about an hour the first time, and on Windows run it from PowerShell

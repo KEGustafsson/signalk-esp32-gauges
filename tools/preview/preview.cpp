@@ -82,6 +82,7 @@ static std::vector<PreviewPage> preview_pages() {
       {"port_rpm", 1650}, {"stbd_rpm", 2240},   {"speed", 12.4f},
       {"heading", 291},   {"port_coolant", 82}, {"stbd_coolant", 79},
       {"port_oil", 96},   {"stbd_oil", 104},    {"attitude", -1.8f},
+      {"depth", 8.6f},    {"wind", 14.2f},      {"battery", 12.7f},
   };
   std::vector<PreviewPage> pages;
   for (size_t i = 0; i < skgauges::kFactoryPageCount; i++) {
@@ -106,7 +107,7 @@ static std::vector<PreviewPage> preview_pages() {
 
   const skgauges::GaugeDef& dial =
       skgauges::style_template(skgauges::GaugeKind::kRadial);
-  PreviewPage depth{"depth", dial, skgauges::GaugeOptions(), {}, 12.3f};
+  PreviewPage depth{"ui_depth", dial, skgauges::GaugeOptions(), {}, 12.3f};
   depth.options.title = "Depth";
   depth.options.sk_path = "environment.depth.belowTransducer";
   depth.options.unit_id = "m";
@@ -118,7 +119,7 @@ static std::vector<PreviewPage> preview_pages() {
                       zone(true, 3.0f, true, 5.0f, "warn")};
   pages.push_back(depth);
 
-  PreviewPage battery{"battery", dial, skgauges::GaugeOptions(), {}, 12.8f};
+  PreviewPage battery{"ui_battery", dial, skgauges::GaugeOptions(), {}, 12.8f};
   battery.options.title = "Battery";
   battery.options.sk_path = "electrical.batteries.house.voltage";
   battery.options.unit_id = "SI";  // As sent, labelled "V" from meta.units

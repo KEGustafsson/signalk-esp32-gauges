@@ -24,6 +24,7 @@ upload goes to is the upload port:
 
     pio run -e p4 -t upload --upload-port port    # SECRET_OTA_HOST_P4_PORT, over WiFi
     pio run -e p4 -t upload --upload-port stbd    # SECRET_OTA_HOST_P4_STBD, over WiFi
+    pio run -e p4 -t upload --upload-port nav     # SECRET_OTA_HOST_P4_NAV, if defined
     pio run -e p4 -t upload --upload-port 1.2.3.4 # that address, over WiFi
     pio run -e p4 -t upload --upload-port COM3    # over USB (no password)
 
@@ -39,9 +40,11 @@ checkout without secrets.h still builds. The address is also set on a plain
 build when available, which silences the espressif32 builder's "Please specify
 IP address or host name of ESP device" message on every espota build.
 
-An IP address or .local name given as the port is left as it is; "port" and
-"stbd" are replaced by that unit's address from secrets.h, and the upload
-switched to espota.
+An IP address or .local name given as the port is left as it is; a short
+name ("port", "stbd", or one of your own such as "nav" for a general unit)
+is replaced by that unit's address from secrets.h,
+SECRET_OTA_HOST_<ENV>_<NAME>, and the upload switched to espota. A serial
+port (COM3, /dev/ttyUSB0) is not a name.
 
 It does nothing unless the upload goes over the air: a serial port is flashed
 with esptool, which would reject an --auth= flag.
@@ -62,6 +65,9 @@ SAFE_PASSWORD = re.compile(r"[A-Za-z0-9._~+=@:,/-]+")
 # PlatformIO switches an unset protocol to espota when the port looks like an IP
 # or an mDNS name (platform-espressif32 builder/main.py). Mirrored here so this
 # script agrees with the uploader that eventually runs.
+ALIAS = re.compile(r"[a-z][a-z0-9]{0,15}")
+SERIAL_PORT = re.compile(r"com[0-9]+")
+
 LOOKS_OTA = re.compile(r'"?((([0-9]{1,3}\.){3}[0-9]{1,3})|[^\\/]+\.local)"?$')
 
 
@@ -91,9 +97,11 @@ def main():
 
     protocol = env.subst("$UPLOAD_PROTOCOL")  # noqa: F821
     given_port = env.subst("$UPLOAD_PORT")  # noqa: F821
-    # "port" / "stbd": that unit of this board, over the air.
+    # A short name ("port", "stbd", "nav"...): that unit of this board, over
+    # the air. Not a serial port: COM3 on Windows, /dev/... elsewhere.
     side = given_port.strip('"').lower()
-    side = side if side in ("port", "stbd") else ""
+    if not ALIAS.fullmatch(side) or SERIAL_PORT.fullmatch(side):
+        side = ""
     # The builder switches to espota for such a port whatever the protocol.
     if protocol != "espota" and not side and not LOOKS_OTA.match(given_port):
         return

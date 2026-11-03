@@ -857,3 +857,30 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   2.1" starboard to the 2.1" port (`stb_engine` -> `prt_engine`): six
   cards written, 200 each. `ADDING_GAUGES.md` section 1 now walks through
   an example page (exhaust temperature) setting by setting.
+
+## 2026-11-03 — General role; everything about a unit set in the Unit card
+
+- **Asked:** a unit used for something other than a starboard or port
+  engine display, and nothing hard-coded but the version.
+- **The Unit card** now has three fields, all saved on the unit: **Role**
+  (Starboard, Port, General), **Hostname** (SensESP's own setting) and
+  **Display name**. The role and display name are in `UnitSettings`
+  (`/Unit/settings`), read at boot before SensESP; the hostname stays
+  SensESP's. A built-in hostname (`gauge-<board>-stbd` / `-port` / `-gen`)
+  follows a role change; a name of the user's own is kept. A unit with
+  no role saved takes it from its hostname (`-port`, `-stbd`, else
+  General), so the four units kept what they were.
+- **General** units have their own factory pages, with no engine: speed,
+  heading, depth (0-50 m), apparent wind (0-40 kn), heel, battery (10-16 V,
+  `electrical.batteries.house.voltage`); ticks from `nice_step()`. No
+  `secrets.h` address of their own (DHCP); `ota_auth.py` takes any short
+  `--upload-port <name>` that has a `SECRET_OTA_HOST_<ENV>_<NAME>`.
+- Rules in `unit_identity.h` (host-tested: 62 tests), the General pages in
+  `test_factory.cpp`, the three new dials rendered in the preview at 480
+  and looked at (the old hand-made "depth"/"battery" demo dials renamed
+  `ui_depth`/`ui_battery`).
+- **On the 2.1" port:** General with the hostname unchanged -> boot
+  `2.1in GEN (gauge-21-gen)`; own names -> `Helm NAV (gauge-21-nav)`;
+  back to Port -> `2.1in PORT (gauge-21-port)`, its six pages untouched
+  throughout; a bad role, hostname or display name refused (400). All four
+  units run it.

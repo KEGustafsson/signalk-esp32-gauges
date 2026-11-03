@@ -28,6 +28,23 @@ TEST(factory_pages_follow_the_side) {
   CHECK(default_page(Side::kStarboard, kMaxPages - 1) == nullptr);
 }
 
+TEST(general_units_have_no_engine_pages) {
+  for (size_t slot = 0; slot < factory_page_count(); slot++) {
+    const GaugeDef* page = default_page(Side::kGeneral, slot);
+    CHECK(page != nullptr);
+    CHECK(strstr(page->sk_path, "propulsion.") == nullptr);
+  }
+  CHECK(default_page(Side::kGeneral, factory_page_count()) == nullptr);
+  CHECK(strcmp(default_page(Side::kGeneral, 0)->sk_path,
+               "navigation.speedOverGround") == 0);
+  // Every factory page the preview renders includes the general ones.
+  bool depth = false;
+  for (size_t i = 0; i < kFactoryPageCount; i++) {
+    if (strcmp(kFactoryPages[i]->id, "depth") == 0) depth = true;
+  }
+  CHECK(depth);
+}
+
 TEST(style_templates) {
   CHECK(style_template(GaugeKind::kRadial).kind == GaugeKind::kRadial);
   CHECK(strcmp(style_template(GaugeKind::kRadial).sk_path, "") == 0);

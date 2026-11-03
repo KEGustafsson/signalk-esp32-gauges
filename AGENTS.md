@@ -9,11 +9,13 @@
 
 Signal K instrument gauges (classic steel style) for Waveshare round touch
 displays. Two boards (4" and 2.1"), two firmware projects, one shared
-library. Each board has one env and one firmware for both of its units;
-a unit is starboard or port by the hostname saved on it (`-port` suffix,
-`unit_identity.h`), which picks the factory pages' engine, its name and
-its `secrets.h` address. Never add a per-side or per-upload env or `-D`
-flag: each such env compiles everything again.
+library. Each board has one env and one firmware for all of its units.
+What a unit is, is set in its web UI's Unit card and saved on it
+(`unit_card.*`, rules in `unit_identity.h`): its role (Starboard, Port or
+General), which picks the factory pages and its `secrets.h` address; its
+hostname; its display name. Nothing about a unit is fixed in code (only
+the firmware version is, `VERSION`). Never add a per-unit or per-upload
+env or `-D` flag: each such env compiles everything again.
 
 | Device | Project | env | Upload |
 |---|---|---|---|

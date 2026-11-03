@@ -43,6 +43,20 @@ const GaugeDef kAttitude = {
     -40.0f, 40.0f, 10.0f, 2, 1, 200,
     {{-10.0f, 10.0f, 0x2EB82E}, {10.0f, 20.0f, 0xE8C21A}, {20.0f, 40.0f, kRed}},
     3};
+// A general display's instruments (Side::kGeneral). The battery's id is the
+// boat's own in Signal K (electrical.batteries.<id>): "house" is a common
+// one; repoint it in the web UI.
+const GaugeDef kDepth = {
+    "depth", GaugeKind::kRadial, "Depth", "m",
+    "environment.depth.belowTransducer", 0.0f, 50.0f, 5.0f, 5, 1, 250, {},
+    0};
+const GaugeDef kWind = {
+    "wind", GaugeKind::kRadial, "Wind", "kn", "environment.wind.speedApparent",
+    0.0f, 40.0f, 5.0f, 5, 1, 250, {}, 0};
+const GaugeDef kBattery = {
+    "battery", GaugeKind::kRadial, "Battery", "V",
+    "electrical.batteries.house.voltage", 10.0f, 16.0f, 1.0f, 5, 1, 1000, {},
+    0};
 // A page past the factory ones, or switched to a dial: the path's value as
 // sent (SI), on 0..100 until a scale is set or the server sends
 // meta.displayScale.
@@ -56,16 +70,20 @@ const GaugeDef* const kPortPages[] = {&kPortRpm,     &kSpeed,   &kHeading,
                                       &kPortCoolant, &kPortOil, &kAttitude};
 const GaugeDef* const kStbdPages[] = {&kStbdRpm,     &kSpeed,   &kHeading,
                                       &kStbdCoolant, &kStbdOil, &kAttitude};
+const GaugeDef* const kGeneralPages[] = {&kSpeed, &kHeading,   &kDepth,
+                                         &kWind,  &kAttitude,  &kBattery};
 constexpr size_t kSidePageCount = sizeof(kPortPages) / sizeof(kPortPages[0]);
-static_assert(sizeof(kStbdPages) == sizeof(kPortPages),
-              "both sides have the same number of factory pages");
+static_assert(sizeof(kStbdPages) == sizeof(kPortPages) &&
+                  sizeof(kGeneralPages) == sizeof(kPortPages),
+              "every kind of unit has the same number of factory pages");
 static_assert(kSidePageCount <= kMaxPages, "more factory pages than slots");
 
 }  // namespace
 
 const GaugeDef* const kFactoryPages[] = {
-    &kPortRpm, &kStbdRpm,     &kSpeed,   &kHeading, &kPortCoolant,
-    &kStbdCoolant, &kPortOil, &kStbdOil, &kAttitude};
+    &kPortRpm,     &kStbdRpm, &kSpeed,    &kHeading, &kPortCoolant,
+    &kStbdCoolant, &kPortOil, &kStbdOil,  &kAttitude, &kDepth,
+    &kWind,        &kBattery};
 const size_t kFactoryPageCount =
     sizeof(kFactoryPages) / sizeof(kFactoryPages[0]);
 
@@ -73,7 +91,14 @@ const GaugeDef* default_page(Side side, size_t slot) {
   if (slot >= kSidePageCount) {
     return nullptr;
   }
-  return side == Side::kPort ? kPortPages[slot] : kStbdPages[slot];
+  switch (side) {
+    case Side::kPort:
+      return kPortPages[slot];
+    case Side::kGeneral:
+      return kGeneralPages[slot];
+    default:
+      return kStbdPages[slot];
+  }
 }
 
 size_t factory_page_count() { return kSidePageCount; }

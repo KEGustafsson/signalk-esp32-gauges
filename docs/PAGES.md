@@ -16,7 +16,7 @@ reflashed.
 - [Zones and scale from the Signal K server](#zones-and-scale-from-the-signal-k-server)
 - [Examples](#examples)
 - [Factory pages](#factory-pages)
-- [Starboard or port: the Unit card](#starboard-or-port-the-unit-card)
+- [What a unit is: the Unit card](#what-a-unit-is-the-unit-card)
 - [Troubleshooting](#troubleshooting)
 
 ## The three page styles
@@ -250,8 +250,8 @@ by hand 0 to 50, Decimals 1.
 
 ## Factory pages
 
-A freshly flashed device has six pages. The engine pages read the unit's
-side, set in the **Unit** card (below):
+A freshly flashed device has six pages, by its role in the **Unit** card
+(below). A starboard or port unit's engine pages read its own engine:
 
 | Page | Style | Title | Signal K path | Unit | Range |
 |---|---|---|---|---|---|
@@ -262,20 +262,38 @@ side, set in the **Unit** card (below):
 | 5 | Dial | Oil | `propulsion.<side>.oilTemperature` | °C | 0–120 |
 | 6 | Sea horizon | HEEL | `navigation.attitude` | ° | heel ±40 |
 
+A general unit has no engine pages:
+
+| Page | Style | Title | Signal K path | Unit | Range |
+|---|---|---|---|---|---|
+| 1 | Dial | Speed | `navigation.speedOverGround` | kn | 0–30 |
+| 2 | Compass | HEADING | `navigation.headingTrue` | °T | 0–360 |
+| 3 | Dial | Depth | `environment.depth.belowTransducer` | m | 0–50 |
+| 4 | Dial | Wind | `environment.wind.speedApparent` | kn | 0–40 |
+| 5 | Sea horizon | HEEL | `navigation.attitude` | ° | heel ±40 |
+| 6 | Dial | Battery | `electrical.batteries.house.voltage` | V | 10–16 |
+
+The battery's id (`house`) is the boat's own in Signal K: check it in the
+server's Data Browser and set the path in the page's card.
+
 Pages 7–12 start as dials with no path. **Reset to factory settings** in a
 page's card puts that page back to this table. Erasing the device's flash
 (see the main README) resets every page, and every other setting, at once.
 
-## Starboard or port: the Unit card
+## What a unit is: the Unit card
 
-The **Unit** card, above the page cards, has one dropdown: **Starboard** or
-**Port**. Every unit of a board runs the same firmware; the side decides
-which engine the factory pages show (pages you have already set keep their
-paths), the unit's name in the info overlay (`2.1in PORT`) and its network
-name (`gauge-21-port`, which is also how it appears in the Signal K admin
-UI). A fresh unit is Starboard. Choose the side, **Save**, and restart the
-unit when the web UI asks; it comes back on the new side. Erasing the
-device's flash puts it back to Starboard.
+The **Unit** card in the web UI (Configuration) says what a unit is, and
+all of it can be changed there:
+
+| Field | What it does | A fresh unit |
+|---|---|---|
+| **Role** | **Starboard** or **Port**: an engine display for that side, its factory pages read that engine. **General**: no engine (navigation, wind, battery). Also picks the unit's address in `secrets.h`. | Starboard |
+| **Hostname** | Its network name (`<hostname>.local`, and how it appears in the Signal K admin UI): a-z, 0-9 and `-`. While it is a built-in name it follows the role (`gauge-21-stbd`, `-port`, `-gen`); a name of your own is kept. | `gauge-<board>-stbd` |
+| **Display name** | Shown on the gauge's info overlay and in the boot log, up to 24 characters | `2.1in STBD` (`PORT`, `GEN`) |
+
+Save, and restart the unit when the web UI asks. Pages you have already set
+keep their paths: the role only decides the pages a fresh or reset page
+starts from. Erasing the flash puts all of it back to a fresh unit's.
 
 ## Troubleshooting
 

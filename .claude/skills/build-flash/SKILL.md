@@ -17,9 +17,10 @@ Ask which one if it was not given:
 | 4" (either side) | `waveshare-esp32-p4-wifi6-touch-lcd-4c/` | `p4` |
 | 2.1" (either side) | `waveshare-esp32-s3-touch-lcd-2.1/` | `s3` |
 
-One build per board serves both units: the side is the hostname saved on
-the unit (`-port` suffix). The OTA address and password come from the
-gitignored `include/secrets.h` (`SECRET_OTA_HOST_<ENV>_<SIDE>`,
+One build per board serves all its units: what a unit is (role, hostname,
+display name) is set in its web UI's Unit card and saved on it. The OTA
+address and password come from the gitignored `include/secrets.h`
+(`SECRET_OTA_HOST_<ENV>_<NAME>` for `--upload-port <name>`,
 `SECRET_OTA_PASSWORD`).
 
 ## Phase 1: Build
@@ -31,9 +32,9 @@ gitignored `include/secrets.h` (`SECRET_OTA_HOST_<ENV>_<SIDE>`,
 ## Phase 2: Flash
 
 - **First flash** (or a unit not on WiFi): over USB-C,
-  `pio run -e <env> -t upload --upload-port COMn`. A new port unit then
-  needs Port chosen in its web UI's Unit card (Configuration), and a
-  restart.
+  `pio run -e <env> -t upload --upload-port COMn`. A new unit then needs
+  its role and names set in its web UI's Unit card (Configuration), and
+  a restart.
 - **Later**: `pio run -e <env> -t upload --upload-port port` (or `stbd`, or
   an address) goes over the air.
 

@@ -44,7 +44,10 @@
 
 // The address of each gauge: scripts/ota_auth.py uploads to it for
 // `--upload-port port` / `stbd` (env:p4 + port -> SECRET_OTA_HOST_P4_PORT),
-// and the gauge picks its own entry by the side its hostname gives it.
+// and a starboard or port unit uses its own entry (its role, set in the web
+// UI's Unit card). A general unit has none of its own: add one for it to
+// upload by a short name, e.g. SECRET_OTA_HOST_S3_NAV "gauge-21-nav.local"
+// for `--upload-port nav` (it is not used as a static IP).
 // The defaults are the gauges' mDNS names (their hostname + ".local"); put an
 // IP address here instead if your computer does not resolve .local names.
 // With SECRET_USE_STATIC_IP below, each gauge also configures its own entry

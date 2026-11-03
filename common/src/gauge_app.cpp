@@ -236,10 +236,11 @@ struct Identity {
   const char* address = nullptr;
 };
 
-// The unit, from SensESP's hostname as saved on it (/system/hostname; the
-// web UI's hostname setting), read here the way SensESP reads it later. A
-// unit with none saved is its board's starboard unit until a port name is
-// set (and the unit restarted).
+// The unit, as the Unit card saved it (role, display name: UnitSettings)
+// and SensESP's hostname (/system/hostname), both read from their files the
+// way they are read later. A fresh unit is its board's starboard unit; one
+// with no role saved (set up before the card had one) takes it from its
+// hostname (unit_identity.h).
 Identity read_identity(const GaugeAppConfig& config) {
   // SensESP mounts the same filesystem later; mounting again is a no-op.
   if (!SPIFFS.begin(true)) {
@@ -247,14 +248,20 @@ Identity read_identity(const GaugeAppConfig& config) {
   }
   SavedHostname saved;
   saved.load();  // Leaves it empty without a saved one
+  UnitSettings& settings = unit_settings();
+  settings.load();
   Identity id;
   id.hostname = saved.value.empty()
                     ? unit_hostname(config.board, Side::kStarboard)
                     : saved.value;
-  id.side = side_from_hostname(id.hostname);
-  id.unit_name = unit_name(config.board_label, id.side);
-  id.address =
-      id.side == Side::kPort ? config.address_port : config.address_stbd;
+  id.side = settings.has_role ? settings.role : role_from_hostname(id.hostname);
+  id.unit_name = settings.name.empty() ? unit_name(config.board_label, id.side)
+                                       : settings.name;
+  // A general unit has no address of its own in secrets.h: DHCP, and over
+  // the air by its name or IP.
+  id.address = id.side == Side::kPort       ? config.address_port
+               : id.side == Side::kStarboard ? config.address_stbd
+                                            : nullptr;
   return id;
 }
 
@@ -334,7 +341,7 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   ESP_LOGI("boot", "SensESP set up at %u ms", (unsigned)millis());
   apply_web_ui_login();
 
-  add_unit_card(config.board);
+  add_unit_card(config.board, config.board_label, id.side);
   gauge_config().add_config_items();
   sk_data().begin();
   link_watch_begin();
