@@ -228,6 +228,14 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   one env, with the side read on the unit and the upload method chosen by
   the upload port (until 2026-11-03 there were four envs per board, and a
   port unit's build took as long as a fresh one).
+- **Never `pio pkg update`** in these projects: it rewrites
+  `platformio.ini`, dropping every comment and adding a `lib_deps` with
+  only the updated library to the env, which then builds without the rest
+  (`esp_display_panel.hpp: No such file or directory`, 2026-11-03). To
+  take a new commit of SensESP (a git branch, which a build never fetches
+  by itself), delete `.pio/libdeps/<env>/SensESP` and build: the build
+  installs the branch's latest. Check with
+  `git -C .pio/libdeps/<env>/SensESP log --oneline -1`.
 - Any edit of a `platformio.ini`, a comment included, deletes that
   project's `.pio/build/<env>` (PlatformIO hashes the whole config into
   `project.checksum`): every object is copied back from the build cache,

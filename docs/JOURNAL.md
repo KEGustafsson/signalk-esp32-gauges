@@ -884,3 +884,17 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   back to Port -> `2.1in PORT (gauge-21-port)`, its six pages untouched
   throughout; a bad role, hostname or display name refused (400). All four
   units run it.
+- **SensESP `b29c837`** (the fork branch, after review on
+  SignalK/SensESP#1097: `fin` found by the event struct's members, a JSON
+  end scanner where a client has no `fin`; the joining buffer kept between
+  messages, up to ~4 KB). For our ESP-IDF 5 builds the message path is
+  unchanged; 20 assembler tests pass. All four units run it.
+- **A trap on the way:** `pio pkg update -e p4 -l SensESP` rewrote the 4"'s
+  `platformio.ini` (every comment gone, and `lib_deps = SensESP@...` in
+  `[env:p4]`, overriding the list in `[env]`) and left `.pio/libdeps/p4`
+  with only `integrity.dat`: the build failed with
+  `esp_display_panel.hpp: No such file or directory`. On the 2.1" the
+  same command failed (`git pull --recurse-submodules`). Restored the file
+  from git and reinstalled the libraries (`pio pkg install -e p4` after
+  removing the folder). Now in AGENTS.md: never `pio pkg update`; to take a
+  new SensESP commit, delete `.pio/libdeps/<env>/SensESP` and build.
