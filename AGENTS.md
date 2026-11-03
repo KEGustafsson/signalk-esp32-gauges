@@ -87,6 +87,12 @@ If a task would require breaking one of these, stop and flag it.
   and for the 4" `include/esp_panel_board_custom_conf.h`.
 - **`include/secrets.example.h`** -- template for the gitignored, shared
   `include/secrets.h`: WiFi, Signal K server, OTA password, device addresses.
+- **`VERSION`** -- the firmware's version (one line, e.g. `0.1.0`), shown in
+  the boot log, on the info overlay and on the web UI's Status page ("Gauge
+  firmware"). `scripts/gauge_version.py` (pre:) writes it into the
+  gitignored `common/src/gauge_version_value.h`, which only
+  `gauge_version.cpp` includes: a new version recompiles one file. Bump it
+  for a release, never as a `-D` flag.
 - **`scripts/ota_auth.py`** -- injects the OTA password and address from
   secrets.h at upload time. Never write `--auth=` into a platformio.ini.
   `scripts/ota_quiet.py` (post:) drops the builder's espota `--debug`, which

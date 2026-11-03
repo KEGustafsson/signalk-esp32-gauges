@@ -299,6 +299,11 @@ rebooting the gauge (board README).
 
 ## How it is built
 
+- **Version**: the firmware's version is the one line in `VERSION`
+  (`0.1.0`). Each unit shows it in its info overlay (swipe down:
+  `Firmware 0.1.0`), on its web UI's Status page ("Gauge firmware") and in
+  its boot log.
+
 - **Display and touch**: [ESP32_Display_Panel](https://github.com/esp-arduino-libs/ESP32_Display_Panel),
   Espressif's driver library that Waveshare's own Arduino examples use. The
   2.1" uses its built-in board file; the 4" uses a custom board file made from

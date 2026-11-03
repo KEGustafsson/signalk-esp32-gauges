@@ -34,3 +34,6 @@ waveshare-esp32-s3-touch-lcd-2.1/sdkconfig.defaults
 waveshare-esp32-s3-touch-lcd-2.1/sdkconfig.*
 waveshare-esp32-s3-touch-lcd-2.1/CMakeLists.txt
 waveshare-esp32-s3-touch-lcd-2.1/dependencies.lock
+
+# Generated from VERSION by scripts/gauge_version.py at build time
+common/src/gauge_version_value.h

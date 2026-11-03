@@ -17,9 +17,11 @@
 #include "gauge_secrets.h"
 #include "gauge_settings.h"
 #include "gauge_ui.h"
+#include "gauge_version.h"
 #include "link_watch.h"
 #include "sensesp/system/resettable.h"
 #include "sensesp/system/saveable.h"
+#include "sensesp/ui/status_page_item.h"
 #include "sensesp/ui/config_item.h"
 #include "sensesp_app_builder.h"
 #include "sk_data.h"
@@ -268,9 +270,10 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   static Identity id;
   id = read_identity(config);
   // What the board is, for the first power-up checklists (README).
-  ESP_LOGI("boot", "%s (%s): %s rev %u.%02u, %u MHz, flash %u MB, PSRAM %u MB "
-           "(%u KB free), built " __DATE__ " " __TIME__,
-           id.unit_name.c_str(), id.hostname.c_str(), ESP.getChipModel(),
+  ESP_LOGI("boot", "%s (%s): firmware %s, %s rev %u.%02u, %u MHz, flash %u MB, "
+           "PSRAM %u MB (%u KB free), built " __DATE__ " " __TIME__,
+           id.unit_name.c_str(), id.hostname.c_str(), firmware_version(),
+           ESP.getChipModel(),
            (unsigned)(ESP.getChipRevision() / 100),
            (unsigned)(ESP.getChipRevision() % 100),
            (unsigned)ESP.getCpuFreqMHz(),
@@ -325,6 +328,9 @@ void gauge_app_begin(const GaugeAppConfig& config) {
     builder.set_admin_user(SECRET_ADMIN_USER, SECRET_ADMIN_PASSWORD);
   }
   sensesp::sensesp_app = builder.get_app();
+  // The web UI's Status page, next to SensESP's own version.
+  static sensesp::StatusPageItem<String> firmware_item(
+      "Gauge firmware", firmware_version(), "Software", 3250);
   ESP_LOGI("boot", "SensESP set up at %u ms", (unsigned)millis());
   apply_web_ui_login();
 

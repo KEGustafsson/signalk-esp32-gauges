@@ -12,6 +12,7 @@
 #include "sensesp_app.h"
 #include "sensesp_base_app.h"
 #include "gauge_settings.h"
+#include "gauge_version.h"
 #include "sk_data.h"
 #include "ui/gauge_page.h"
 
@@ -205,6 +206,8 @@ void show_info() {
   text += WiFi.isConnected() ? WiFi.localIP().toString() : String("-");
   text += "\nSignal K: ";
   text += sk_data().server_connected() ? "connected" : "not connected";
+  text += "\nFirmware ";
+  text += firmware_version();
   text += "\n";
   text += def.title;
   text += ": ";

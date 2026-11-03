@@ -837,3 +837,10 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
 - **OTA by side:** the 2.1" port, the 2.1" starboard and both 4" units
   were updated over WiFi with `--upload-port port` / `stbd`: 99-106 s
   each from a built firmware, 174 s with two files to compile.
+- **Firmware version 0.1.0** from a `VERSION` file at the repository root:
+  `scripts/gauge_version.py` (pre:) writes the gitignored
+  `common/src/gauge_version_value.h`, which only `gauge_version.cpp`
+  includes, so a new version recompiles one file. Shown in the boot line
+  (`firmware 0.1.0`), on the info overlay (`Firmware 0.1.0`) and on the
+  web UI's Status page ("Gauge firmware", Software). All four units
+  updated over WiFi and report 0.1.0 (boot log and `/api/info`).
