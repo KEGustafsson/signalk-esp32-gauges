@@ -83,6 +83,30 @@ TEST(mixer_a_queue_that_runs_dry_mid_talk_is_concealed) {
   CHECK(tick(m, 200) == 0);    // 200 ms quiet: the burst is over
 }
 
+TEST(mixer_dry_slots_stand_in_for_the_frames_a_later_gap_reports) {
+  Mixer m;
+  m.push(1, Frame(10000).s, 0);
+  m.push(1, Frame(10000).s, 0);
+  tick(m, 0);
+  tick(m, 20);
+  CHECK(tick(m, 40) == 6000);  // Dry: the next two frames are late or lost
+  CHECK(tick(m, 60) == 3600);
+  // They were lost: the next frame says so with a gap of two, the two slots
+  // already concealed. It plays next, not two slots later.
+  m.conceal(1, 2);
+  m.push(1, Frame(5000).s, 70);
+  CHECK(tick(m, 80) == 5000);
+  // A dry slot followed by a frame with no gap was late audio: a later gap
+  // is reserved in full.
+  CHECK(tick(m, 100) == 3000);
+  m.push(1, Frame(7000).s, 110);
+  CHECK(tick(m, 120) == 7000);
+  m.conceal(1, 1);
+  m.push(1, Frame(9000).s, 130);
+  CHECK(tick(m, 140) == 4200);  // The hole, concealed
+  CHECK(tick(m, 160) == 9000);
+}
+
 TEST(mixer_drops_the_oldest_beyond_ten) {
   Mixer m;
   for (int i = 0; i < 12; i++) m.push(1, Frame((int16_t)(i + 1)).s, 0);
