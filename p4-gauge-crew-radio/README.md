@@ -237,7 +237,8 @@ packets, so the station sends Opus from phase 2.
 | **1. Listen** (written, to be run) | ES8311 + amplifier, I2S, the WLAN socket, Opus decode, hello and roster, clock (SNTP, GNSS), self-test, supervisor, memory guard; the card and status lines in the 4" firmware | Phones list the unit; the plugin's announcements are heard clearly; the `heap` line steady for an hour with two talkers |
 | **2. Talk** (written, to be run) | ES7210 capture, two-finger and GPIO talk keys with the time-out, Opus or PCM, the burst floor, key beeps, half duplex | The phones' Status counters show no loss from the unit |
 | **2b. Reticulum** | The `rns` port, the bridge | A phone ashore and the unit talk through rnsd 1.5.4 |
-| **3. On the screen** | The halo, the Crew page style (and so the station), the radio's state on the info overlay | Preview renders both; 24 h with no restart caused by the radio |
+| **3. On the screen** (written, to be run) | The halo on every page, the "Crew radio" page style, the radio's state on the info overlay, the roster's 1-4 bars (`core/link_quality.h`), a channel name in the card | Preview renders both; 24 h with no restart caused by the radio |
+| **3b. Station** | The talk disc (one-finger hold on the disc, which must not fight the page gestures), a mute on the screen, volume by dragging the arc | The station screen in use at the nav table |
 | **4. Extras** | Adaptive playout, two-mic wind gate | Measured against the fixed buffer and the one-mic gate in engine noise |
 
 ## First power-up (phase 1)
