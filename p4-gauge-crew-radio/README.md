@@ -16,7 +16,7 @@ switched on in its card; a gauge that never switches it on runs as before.
 |---|---|
 | **Status** | Phases 1 and 2 written: the 4" firmware listens to the channel, is listed on the phones' roster, and talks (two-finger hold or a button). Built for the board; not yet run on one (see "First power-up") |
 | **Licence** | EUPL-1.2, as the whole repository and crew-radio, from which the core is ported (`LICENSE` here too, for the library on its own) |
-| **Tests** | `tests/`: 99 host tests plus 3 with libopus, the app's own vectors included |
+| **Tests** | `tests/`: 112 host tests plus 3 with libopus, the app's own vectors included |
 
 ## What runs where
 
@@ -56,6 +56,7 @@ In the unit's web UI, Configuration, **Crew radio**:
 |---|---|
 | **On** | Listen to the crew's channel on this unit's speaker |
 | **Name on the roster** | How the phones list the unit; empty = its hostname |
+| **Channel name** | The boat's or crew's name on the Crew page, as the phones' Channel name; empty = CREW |
 | **New channel key** | The crew's key, exactly as on the phones (12-64 printable ASCII). Save takes a few seconds (the packet key is derived then); empty keeps the saved one. The key itself is never stored, only the packet key (NVS) and its last four characters (shown as **Saved key**) |
 | **Multicast group**, **UDP port** | As on the phones: 239.255.42.1 and 47474 unless the crew changed them |
 | **Hop limit** | 1-8, default 4 |
@@ -309,7 +310,7 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 | `test_ingress.cpp` | The pipeline's order: budgets before and after the AEAD, stale before the cache, copies free, the lowered-ttl replay |
 | `test_mixer.cpp` | Concealment, prefill, holes, dry queues, the cap, gain and cues, headroom and clipping, the sweep |
 | `test_lan_peers.cpp` | Unicast once a peer is known, the burst floor, hellos' group copies, expiry, the bounded table |
-| `test_roster.cpp` | Names from hellos, sorted; talking; dropped after 4 s; bounded |
+| `test_roster.cpp` | Names from hellos, sorted; talking; dropped after 4 s; bounded; the 1-4 bars (`core/link_quality.h`, the app's rule: missing hellos of the last ten, lost audio of the last five seconds of talk, the worse; an overdue hello counts as missing) |
 | `test_clock_policy.cpp` | Trust for a day; GNSS only when it advances with real time (a retained or frozen value never sets the clock); SNTP preferred; Signal K's datetime parsed |
 | `test_supervisor.cpp` | Stall detection across the 32-bit wrap, three restarts then off; the memory ladder with hysteresis |
 | `test_self_test.cpp` | The power-on test passes and its bytes are the vector file's |

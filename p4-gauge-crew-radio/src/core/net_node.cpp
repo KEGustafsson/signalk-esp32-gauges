@@ -47,10 +47,10 @@ bool NetNode::on_datagram(const uint8_t* p, size_t len, uint32_t from,
 
   if (h.codec == Codec::kHello) {
     c_.hellos++;
-    ingress_.hello_gap(h.sender_id, h.seq);
+    const int gap = ingress_.hello_gap(h.sender_id, h.seq);
     Hello hello;
     if (Hello::decode(plain_, (size_t)r.plain_len, &hello)) {
-      roster_.hello(h.sender_id, hello, hello.ttl - h.ttl, now_ms);
+      roster_.hello(h.sender_id, hello, hello.ttl - h.ttl, now_ms, gap);
     } else {
       roster_.seen(h.sender_id, now_ms);
     }
@@ -63,7 +63,7 @@ bool NetNode::on_datagram(const uint8_t* p, size_t len, uint32_t from,
     return false;
   }
   c_.audio++;
-  roster_.audio(h.sender_id, now_ms);
+  roster_.audio(h.sender_id, now_ms, gap);
   audio->sender = h.sender_id;
   audio->codec = h.codec;
   audio->gap = gap;

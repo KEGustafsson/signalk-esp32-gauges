@@ -671,6 +671,8 @@ void begin(const RadioConfig& config) {
   if (g != nullptr) return;
   g = new Shared();
   g->config = config;
+  g->status.channel = config.channel;
+  g->status.volume = config.volume;
   g->status_lock = xSemaphoreCreateMutex();
   g->gnss = xQueueCreate(4, sizeof(int64_t));
   if (!config.enabled) {
