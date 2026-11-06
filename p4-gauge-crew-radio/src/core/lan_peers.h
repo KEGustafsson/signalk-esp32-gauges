@@ -14,7 +14,12 @@
 // that Ingress accepted as a fresh first copy (confirm()): learning from any
 // datagram would let any host on the WLAN fill the table and take the audio,
 // and learning from a copy or a stale packet would let it do the same by
-// replaying one from addresses of its choosing. Owned by the network task.
+// replaying one from addresses of its choosing. The table holds one address
+// per sender id (authenticated, so only the crew's), the one its latest
+// first copy came from: a fresh packet this node missed, replayed from a
+// spoofed address, can move only its own sender's entry, which that
+// sender's next hello moves back, and never pushes another crew member out.
+// Owned by the network task.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -57,20 +62,22 @@ class LanPeers {
     uint32_t addrs[kMax];  // IPv4, host byte order
   };
 
-  // A packet from `addr` opened with the channel key.
-  void confirm(uint32_t addr, int64_t now_ms);
+  // A fresh first copy from `sender` came from `addr`.
+  void confirm(uint32_t addr, int32_t sender, int64_t now_ms);
 
   // Where `packet` goes; `except` (0 = none) is left out of the unicasts.
   Plan plan(const uint8_t* packet, size_t len, int64_t now_ms,
             uint32_t except = 0);
 
+  // Live addresses (several senders behind one count once).
   int live(int64_t now_ms) const;
-  // The live peers' addresses into `out` (kMax); how many.
+  // The live peers' addresses into `out` (kMax), each once; how many.
   int live_addrs(int64_t now_ms, uint32_t out[kMax]) const;
 
  private:
   struct Peer {
     uint32_t addr = 0;
+    int32_t sender = 0;
     int64_t last_ms = 0;
     bool used = false;
   };

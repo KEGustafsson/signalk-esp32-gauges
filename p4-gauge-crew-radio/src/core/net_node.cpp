@@ -33,7 +33,7 @@ bool NetNode::on_datagram(const uint8_t* p, size_t len, uint32_t from,
       // can replay from any address they like to fill the table and send
       // the unit's voice elsewhere; a crew member's own first copy (one a
       // second, its hello) still teaches it.
-      peers_.confirm(from, now_ms);
+      peers_.confirm(from, h.sender_id, now_ms);
       break;
     case Ingress::Kind::kDuplicate:
     case Ingress::Kind::kRelayOnly:  // Nothing to relay to on the WLAN alone
