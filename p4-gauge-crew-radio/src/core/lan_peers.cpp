@@ -5,11 +5,12 @@
 
 namespace crewradio {
 
-void LanPeers::confirm(uint32_t addr, int64_t now_ms) {
+void LanPeers::confirm(uint32_t addr, int32_t sender, int64_t now_ms) {
   Peer* stalest = nullptr;
   Peer* free_slot = nullptr;
   for (Peer& p : peers_) {
-    if (p.used && p.addr == addr) {
+    if (p.used && p.sender == sender) {
+      p.addr = addr;  // Its latest first copy's address
       p.last_ms = now_ms;
       return;
     }
@@ -20,23 +21,31 @@ void LanPeers::confirm(uint32_t addr, int64_t now_ms) {
     }
   }
   Peer* slot = free_slot != nullptr ? free_slot : stalest;
-  *slot = {addr, now_ms, true};
+  *slot = {addr, sender, now_ms, true};
 }
+
+namespace {
+bool listed(const uint32_t* addrs, int n, uint32_t addr) {
+  for (int i = 0; i < n; i++) {
+    if (addrs[i] == addr) return true;
+  }
+  return false;
+}
+}  // namespace
 
 int LanPeers::live_addrs(int64_t now_ms, uint32_t out[kMax]) const {
   int n = 0;
   for (const Peer& p : peers_) {
-    if (p.used && now_ms - p.last_ms <= kTtlMs) out[n++] = p.addr;
+    if (p.used && now_ms - p.last_ms <= kTtlMs && !listed(out, n, p.addr)) {
+      out[n++] = p.addr;
+    }
   }
   return n;
 }
 
 int LanPeers::live(int64_t now_ms) const {
-  int n = 0;
-  for (const Peer& p : peers_) {
-    if (p.used && now_ms - p.last_ms <= kTtlMs) n++;
-  }
-  return n;
+  uint32_t addrs[kMax];
+  return live_addrs(now_ms, addrs);
 }
 
 bool BurstFloor::take(int32_t sender, int64_t now_ms) {
@@ -83,7 +92,8 @@ LanPeers::Plan LanPeers::plan(const uint8_t* packet, size_t len,
     burst_floor = floor_.take(sender, now_ms);
   }
   for (const Peer& p : peers_) {
-    if (p.used && now_ms - p.last_ms <= kTtlMs && p.addr != except) {
+    if (p.used && now_ms - p.last_ms <= kTtlMs && p.addr != except &&
+        !listed(plan.addrs, plan.count, p.addr)) {
       plan.addrs[plan.count++] = p.addr;
     }
   }
