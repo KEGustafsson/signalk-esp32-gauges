@@ -26,11 +26,14 @@ bool NetNode::on_datagram(const uint8_t* p, size_t len, uint32_t from,
         return plain_len;
       },
       true, self_);
-  // It opened with the channel key: its address is a crew member's.
-  if (plain_len >= 0) peers_.confirm(from, now_ms);
-
   switch (r.kind) {
     case Ingress::Kind::kAccept:
+      // A first copy, fresh, that opened with the channel key: its address
+      // is a crew member's. Not from a copy or a stale packet, which anyone
+      // can replay from any address they like to fill the table and send
+      // the unit's voice elsewhere; a crew member's own first copy (one a
+      // second, its hello) still teaches it.
+      peers_.confirm(from, now_ms);
       break;
     case Ingress::Kind::kDuplicate:
     case Ingress::Kind::kRelayOnly:  // Nothing to relay to on the WLAN alone

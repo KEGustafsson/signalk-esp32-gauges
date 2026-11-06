@@ -3,7 +3,7 @@
 
 // The network task's whole job, without the sockets: a datagram in, an
 // action out. It parses, runs the receive pipeline (ingress.h) with the
-// channel key, learns WLAN peers only from packets that opened (lan_peers.h),
+// channel key, learns WLAN peers only from fresh first copies (lan_peers.h),
 // keeps the roster (roster.h), and hands audio on with the frames lost
 // before it. It also builds this node's own hello, once a second. One owner
 // (the network task), so no locks; the UI gets roster copies.

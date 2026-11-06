@@ -10,9 +10,11 @@
 // group copies are how a phone nobody has heard yet is found, and the burst
 // floor keeps a table someone has filled with replayed addresses audible.
 //
-// A peer is learned only from a packet that opened with the channel key
-// (confirm()): learning from any datagram would let any host on the WLAN
-// fill the table and take the audio. Owned by the network task.
+// A peer is learned only from a packet that opened with the channel key and
+// that Ingress accepted as a fresh first copy (confirm()): learning from any
+// datagram would let any host on the WLAN fill the table and take the audio,
+// and learning from a copy or a stale packet would let it do the same by
+// replaying one from addresses of its choosing. Owned by the network task.
 
 #include <stddef.h>
 #include <stdint.h>

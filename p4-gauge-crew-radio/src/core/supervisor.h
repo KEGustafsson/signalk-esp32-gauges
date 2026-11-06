@@ -38,10 +38,12 @@ class Supervisor {
   // The slot that stalled, or -1.
   int stalled(int64_t now_ms) const {
     for (int i = 0; i < kSlots; i++) {
+      // Armed first: its acquire orders the timestamp read after it, so a
+      // slot just re-armed is never judged by its previous task's time.
+      if (!armed_[i].load(std::memory_order_acquire)) continue;
       const uint32_t since =
           (uint32_t)now_ms - seen_[i].load(std::memory_order_relaxed);
-      if (armed_[i].load(std::memory_order_acquire) &&
-          (int32_t)since > (int32_t)kStallMs) {
+      if ((int32_t)since > (int32_t)kStallMs) {
         return i;
       }
     }
