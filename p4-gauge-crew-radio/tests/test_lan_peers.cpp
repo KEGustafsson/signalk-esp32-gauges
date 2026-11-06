@@ -33,7 +33,7 @@ TEST(peers_with_nobody_known_everything_goes_to_the_group) {
 
 TEST(peers_audio_goes_unicast_once_a_peer_is_known_after_the_burst_floor) {
   LanPeers lp;
-  lp.confirm(0x0A000002, 0);
+  lp.confirm(0x0A000002, 2, 0);
   for (int i = 0; i < LanPeers::kBurstFrames; i++) {
     const auto a = plan(lp, Codec::kOpus, 1, i * 20);
     CHECK(a.group && a.count == 1);  // The first frames keep the group copies
@@ -47,7 +47,7 @@ TEST(peers_audio_goes_unicast_once_a_peer_is_known_after_the_burst_floor) {
 
 TEST(peers_hellos_always_keep_the_group_copies) {
   LanPeers lp;
-  lp.confirm(0x0A000002, 0);
+  lp.confirm(0x0A000002, 2, 0);
   for (int i = 0; i < 10; i++) {
     const auto a = plan(lp, Codec::kHello, 1, 1000 + i);
     CHECK(a.group && a.count == 1);
@@ -56,8 +56,8 @@ TEST(peers_hellos_always_keep_the_group_copies) {
 
 TEST(peers_expire_after_five_seconds_and_except_is_left_out) {
   LanPeers lp;
-  lp.confirm(1, 0);
-  lp.confirm(2, 3000);
+  lp.confirm(1, 1, 0);
+  lp.confirm(2, 2, 3000);
   auto a = plan(lp, Codec::kHello, 9, 4000, 2);
   CHECK(a.count == 1 && a.addrs[0] == 1);
   CHECK(lp.live(5001) == 1);
@@ -68,9 +68,9 @@ TEST(peers_expire_after_five_seconds_and_except_is_left_out) {
 
 TEST(peers_the_table_is_bounded_and_evicts_the_stalest) {
   LanPeers lp;
-  for (uint32_t a = 1; a <= LanPeers::kMax; a++) lp.confirm(a, a);
-  lp.confirm(1, 100);  // 1 refreshed: 2 is now the stalest
-  lp.confirm(99, 101);
+  for (uint32_t a = 1; a <= LanPeers::kMax; a++) lp.confirm(a, (int32_t)a, a);
+  lp.confirm(1, 1, 100);  // 1 refreshed: 2 is now the stalest
+  lp.confirm(99, 99, 101);
   const auto p = plan(lp, Codec::kHello, 9, 102);
   CHECK(p.count == LanPeers::kMax);
   bool has2 = false, has99 = false;
@@ -79,4 +79,36 @@ TEST(peers_the_table_is_bounded_and_evicts_the_stalest) {
     has99 = has99 || p.addrs[i] == 99;
   }
   CHECK(!has2 && has99);
+}
+
+TEST(peers_one_address_per_sender_so_a_replay_moves_only_its_own_entry) {
+  LanPeers lp;
+  for (int32_t s = 1; s <= 5; s++) lp.confirm(0x0A000000 + (uint32_t)s, s, 0);
+  // A fresh packet of sender 3 that this node missed, replayed from many
+  // spoofed addresses: only sender 3's entry moves, nobody is pushed out.
+  for (uint32_t a = 0x0B000000; a < 0x0B000040; a++) lp.confirm(a, 3, 10);
+  uint32_t addrs[LanPeers::kMax];
+  CHECK(lp.live_addrs(10, addrs) == 5);
+  bool crew_kept = true;
+  for (int32_t s : {1, 2, 4, 5}) {
+    bool found = false;
+    for (int i = 0; i < 5; i++) found = found || addrs[i] == 0x0A000000 + (uint32_t)s;
+    crew_kept = crew_kept && found;
+  }
+  CHECK(crew_kept);
+  // Sender 3's own next hello moves it back.
+  lp.confirm(0x0A000003, 3, 1000);
+  CHECK(lp.live_addrs(1000, addrs) == 5);
+  bool back = false;
+  for (int i = 0; i < 5; i++) back = back || addrs[i] == 0x0A000003;
+  CHECK(back);
+}
+
+TEST(peers_several_senders_behind_one_address_get_one_copy) {
+  LanPeers lp;
+  lp.confirm(0x0A000002, 7, 0);
+  lp.confirm(0x0A000002, 8, 0);  // A relay, or two nodes on one host
+  CHECK(lp.live(0) == 1);
+  const auto a = plan(lp, Codec::kHello, 1, 0);
+  CHECK(a.count == 1 && a.addrs[0] == 0x0A000002);
 }

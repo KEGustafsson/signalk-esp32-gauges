@@ -149,8 +149,11 @@ path takes no lock (`src/esp/radio_runtime.*`).
   the subnet broadcast and every peer heard (`core/lan_peers.h`). Peers are
   learned only from packets that opened with the key and were a fresh first
   copy: a copy or a stale packet, which anyone can replay from any address,
-  teaches nothing (stricter than the app, which learns from every packet
-  that opens).
+  teaches nothing. The table holds one address per (authenticated) sender
+  id, so a fresh packet the unit missed, replayed from a spoofed address,
+  moves only that sender's entry until its next hello, and pushes nobody
+  out. Both stricter than the app, which learns from every packet that
+  opens.
 - No resampling: the ES8311 runs at 16 kHz from MCLK = 256 fs, and libopus
   decodes at 16 kHz natively. libopus is pschatzmann/codec-opus (1.6.1,
   fixed point), pinned to one commit in both the 4"'s `platformio.ini` and
@@ -370,7 +373,7 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 | `test_seq_tracker.cpp` | Gaps, late frames, the wrap, least-recently-heard eviction |
 | `test_ingress.cpp` | The pipeline's order: budgets before and after the AEAD, stale before the cache, copies free, the lowered-ttl replay |
 | `test_mixer.cpp` | Concealment, prefill, holes, dry queues (and dry slots that stood in for frames a later gap reports, not reserved twice), the cap, gain and cues, headroom and clipping, the sweep |
-| `test_lan_peers.cpp` | Unicast once a peer is known, the burst floor, hellos' group copies, expiry, the bounded table |
+| `test_lan_peers.cpp` | Unicast once a peer is known, the burst floor, hellos' group copies, expiry, the bounded table; one address per sender (a replay moves only its own entry), one copy per address |
 | `test_roster.cpp` | Names from hellos, sorted; talking; dropped after 4 s; bounded; the 1-4 bars (`core/link_quality.h`, the app's rule: missing hellos of the last ten, lost audio of the last five seconds of talk, the worse; an overdue hello counts as missing) |
 | `test_clock_policy.cpp` | Trust for a day; GNSS only when it advances with real time (a retained or frozen value never sets the clock); SNTP preferred; Signal K's datetime parsed |
 | `test_supervisor.cpp` | Stall detection across the 32-bit wrap, three restarts then off; the memory ladder with hysteresis |

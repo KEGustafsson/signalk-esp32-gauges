@@ -179,3 +179,24 @@ TEST(net_a_replayed_copy_from_another_address_teaches_nothing) {
   uint32_t addrs[LanPeers::kMax];
   CHECK(b.peers().live_addrs(0, addrs) == 1 && addrs[0] == 0x0A000001);
 }
+
+TEST(net_a_missed_fresh_packet_replayed_from_spoofed_addresses_moves_one_entry) {
+  NetNode b(kKey, 2, config("Phone"));
+  NetNode::Audio au;
+  // Two crew members known.
+  auto p = sealed_audio(kKey, 5, 1);
+  b.on_datagram(p.data(), p.size(), 0x0A000005, 0, kNow, &au);
+  p = sealed_audio(kKey, 6, 1);
+  b.on_datagram(p.data(), p.size(), 0x0A000006, 0, kNow, &au);
+  // Packets of sender 5 this node never received, replayed by someone else
+  // from addresses of their choosing: each is a first copy, so accepted.
+  for (int32_t seq = 2; seq < 40; seq++) {
+    p = sealed_audio(kKey, 5, seq);
+    b.on_datagram(p.data(), p.size(), 0x0B000000 + (uint32_t)seq, 0, kNow, &au);
+  }
+  uint32_t addrs[LanPeers::kMax];
+  const int n = b.peers().live_addrs(0, addrs);
+  bool six = false;
+  for (int i = 0; i < n; i++) six = six || addrs[i] == 0x0A000006;
+  CHECK(n == 2 && six);  // Sender 6 kept; sender 5's one entry moved
+}

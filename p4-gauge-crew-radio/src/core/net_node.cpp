@@ -53,7 +53,7 @@ bool NetNode::on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
       // the unit's voice elsewhere; a crew member's own first copy (one a
       // second, its hello) still teaches it. Only over the WLAN: a packet
       // that came over Reticulum has no LAN address.
-      if (via == Via::kLan) peers_.confirm(from, now_ms);
+      if (via == Via::kLan) peers_.confirm(from, h.sender_id, now_ms);
       break;
     case Ingress::Kind::kDuplicate:
     case Ingress::Kind::kRelayOnly:  // Forwarded at most, never played twice
