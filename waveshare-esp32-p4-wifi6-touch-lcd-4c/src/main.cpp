@@ -13,6 +13,8 @@
 #include <esp_display_panel.hpp>
 
 #include "board_start.h"
+#include "lvgl_port.h"
+#include "glue/crew_radio_card.h"
 #include "sensesp_base_app.h"
 #include "signalk_gauges.h"
 
@@ -53,6 +55,12 @@ void setup() {
         }
       },
   });
+
+  // The Crew Radio on this board's speaker and mic (p4-gauge-crew-radio):
+  // off until switched on in its card. After the board, whose touch setup
+  // installs the I2C driver the codecs are set up through; a two-finger
+  // hold on the screen is one of its talk keys.
+  crewradio::glue::begin(skgauges::touch_fingers);
 }
 
 void loop() { skgauges::gauge_app_loop(); }

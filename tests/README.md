@@ -11,6 +11,7 @@ The shared library's logic that needs no board, run on a PC:
 | `test_card_store.cpp` | A card's file replaced all or nothing: with a failure at any one or two steps (a failed rollback too), and a power cut at every step, then the boot's recovery, a swap ends with both cards old or both new (`card_store`) |
 | `test_link_policy.cpp` | When a dead link restarts the unit: Signal K unreachable 5 min with WiFi up, only after it worked this boot, across `millis()` wraparound; the C6's start at boot is not a restart, one after a heartbeat is, a link failure always is (`link_policy`) |
 | `test_unit_identity.cpp` | Which unit a gauge is from its saved hostname: `-port` suffix (any case) is port, anything else starboard; hostnames and unit names by board and side (`unit_identity`) |
+| `test_arc_fit.cpp` | How much of a name fits along an arc (the radio halo's talker name): a text that fits is kept whole, the last glyph included; one that does not is cut with "..", never past the arc, never with a space before the dots (`arc_fit.h`) |
 | `test_sk_parse.cpp` | Only a real JSON number is a reading; attitude parsing; a path's unit from its metadata (a missing one is no unit, not `"null"`) (`sk_parse`), against the firmware's ArduinoJson |
 
 ```bash

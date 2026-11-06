@@ -45,6 +45,7 @@ void flush_cb(lv_display_t* display, const lv_area_t* area,
 // Set from the touch interrupt (2.1" only; the 4" has no interrupt line).
 volatile bool touch_irq = false;
 bool touch_pressed = false;
+int touch_count = 0;
 lv_point_t touch_last = {0, 0};
 
 bool touch_isr(void*) {
@@ -65,18 +66,20 @@ void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
     return;
   }
   touch_irq = false;
-  TouchPoint point;
-  const int n = touch->readPoints(&point, 1, 0);
-  if (n > 0) {
-    touch_last.x = point.x;
-    touch_last.y = point.y;
+  TouchPoint points[2];
+  const int n = touch->readPoints(points, 2, 0);
+  if (n == 1) {
+    touch_last.x = points[0].x;
+    touch_last.y = points[0].y;
   }
   // A failed read (n < 0, e.g. an I2C glitch) repeats the last state rather
   // than inventing a release, which would turn a hold into a tap.
   if (n >= 0) {
     touch_pressed = n > 0;
+    touch_count = n > 2 ? 2 : n;
   }
-  if (touch_pressed) {
+  // Two fingers are not a gesture for the pages: LVGL sees a release.
+  if (touch_pressed && touch_count < 2) {
     data->point = touch_last;
     data->state = LV_INDEV_STATE_PRESSED;
   }
@@ -113,6 +116,8 @@ void* alloc_draw_buffer(size_t bytes, bool psram_only) {
 }
 
 }  // namespace
+
+int touch_fingers() { return touch_count; }
 
 lv_display_t* lvgl_port_init(Board* board, int buffer_lines,
                              bool buffer_in_psram) {
