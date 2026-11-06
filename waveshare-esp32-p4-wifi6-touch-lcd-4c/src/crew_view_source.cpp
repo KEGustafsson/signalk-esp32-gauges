@@ -38,9 +38,10 @@ bool crew_view_from_radio(ui::CrewView* out) {
     c.name = m.name.empty() ? "?" : m.name;  // Before its first hello
     c.bars = (uint8_t)m.bars;
     c.relayed = m.hops > 0;
-    // A member is known to be over Reticulum only when it says so and
-    // reached us through a relay (this unit has no Reticulum link itself).
-    c.reticulum = c.relayed && (m.transports & crewradio::Hello::kReticulum);
+    // Over Reticulum: heard on this unit's own Reticulum link, or through a
+    // relay from a member that says it is on Reticulum.
+    c.reticulum = m.reticulum ||
+                  (c.relayed && (m.transports & crewradio::Hello::kReticulum));
     c.talking = m.talking;
     c.speaker = false;  // Nothing on the wire tells a person from the plugin
     out->members.push_back(c);

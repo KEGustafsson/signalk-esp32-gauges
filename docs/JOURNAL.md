@@ -1088,3 +1088,34 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   (flash 3.26 MB). Not run on a board.
 - Next: the station's talk disc, mute and volume drag (3b); Reticulum (2b)
   in its own PR (the library PR is at 95 files).
+
+## 2026-11-06 — P4 Gauge Crew Radio, phase 2b: Reticulum
+
+- A third PR, stacked on the gauge side's, because the library PR is at 95
+  files. `p4-gauge-crew-radio/src/core/rns/`: the app's `rns/` package rule
+  for rule, checked against the same `rns.vector.json` (copied into
+  `tests/vectors/`) that the app and the plugin read. Packets and HDLC
+  framing, Reticulum's crypto (the CBC token's padding removed only after
+  the MAC), identities and announces, links, `Carry` and its key proof,
+  rnsd's announce budget, and the node: announces within that budget, the
+  lower hash dials and the other takes over after 5 s, nothing on a link
+  until the far end proves the key, flood budgets before any signature
+  work, evictions that never touch a confirmed link. The plugin's two
+  dead-connection rules as well, since lwIP has no `TCP_USER_TIMEOUT`.
+- X25519 and Ed25519 by hand (`curve25519.h`), ported from the app's
+  `Curve25519.kt`: mbedTLS 3.6 has no Ed25519, and the design the README
+  had planned (Monocypher) would have been third-party code to vendor. The
+  constants are written out and the tests derive them again; RFC 7748 and
+  RFC 8032 vectors pass. On a PC a signature check takes 1.8 ms; on the P4
+  some tens of milliseconds are expected, hence the task below.
+- The 4": `cr-rns` (priority 5, under `cr-net` and `cr-audio`) owns the TCP
+  socket and the node; two PSRAM ring buffers carry the sealed packets to
+  and from `cr-net`, so `Ingress` still has one caller. `NetNode` bridges:
+  a first copy, or one that reaches further, goes to the other transport
+  with `relay_ttl`, never back. Hellos say Reticulum while connected; a
+  member heard over it is drawn dashed. Connected only with a trusted clock
+  and while the memory guard leaves Reticulum on. The card: Reticulum,
+  Transport node (`host[:port]`, the app's rule), Relay; a status line.
+- Checks: radio host tests 153 (156 with libopus), `pio run -e p4` (flash
+  3.29 MB, no warnings from the new files). Not run against rnsd or on a
+  board; items 16-22 of the README's first power-up list are for that.

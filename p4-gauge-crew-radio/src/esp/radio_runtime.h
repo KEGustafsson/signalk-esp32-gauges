@@ -14,6 +14,11 @@
 //            keyed sends the frame to the peers cr-net publishes. Every
 //            libopus call is made here (the build's scratch is one global
 //            buffer). Half duplex: the crew is not played while keyed.
+//   cr-rns   (core 0, below both; phase 2b, when switched on) owns the
+//            TCP connection to a Reticulum transport node and the links in
+//            it (esp/reticulum_link.h); the channel's packets go to and from
+//            cr-net through two rings, so Ingress still has one caller, and
+//            cr-net bridges the WLAN and Reticulum (core/net_node.h).
 //   cr-beat  (core 0, low) owns the ClockPolicy, the MemoryGuard and the
 //            Supervisor, once a second; restarts a stalled task, never the
 //            unit; after three restarts in ten minutes leaves the radio off.
@@ -36,6 +41,7 @@
 #include "core/memory_guard.h"
 #include "core/radio_state.h"
 #include "core/roster.h"
+#include "esp/reticulum_link.h"
 
 namespace crewradio {
 namespace esp {
@@ -57,6 +63,11 @@ struct RadioConfig {
   float mic_gain_db = 30.0f;
   int mic_channel = 0;   // 0 = MIC1, 1 = MIC2
   bool key_beeps = false;
+  // Reticulum (phase 2b).
+  bool reticulum = false;
+  std::string reticulum_host;  // The transport node
+  uint16_t reticulum_port = 4242;
+  bool relay = true;  // Bridge the WLAN and Reticulum
 };
 
 const char* state_text(RadioState s);
@@ -79,6 +90,8 @@ struct RadioStatus {
   uint64_t sent = 0;
   int timeouts = 0;
   int mic_level = 0;  // RMS of the last frame heard by the mic
+  uint64_t relayed = 0;
+  ReticulumStatus reticulum;
   // For the screen (the 4"'s Crew page and halo).
   std::string channel;
   int volume = 0;  // 0..100, the card's

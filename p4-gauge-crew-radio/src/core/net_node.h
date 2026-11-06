@@ -8,9 +8,14 @@
 // before it. It also builds this node's own hello, once a second. One owner
 // (the network task), so no locks; the UI gets roster copies.
 //
-// Only the WLAN in phase 1 and the WLAN does not relay (the app's
-// relayWithin = false), so nothing is forwarded; Reticulum (phase 2b) adds
-// the bridge with Ingress::relay_ttl.
+// The bridge (phase 2b): with Reticulum on as well, a first copy, or one that
+// reaches further than the copies before it (Ingress kRelayOnly), goes on to
+// the other transport with the ttl Ingress::relay_ttl gives it: from the
+// WLAN to Reticulum, from Reticulum to the WLAN. Never back where it came
+// from: neither transport relays within itself (the WLAN reaches everyone on
+// it at once; on Reticulum every node links to every other). A peer is
+// learned only from the WLAN, and a hello heard over Reticulum marks its
+// member so (the screen draws it dashed).
 
 #include <stddef.h>
 #include <stdint.h>
@@ -33,7 +38,9 @@ class NetNode {
     std::string name;
     int max_hops = audio::kDefaultTtl;
     uint8_t transports = Hello::kLan;
+    bool relay = false;  // Bridge the WLAN and Reticulum
   };
+  enum class Via : uint8_t { kLan, kReticulum };
   struct Counters {
     uint64_t received = 0;
     uint64_t malformed = 0;
@@ -44,6 +51,7 @@ class NetNode {
     uint64_t late = 0;
     uint64_t hellos = 0;
     uint64_t audio = 0;
+    uint64_t relayed = 0;
   };
   struct Audio {
     int32_t sender;
@@ -51,6 +59,16 @@ class NetNode {
     int gap;
     const uint8_t* data;  // Valid until the next on_datagram()
     size_t len;
+  };
+
+  // A copy for the other transport, its ttl rewritten.
+  struct Relay {
+    bool to_lan = false;
+    bool to_reticulum = false;
+    int32_t sender = 0;
+    bool hello = false;
+    const uint8_t* data = nullptr;  // Valid until the next packet
+    size_t len = 0;
   };
 
   // Largest hello packet: header, hello, nonce and tag.
@@ -65,7 +83,16 @@ class NetNode {
   // A datagram from `from` (IPv4, host order). True, with *audio filled,
   // when it carries audio to play.
   bool on_datagram(const uint8_t* p, size_t len, uint32_t from,
-                   int64_t now_ms, int64_t now_s, Audio* audio);
+                   int64_t now_ms, int64_t now_s, Audio* audio) {
+    return on_packet(p, len, Via::kLan, from, now_ms, now_s, audio, nullptr);
+  }
+  // The same from either transport (`from` only for the WLAN); with relay,
+  // *relay says where a copy goes (nowhere unless Config::relay).
+  bool on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
+                 int64_t now_ms, int64_t now_s, Audio* audio, Relay* relay);
+
+  // What this node's hellos say it is on (Hello::kLan, kReticulum).
+  void set_transports(uint8_t transports) { config_.transports = transports; }
 
   // This node's next hello, sealed: its length, or 0.
   size_t build_hello(int64_t now_s, uint8_t out[kMaxHello]);
@@ -85,6 +112,7 @@ class NetNode {
   int32_t hello_seq_ = 0;
   Counters c_;
   uint8_t plain_[packet::kMaxSize];
+  uint8_t relay_[packet::kMaxSize];
 };
 
 }  // namespace crewradio

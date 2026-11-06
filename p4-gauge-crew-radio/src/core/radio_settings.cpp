@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: EUPL-1.2
 #include "radio_settings.h"
 
+#include <ctype.h>
+
 namespace crewradio {
 namespace settings {
 
@@ -63,6 +65,82 @@ std::string mask_key(const std::string& key) {
   return "\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2 "
          "\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2 " +
          key.substr(key.size() - 4);
+}
+
+namespace {
+
+bool v6_char(char c) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+         (c >= 'A' && c <= 'F') || c == ':' || c == '.';
+}
+
+bool name_char(char c) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+         (c >= '0' && c <= '9') || c == '.' || c == '-';
+}
+
+// 1-65535, digits only and no leading zero (written as the number prints).
+bool parse_port_text(const std::string& t, int* port) {
+  if (t.empty() || t.size() > 5 || t[0] == '0') return false;
+  int v = 0;
+  for (char c : t) {
+    if (c < '0' || c > '9') return false;
+    v = v * 10 + (c - '0');
+  }
+  if (v < 1 || v > 65535) return false;
+  *port = v;
+  return true;
+}
+
+}  // namespace
+
+bool parse_host_port(const std::string& text, std::string* host, int* port) {
+  size_t a = 0, b = text.size();
+  while (a < b && isspace((unsigned char)text[a])) a++;
+  while (b > a && isspace((unsigned char)text[b - 1])) b--;
+  const std::string t = text.substr(a, b - a);
+  if (t.empty() || t.size() > 260) return false;
+  std::string h;
+  std::string port_text;
+  bool has_port = false;
+  size_t colons = 0;
+  for (char c : t) colons += c == ':' ? 1 : 0;
+  if (t[0] == '[') {
+    const size_t end = t.find(']');
+    if (end == std::string::npos || end < 2) return false;
+    h = t.substr(1, end - 1);
+    const std::string rest = t.substr(end + 1);
+    if (!rest.empty()) {
+      if (rest[0] != ':') return false;
+      port_text = rest.substr(1);
+      has_port = true;
+    }
+    if (h.find(':') == std::string::npos) return false;
+    for (char c : h) {
+      if (!v6_char(c)) return false;
+    }
+  } else if (colons > 1) {  // A bare IPv6 address, no port
+    h = t;
+    for (char c : h) {
+      if (!v6_char(c)) return false;
+    }
+  } else {
+    const size_t colon = t.find(':');
+    h = colon == std::string::npos ? t : t.substr(0, colon);
+    if (colon != std::string::npos) {
+      port_text = t.substr(colon + 1);
+      has_port = true;
+    }
+    if (h.empty() || h.size() > 253 || h[0] == '-' || h[0] == '.') return false;
+    for (char c : h) {
+      if (!name_char(c)) return false;
+    }
+  }
+  int p = kDefaultReticulumPort;
+  if (has_port && !parse_port_text(port_text, &p)) return false;
+  *host = h;
+  *port = p;
+  return true;
 }
 
 }  // namespace settings

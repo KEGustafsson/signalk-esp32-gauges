@@ -48,3 +48,21 @@ TEST(settings_talk_gpio_avoids_the_boards_own_pins) {
     CHECK(!valid_talk_gpio(taken));
   }
 }
+
+TEST(settings_a_reticulum_node_as_the_app_takes_it) {
+  std::string host;
+  int port = 0;
+  auto is = [&](const char* text, const char* h, int p) {
+    return parse_host_port(text, &host, &port) && host == h && port == p;
+  };
+  CHECK(is(" hub.example.org ", "hub.example.org", 4242));
+  CHECK(is("192.168.1.9:4965", "192.168.1.9", 4965));
+  CHECK(is("[::1]", "::1", 4242));
+  CHECK(is("[fe80::1]:37428", "fe80::1", 37428));
+  CHECK(is("2001:db8::7", "2001:db8::7", 4242));
+  for (const char* bad : {"", "hub:0", "hub:65536", "hub:042", "hub:", ":4242",
+                          "two words", "-hub", "[::1]x", "[hub]:4242", "[]",
+                          "tcp://hub:4242"}) {
+    CHECK(!parse_host_port(bad, &host, &port));
+  }
+}

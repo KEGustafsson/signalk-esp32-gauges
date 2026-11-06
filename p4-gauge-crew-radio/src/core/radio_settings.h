@@ -35,6 +35,17 @@ bool valid_port(int port);
 // reset 27, microSD 39-44, amplifier enable 53, USB 24/25).
 bool valid_talk_gpio(int gpio);
 
+// The port of a Reticulum transport node's TCP server interface when none
+// is given.
+constexpr int kDefaultReticulumPort = 4242;
+
+// A Reticulum transport node as the app's SettingsRules.parseHostPort takes
+// it: `host`, `host:port`, `[v6]` or `[v6]:port`, the host a name or an
+// address (letters, digits, dots, hyphens; colons only inside brackets or as
+// a bare IPv6 address), the port 1-65535 written plainly, 4242 when left
+// out, white space at the ends ignored. False for anything else.
+bool parse_host_port(const std::string& text, std::string* host, int* port);
+
 // How the card shows a stored key: "•••• •••• " and its last four, or
 // nothing. The key itself is never shown nor stored: only the packet key
 // derived from it is kept (in NVS).

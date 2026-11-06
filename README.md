@@ -374,5 +374,7 @@ and its companion libraries (Apache-2.0), [ArduinoJson](https://arduinojson.org)
 (MIT), Arduino-ESP32 (LGPL-2.1) and ESP-IDF (Apache-2.0) with mbedTLS
 (Apache-2.0), and, for the Crew Radio, libopus
 (BSD-3-Clause, as packaged by [codec-opus](https://github.com/pschatzmann/codec-opus));
-the ES8311 register values follow Espressif's esp_codec_dev (Apache-2.0).
+the ES8311 register values follow Espressif's esp_codec_dev (Apache-2.0),
+and the radio's X25519 and Ed25519 follow the public-domain
+[TweetNaCl](https://tweetnacl.cr.yp.to) design, ported from Crew Radio's own.
 

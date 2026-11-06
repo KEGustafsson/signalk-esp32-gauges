@@ -32,7 +32,7 @@ bool Roster::seen(int32_t id, int64_t now_ms) {
 }
 
 void Roster::hello(int32_t id, const Hello& hello, int hops, int64_t now_ms,
-                   int gap) {
+                   int gap, bool reticulum) {
   if (!seen(id, now_ms)) return;
   Node* n = find(id);
   n->link.hello_heard(gap);
@@ -41,6 +41,7 @@ void Roster::hello(int32_t id, const Hello& hello, int hops, int64_t now_ms,
   n->m.transports = hello.transports;
   n->m.hops = hops < 0 ? 0 : hops;
   n->m.version_code = hello.version_code;
+  n->m.reticulum = reticulum;
 }
 
 void Roster::audio(int32_t id, int64_t now_ms, int gap) {
