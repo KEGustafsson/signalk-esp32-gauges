@@ -1088,3 +1088,18 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   (flash 3.26 MB). Not run on a board.
 - Next: the station's talk disc, mute and volume drag (3b); Reticulum (2b)
   in its own PR (the library PR is at 95 files).
+
+## 2026-11-06 — The radio library: CodeRabbit's full review
+
+- Peer learning (security): an address is learned only from a fresh first
+  copy Ingress accepted, never from a copy or a stale packet, and the
+  table holds one address per authenticated sender id, so a replayed
+  packet, even a fresh one this unit missed, can move only its own
+  sender's entry until that sender's next hello. Both stricter than the
+  app.
+- The mixer no longer reserves again the slots it already concealed on a
+  dry queue when a later frame reports them lost (the app's Mixer does,
+  holding that frame back by as many slots). The supervisor reads a
+  slot's armed flag before its time. `library.json`: Arduino only.
+- Checks: radio host tests 117 on the library branch, 158 with Reticulum;
+  `pio run -e p4` after the first round.
