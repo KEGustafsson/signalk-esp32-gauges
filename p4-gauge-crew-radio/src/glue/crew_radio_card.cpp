@@ -61,6 +61,7 @@ class RadioCard : public sensesp::FileSystemSaveable {
   bool to_json(JsonObject& root) override {
     root["enabled"] = enabled;
     root["name"] = name.c_str();
+    root["channel"] = channel.c_str();
     root["channel_key"] = "";  // Never the key: only a new one is typed here
     root["key"] = key_hint.empty() ? "Not set" : key_hint.c_str();
     root["group"] = group.c_str();
@@ -85,6 +86,10 @@ class RadioCard : public sensesp::FileSystemSaveable {
                                ? sanitise_name(c["name"].as<const char*>())
                                : name;
     new_name.resize(utf8_prefix_len(new_name, Hello::kMaxNameBytes));
+    std::string new_channel = c["channel"].is<const char*>()
+                                  ? sanitise_name(c["channel"].as<const char*>())
+                                  : channel;
+    new_channel.resize(utf8_prefix_len(new_channel, settings::kNameMax));
     const std::string new_group =
         c["group"].is<const char*>() ? c["group"].as<const char*>() : group;
     const int new_port = c["port"] | port;
@@ -94,13 +99,13 @@ class RadioCard : public sensesp::FileSystemSaveable {
     const bool new_touch = c["touch_talk"] | touch_talk;
     const bool new_opus = c["opus"] | opus;
     const float new_gain = c["mic_gain"] | mic_gain;
-    int new_channel = mic_channel;
+    int new_mic = mic_channel;
     if (c["mic_channel"].is<const char*>()) {
       const char* m = c["mic_channel"].as<const char*>();
       if (strcmp(m, "MIC1") == 0) {
-        new_channel = 0;
+        new_mic = 0;
       } else if (strcmp(m, "MIC2") == 0) {
-        new_channel = 1;
+        new_mic = 1;
       } else {
         ESP_LOGW(kTag, "Crew radio card refused: no microphone %s", m);
         return false;
@@ -150,6 +155,7 @@ class RadioCard : public sensesp::FileSystemSaveable {
     }
     enabled = new_enabled;
     name = new_name;
+    channel = new_channel;
     group = new_group;
     port = new_port;
     max_hops = new_hops;
@@ -158,7 +164,7 @@ class RadioCard : public sensesp::FileSystemSaveable {
     touch_talk = new_touch;
     opus = new_opus;
     mic_gain = new_gain;
-    mic_channel = new_channel;
+    mic_channel = new_mic;
     key_beeps = new_beeps;
     key_hint = new_hint;
     return true;
@@ -169,6 +175,7 @@ class RadioCard : public sensesp::FileSystemSaveable {
 
   bool enabled = false;
   std::string name;
+  std::string channel;  // The boat's name on the Crew page; empty: "CREW"
   std::string key_hint;
   std::string group = settings::kDefaultGroup;
   int port = settings::kDefaultPort;
@@ -232,6 +239,7 @@ void begin(int (*finger_count)()) {
   config.name = card->name.empty()
                     ? std::string(sensesp::SensESPBaseApp::get_hostname().c_str())
                     : card->name;
+  config.channel = card->channel;
   settings::parse_group(card->group, &config.group);
   config.port = (uint16_t)card->port;
   config.max_hops = card->max_hops;
@@ -316,6 +324,7 @@ const String ConfigSchema(const crewradio::glue::RadioCard&) {
   return R"J({"type":"object","properties":{)J"
          R"J("enabled":{"title":"On","type":"boolean","description":"Listen to the crew's channel on this unit's speaker."},)J"
          R"J("name":{"title":"Name on the roster","type":"string","description":"How the phones list this unit, up to 32 bytes. Empty: the unit's hostname."},)J"
+         R"J("channel":{"title":"Channel name","type":"string","description":"The boat's or crew's name, shown on the Crew page (as the phones' Channel name). Empty: CREW."},)J"
          R"J("channel_key":{"title":"New channel key","type":"string","format":"password","description":"The crew's channel key, exactly as on the phones (12-64 printable ASCII). Leave empty to keep the saved one."},)J"
          R"J("key":{"title":"Saved key","type":"string","readOnly":true,"description":"The last four characters of the saved key."},)J"
          R"J("group":{"title":"Multicast group","type":"string","description":"As on the phones; 239.255.42.1 unless the crew changed it."},)J"

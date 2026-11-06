@@ -25,23 +25,30 @@ bool Roster::seen(int32_t id, int64_t now_ms) {
     *n = Node();
     n->used = true;
     n->m.id = id;
+    n->last_hello_ms = now_ms;
   }
   n->last_seen_ms = now_ms;
   return true;
 }
 
-void Roster::hello(int32_t id, const Hello& hello, int hops, int64_t now_ms) {
+void Roster::hello(int32_t id, const Hello& hello, int hops, int64_t now_ms,
+                   int gap) {
   if (!seen(id, now_ms)) return;
   Node* n = find(id);
+  n->link.hello_heard(gap);
+  n->last_hello_ms = now_ms;
   n->m.name = hello.name;
   n->m.transports = hello.transports;
   n->m.hops = hops < 0 ? 0 : hops;
   n->m.version_code = hello.version_code;
 }
 
-void Roster::audio(int32_t id, int64_t now_ms) {
+void Roster::audio(int32_t id, int64_t now_ms, int gap) {
   if (!seen(id, now_ms)) return;
-  find(id)->last_audio_ms = now_ms;
+  Node* n = find(id);
+  if (gap > 0) n->link.audio_lost(gap, now_ms);
+  n->link.audio_heard(now_ms);
+  n->last_audio_ms = now_ms;
 }
 
 bool Roster::expire(int64_t now_ms) {
@@ -61,6 +68,7 @@ void Roster::snapshot(int64_t now_ms, std::vector<Member>* out) const {
     if (!n.used) continue;
     Member m = n.m;
     m.talking = now_ms - n.last_audio_ms < kTalkMs;
+    m.bars = n.link.level(now_ms - n.last_hello_ms, now_ms - n.last_audio_ms);
     out->push_back(m);
   }
   std::sort(out->begin(), out->end(), [](const Member& a, const Member& b) {

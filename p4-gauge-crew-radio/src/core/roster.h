@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "hello.h"
+#include "link_quality.h"
 
 namespace crewradio {
 
@@ -25,6 +26,7 @@ struct Member {
   int hops = 0;
   uint16_t version_code = 0;
   bool talking = false;
+  int bars = LinkQuality::kBars;  // 1-4, link_quality.h
 };
 
 class Roster {
@@ -35,8 +37,11 @@ class Roster {
 
   // Any accepted packet; false when the table is full and `id` is new.
   bool seen(int32_t id, int64_t now_ms);
-  void hello(int32_t id, const Hello& hello, int hops, int64_t now_ms);
-  void audio(int32_t id, int64_t now_ms);
+  // A hello, with the hellos missing before it (Ingress::hello_gap).
+  void hello(int32_t id, const Hello& hello, int hops, int64_t now_ms,
+             int gap = 0);
+  // An audio frame, with the frames missing before it (admit_audio).
+  void audio(int32_t id, int64_t now_ms, int gap = 0);
 
   // Drops nodes silent for kSilenceMs; true if any went.
   bool expire(int64_t now_ms);
@@ -51,6 +56,8 @@ class Roster {
     Member m;
     int64_t last_seen_ms = 0;
     int64_t last_audio_ms = INT64_MIN / 2;
+    int64_t last_hello_ms = 0;  // Before any hello: the first packet
+    LinkQuality link;
     bool used = false;
   };
   Node* find(int32_t id);

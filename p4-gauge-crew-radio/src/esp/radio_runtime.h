@@ -45,6 +45,7 @@ struct RadioConfig {
   bool has_key = false;
   uint8_t key[32] = {};  // The packet key (never the channel key)
   std::string name;
+  std::string channel;   // The channel (boat) name, for the screen only
   uint32_t group = 0;    // Host byte order
   uint16_t port = 0;
   int max_hops = 4;
@@ -78,6 +79,9 @@ struct RadioStatus {
   uint64_t sent = 0;
   int timeouts = 0;
   int mic_level = 0;  // RMS of the last frame heard by the mic
+  // For the screen (the 4"'s Crew page and halo).
+  std::string channel;
+  int volume = 0;  // 0..100, the card's
 };
 
 // From setup(), after the board (and so the I2C driver) is up.
