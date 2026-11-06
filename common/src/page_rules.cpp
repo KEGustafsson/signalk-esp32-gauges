@@ -35,6 +35,8 @@ const char* page_style_name(GaugeKind kind) {
       return "Compass";
     case GaugeKind::kAttitude:
       return "Sea horizon";
+    case GaugeKind::kCrew:
+      return "Crew radio";
     case GaugeKind::kRadial:
     default:
       return "Dial";
@@ -46,7 +48,8 @@ bool parse_page_style(const char* name, GaugeKind* kind) {
     return false;
   }
   for (GaugeKind k :
-       {GaugeKind::kRadial, GaugeKind::kCompass, GaugeKind::kAttitude}) {
+       {GaugeKind::kRadial, GaugeKind::kCompass, GaugeKind::kAttitude,
+        GaugeKind::kCrew}) {
     if (strcmp(name, page_style_name(k)) == 0) {
       *kind = k;
       return true;
@@ -120,7 +123,7 @@ std::string page_schema(GaugeKind kind, size_t page_count) {
   }
   // A select is an array schema in SensESP's web UI; its value is a string.
   std::string s = R"J({"type":"object","properties":{)J";
-  s += R"J("style":{"title":"Style","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Dial","Compass","Sea horizon"]},"description":"Dial: rpm, temperature, speed, any number. Compass: a heading. Sea horizon: navigation.attitude (heel and trim). Save and reload the page to see the new style's settings."},)J";
+  s += R"J("style":{"title":"Style","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Dial","Compass","Sea horizon","Crew radio"]},"description":"Dial: rpm, temperature, speed, any number. Compass: a heading. Sea horizon: navigation.attitude (heel and trim). Crew radio: who is on the Crew Radio channel (the 4\" with its radio on); no path. Save and reload the page to see the new style's settings."},)J";
   s += R"J("title":{"title":"Title","type":"string","description":"Text on the dial face; empty for the style's default."},)J";
   s += R"J("sk_path":{"title":"Signal K path","type":"string","description":"Empty: a compass or sea horizon reads its usual path; a dial shows dashes."},)J";
   if (kind == GaugeKind::kRadial) {

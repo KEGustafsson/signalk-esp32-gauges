@@ -115,6 +115,12 @@ std::string crew_status_text(const CrewView& view) {
       return "RADIO OFF";
     case RadioState::kStarting:
       return "STARTING...";
+    case RadioState::kNoKey:
+      return "NO CHANNEL KEY";
+    case RadioState::kNoAudio:
+      return "NO AUDIO";
+    case RadioState::kStopped:
+      return "RADIO STOPPED";
     case RadioState::kNoClock:
       return "NO CLOCK";
     case RadioState::kPausedMemory:
@@ -141,6 +147,8 @@ uint32_t crew_status_color(const CrewView& view) {
       if (view.transmitting) return crew_color::kTransmit;
       return view.anyone_talking() ? crew_color::kTalk : crew_color::kQuiet;
     case RadioState::kSelfTestFailed:
+    case RadioState::kNoAudio:
+    case RadioState::kStopped:
       return color::kNeedle;
     case RadioState::kOff:
     case RadioState::kStarting:
@@ -158,7 +166,9 @@ void draw_radio_pip(lv_layer_t* layer, const Geometry& g,
   const int32_t cy = g.cy + g.px(0.925f);
   const int32_t r = LV_MAX(4, g.px(0.016f));
   uint32_t c = crew_color::kTalk;
-  if (view.state == RadioState::kSelfTestFailed) {
+  if (view.state == RadioState::kSelfTestFailed ||
+      view.state == RadioState::kNoAudio ||
+      view.state == RadioState::kStopped) {
     c = color::kNeedle;
   } else if (view.state != RadioState::kOnChannel) {
     c = crew_color::kWarn;
@@ -175,6 +185,23 @@ void draw_radio_pip(lv_layer_t* layer, const Geometry& g,
     line.p2 = {(float)(cx + r * 1.4f), (float)(cy + r * 1.4f)};
     lv_draw_line(layer, &line);
   }
+}
+
+namespace {
+CrewViewSource g_crew_source = nullptr;
+}  // namespace
+
+void set_crew_view_source(CrewViewSource source) { g_crew_source = source; }
+
+bool crew_view_available() { return g_crew_source != nullptr; }
+
+CrewView read_crew_view() {
+  CrewView v;
+  if (g_crew_source == nullptr || !g_crew_source(&v)) {
+    v = CrewView();
+    v.state = RadioState::kOff;
+  }
+  return v;
 }
 
 void draw_arc_band(lv_layer_t* layer, const Geometry& g, float r_out_frac,

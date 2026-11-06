@@ -5,6 +5,8 @@
 
 #include "gauge_defs.h"
 #include "page_rules.h"
+#include <string>
+
 #include "test.h"
 
 using namespace skgauges;
@@ -32,8 +34,8 @@ TEST(factory_fields_of_a_page) {
 }
 
 TEST(style_names_round_trip) {
-  for (GaugeKind k :
-       {GaugeKind::kRadial, GaugeKind::kCompass, GaugeKind::kAttitude}) {
+  for (GaugeKind k : {GaugeKind::kRadial, GaugeKind::kCompass,
+                      GaugeKind::kAttitude, GaugeKind::kCrew}) {
     GaugeKind parsed = GaugeKind::kRadial;
     CHECK(parse_page_style(page_style_name(k), &parsed));
     CHECK(parsed == k);
@@ -42,6 +44,19 @@ TEST(style_names_round_trip) {
   CHECK(!parse_page_style("Off", &kind));
   CHECK(!parse_page_style(nullptr, &kind));
   CHECK(kind == GaugeKind::kCompass);  // Unchanged on failure
+}
+
+TEST(a_page_switched_to_crew_radio_has_no_path_and_saves) {
+  CHECK(std::string(page_style_name(GaugeKind::kCrew)) == "Crew radio");
+  const PageFields current = coolant();
+  PageFields next = current;
+  next.kind = GaugeKind::kCrew;
+  CHECK(finish_page_save(current, &next, true) == PageCheck::kOk);
+  CHECK(next.sk_path.empty());  // Nothing to subscribe to
+  CHECK(next.title.empty());
+  CHECK(next.min < next.max);
+  CHECK(page_schema(GaugeKind::kCrew, 6).find("Crew radio") !=
+        std::string::npos);
 }
 
 TEST(style_change_resets_untouched_fields) {
@@ -168,7 +183,7 @@ TEST(schema_is_valid_json_with_the_style_fields) {
     JsonDocument doc;
     CHECK(deserializeJson(doc, text) == DeserializationError::Ok);
     JsonObjectConst props = doc["properties"];
-    CHECK(props["style"]["items"]["enum"].size() == 3);
+    CHECK(props["style"]["items"]["enum"].size() == 4);  // + Crew radio
     CHECK(props["sk_path"].is<JsonObjectConst>());
     CHECK(props["timeout_s"]["maximum"] == kMaxTimeoutS);
     CHECK(props["reset"]["type"] == "boolean");

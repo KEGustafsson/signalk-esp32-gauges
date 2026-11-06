@@ -53,7 +53,7 @@ void dial_point(const Geometry& g, float angle, float radius_frac, float* x,
 }  // namespace
 
 CrewPage::CrewPage(lv_obj_t* parent, const Geometry& geometry, bool station)
-    : g_(geometry), station_(station) {
+    : g_(geometry), station_(station), owns_root_(true) {
   root_ = lv_obj_create(parent);
   lv_obj_remove_style_all(root_);
   lv_obj_remove_flag(root_, LV_OBJ_FLAG_CLICKABLE);
@@ -61,6 +61,17 @@ CrewPage::CrewPage(lv_obj_t* parent, const Geometry& geometry, bool station)
   lv_obj_set_size(root_, lv_pct(100), lv_pct(100));
   face_ = create_canvas(root_, lv_obj_get_width(parent),
                         lv_obj_get_height(parent));
+  build();
+}
+
+CrewPage::CrewPage(lv_obj_t* root, lv_obj_t* face, const Geometry& geometry,
+                   bool station)
+    : g_(geometry), station_(station), root_(root), face_(face),
+      owns_root_(false) {
+  build();
+}
+
+void CrewPage::build() {
   {
     lv_layer_t layer;
     lv_canvas_init_layer(face_, &layer);
@@ -84,7 +95,25 @@ CrewPage::CrewPage(lv_obj_t* parent, const Geometry& geometry, bool station)
   lv_obj_add_event_cb(dynamic_, draw_cb, LV_EVENT_DRAW_MAIN, this);
 }
 
-CrewPage::~CrewPage() { lv_obj_delete(root_); }
+CrewPage::~CrewPage() {
+  if (owns_root_) lv_obj_delete(root_);
+}
+
+CrewGaugePage::CrewGaugePage(lv_obj_t* parent, const GaugeDef& def,
+                             const Geometry& geometry)
+    : GaugePage(parent, def, geometry),
+      page_(root_, face_, geometry, false) {}
+
+void CrewGaugePage::update(const GaugeValue&, uint32_t now_ms) {
+  if (!first_ && (uint32_t)(now_ms - polled_ms_) < kPollMs) return;
+  polled_ms_ = now_ms;
+  const CrewView v = read_crew_view();
+  if (first_ || v != last_) {
+    page_.set(v);
+    last_ = v;
+    first_ = false;
+  }
+}
 
 void CrewPage::set(const CrewView& view) {
   if (station_ && (title_.empty() || view.channel != view_.channel)) {

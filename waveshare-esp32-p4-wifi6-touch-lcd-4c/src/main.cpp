@@ -13,6 +13,7 @@
 #include <esp_display_panel.hpp>
 
 #include "board_start.h"
+#include "crew_view_source.h"
 #include "lvgl_port.h"
 #include "glue/crew_radio_card.h"
 #include "sensesp_base_app.h"
@@ -38,6 +39,9 @@ void setup() {
   sensesp::SetupLogging(ESP_LOG_INFO);
 
   board = skgauges::start_board(kGt911BackupAddress);
+  // The Crew Radio's view for the screen (halo, Crew page), set before the
+  // UI is built so the halo is made; off until the radio is on in its card.
+  skgauges::ui::set_crew_view_source(skgauges::crew_view_from_radio);
   skgauges::lvgl_port_init(board, kBufferLines, true);
 
   // One firmware for both sides: the unit's saved hostname says which it is

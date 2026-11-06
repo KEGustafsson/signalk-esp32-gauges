@@ -86,7 +86,9 @@ If a task would require breaking one of these, stop and flag it.
     glue.
 - **`waveshare-*/`** -- one PlatformIO project per board: `platformio.ini`
   (one env for both sides), `src/main.cpp` (board bring-up only), `include/lv_conf.h`,
-  and for the 4" `include/esp_panel_board_custom_conf.h`.
+  and for the 4" `include/esp_panel_board_custom_conf.h` and
+  `src/crew_view_source.*` (the radio's status as the UI's `CrewView`: the
+  only file that knows both).
 - **`include/secrets.example.h`** -- template for the gitignored, shared
   `include/secrets.h`: WiFi, Signal K server, OTA password, device addresses.
 - **`VERSION`** -- the firmware's version (one line, e.g. `0.1.0`), shown in

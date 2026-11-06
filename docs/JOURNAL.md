@@ -1062,3 +1062,29 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   `lvgl_port`, the 4" firmware hookup (`platformio.ini`, `main.cpp`), the
   EUPL-1.2 licence for the repository, and the docs. Together they are the
   same tree that was tested (host tests, preview, `pio run -e p4`).
+
+## 2026-11-06 — P4 Gauge Crew Radio, phase 3: on the screen
+
+- The radio library (PR #9's branch): `core/link_quality.h`, the app's
+  LinkQuality rule for rule (missing hellos of the last ten, lost audio of
+  the last five seconds of talk, the worse; an overdue hello counts as
+  missing; the gap before an entry's first packet does not). The roster
+  keeps one per node and its members carry their bars: the Crew page shows
+  measured bars only, never made-up ones. A Channel name in the card.
+- The gauge side: a fourth page style, **Crew radio** (`GaugeKind::kCrew`,
+  no path, nothing subscribed), built by `create_page()` as
+  `CrewGaugePage`, which draws the Crew page into the gauge page's own root
+  and canvas and polls the radio's view four times a second, redrawing only
+  on a change. The halo sits on the top layer under the status dot, made
+  only where a radio is registered (`set_crew_view_source()`, set in the
+  4"'s `main.cpp` before the UI is built; `src/crew_view_source.cpp` maps
+  the radio's status to the UI's view, the one place that knows both). The
+  info box gains a Radio line. Without a source the page says RADIO OFF.
+- Not faked: no mute (the radio has none yet), no "speaker" pip (nothing on
+  the wire tells the plugin from a person), "over Reticulum" only for a
+  relayed member whose hello says so.
+- Checks: gauge tests 68 (the new style's rules), radio 112, preview at
+  both sizes (the Crew page now through the page system), `pio run -e p4`
+  (flash 3.26 MB). Not run on a board.
+- Next: the station's talk disc, mute and volume drag (3b); Reticulum (2b)
+  in its own PR (the library PR is at 95 files).

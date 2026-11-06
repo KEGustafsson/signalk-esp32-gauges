@@ -19,13 +19,22 @@ reflashed.
 - [What a unit is: the Unit card](#what-a-unit-is-the-unit-card)
 - [Troubleshooting](#troubleshooting)
 
-## The three page styles
+## The four page styles
 
 | Style | What you see | Use it for |
 |---|---|---|
 | **Dial** | A steel dial with needle, numbered scale, coloured zones and an LCD readout | Anything that is a single number: engine rpm, temperatures, speed, pressure, depth, voltage, tank level, wind speed... |
 | **Compass** | A rotating compass card with an LCD heading; °T, or °M when the path is a magnetic one. The card ignores changes under 0.3° (the LCD shows the heading as it is) | A heading, e.g. `navigation.headingTrue` or `navigation.headingMagnetic` |
 | **Sea horizon** | A boat symbol on a level horizon; heel in degrees PORT/STBD on a ±40° scale, and trim | `navigation.attitude` (its `roll` and `pitch`) |
+| **Crew radio** | Who is on the Crew Radio channel, around the dial like compass points: each with a name and 1-4 signal bars (measured on their packets), the talker glowing; the channel name, the head count in the LCD and one status line in the middle; the speaker volume at the bottom | The 4" with its Crew Radio on (its **Crew radio** card). No path. Elsewhere it shows `RADIO OFF` |
+
+On a 4" with the radio on, every page also shows the **radio halo**: a
+small radio pip left of the status dot (green on the channel, amber
+without a clock, red when the radio is stopped); while someone talks, a
+band over the bezel with the talker's name along the top, green (dashed
+when they come through a relay), red with `TALKING` while this unit
+transmits. It covers the bezel only, never the dial. Swipe down for the
+info box: it says the radio's state and how many are on the channel.
 
 ## Opening the web UI
 
@@ -130,7 +139,7 @@ are ignored.
 
 | Setting | For | What it does |
 |---|---|---|
-| **Style** | all | Dial, Compass or Sea horizon. |
+| **Style** | all | Dial, Compass, Sea horizon or Crew radio. |
 | **Title** | all | The text on the dial face, e.g. `PRT Engine`. Leave it empty for the style's default (`Gauge`, `HEADING`, `HEEL`). |
 | **Signal K path** | all | The path the page reads, e.g. `propulsion.port.revolutions`. Empty: a compass reads `navigation.headingTrue`, a sea horizon `navigation.attitude`; a dial shows dashes. The Signal K server's **Data Browser** lists every path your boat has. |
 | **Display unit** | dial | The unit shown on the dial, converted from the Signal K unit of the path (see the table below). **SI** shows the value exactly as Signal K sends it and labels it with the server's unit. |

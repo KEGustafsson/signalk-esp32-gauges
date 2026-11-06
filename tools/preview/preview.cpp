@@ -228,10 +228,18 @@ static std::vector<RadioScene> radio_scenes() {
   return s;
 }
 
+// What the view source hands the Crew page style in each scene.
+static skgauges::ui::CrewView g_scene_view;
+static bool scene_view(skgauges::ui::CrewView* out) {
+  *out = g_scene_view;
+  return true;
+}
+
 static bool render_radio_mockups(lv_display_t* d, lv_obj_t* scr,
                                  const std::vector<PreviewPage>& pages) {
   const skgauges::ui::Geometry g{W / 2, H / 2, W / 2};
   const std::vector<RadioScene> scenes = radio_scenes();
+  skgauges::ui::set_crew_view_source(scene_view);
   for (size_t i = 0; i < scenes.size(); i++) {
     const RadioScene& sc = scenes[i];
     std::unique_ptr<skgauges::ui::GaugePage> page;
@@ -239,9 +247,15 @@ static bool render_radio_mockups(lv_display_t* d, lv_obj_t* scr,
     skgauges::GaugeDef def;
     skgauges::GaugeValue v;
     const bool station = strcmp(sc.page, "station") == 0;
-    if (station || strcmp(sc.page, "crew") == 0) {
+    g_scene_view = sc.view;
+    if (station) {
       crew.reset(new skgauges::ui::CrewPage(scr, g, station));
       crew->set(sc.view);
+    } else if (strcmp(sc.page, "crew") == 0) {
+      // Through the page system, as the firmware builds it: the "Crew
+      // radio" page style reading the view source.
+      def = skgauges::style_template(skgauges::GaugeKind::kCrew);
+      page = skgauges::ui::create_page(scr, def, g);
     } else {
       const PreviewPage* p = nullptr;
       for (const auto& candidate : pages) {
