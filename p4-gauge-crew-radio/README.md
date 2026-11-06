@@ -147,7 +147,10 @@ path takes no lock (`src/esp/radio_runtime.*`).
 - The socket: bound to the port, joined to the group on the station
   interface, re-opened when the address changes; hellos go to the group,
   the subnet broadcast and every peer heard (`core/lan_peers.h`). Peers are
-  learned only from packets that opened with the key.
+  learned only from packets that opened with the key and were a fresh first
+  copy: a copy or a stale packet, which anyone can replay from any address,
+  teaches nothing (stricter than the app, which learns from every packet
+  that opens).
 - No resampling: the ES8311 runs at 16 kHz from MCLK = 256 fs, and libopus
   decodes at 16 kHz natively. libopus is pschatzmann/codec-opus (1.6.1,
   fixed point), pinned to one commit in both the 4"'s `platformio.ini` and
@@ -366,14 +369,14 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 | `test_seen_cache.cpp` | Lookup, insertion-order eviction, and 200 000 random operations against a reference model |
 | `test_seq_tracker.cpp` | Gaps, late frames, the wrap, least-recently-heard eviction |
 | `test_ingress.cpp` | The pipeline's order: budgets before and after the AEAD, stale before the cache, copies free, the lowered-ttl replay |
-| `test_mixer.cpp` | Concealment, prefill, holes, dry queues, the cap, gain and cues, headroom and clipping, the sweep |
+| `test_mixer.cpp` | Concealment, prefill, holes, dry queues (and dry slots that stood in for frames a later gap reports, not reserved twice), the cap, gain and cues, headroom and clipping, the sweep |
 | `test_lan_peers.cpp` | Unicast once a peer is known, the burst floor, hellos' group copies, expiry, the bounded table |
 | `test_roster.cpp` | Names from hellos, sorted; talking; dropped after 4 s; bounded; the 1-4 bars (`core/link_quality.h`, the app's rule: missing hellos of the last ten, lost audio of the last five seconds of talk, the worse; an overdue hello counts as missing) |
 | `test_clock_policy.cpp` | Trust for a day; GNSS only when it advances with real time (a retained or frozen value never sets the clock); SNTP preferred; Signal K's datetime parsed |
 | `test_supervisor.cpp` | Stall detection across the 32-bit wrap, three restarts then off; the memory ladder with hysteresis |
 | `test_self_test.cpp` | The power-on test passes and its bytes are the vector file's |
 | `test_spsc_ring.cpp` | Capacity and order; 200 000 frames across two threads, none lost or reordered |
-| `test_net_node.cpp` | Two nodes with one key: hello onto the roster, audio handed on once with its gap; a stranger teaches nothing; a stale packet plays nothing; our own packets dropped unopened; the bridge (a first copy to the other transport with one hop spent, never back, the hop rule, off unless asked; a hello over Reticulum marks its member) |
+| `test_net_node.cpp` | Two nodes with one key: hello onto the roster, audio handed on once with its gap; a stranger teaches nothing; a stale packet plays nothing and teaches no address, nor does a replayed copy; our own packets dropped unopened; the bridge (a first copy to the other transport with one hop spent, never back, the hop rule, off unless asked; a hello over Reticulum marks its member) |
 | `test_playout.cpp` | The decoder pool (own decoder per sender, the quietest taken over, idle released); PCM and Opus to the mixer with gaps concealed |
 | `test_radio_state.cpp` | What the radio reports while it runs: Stopped whenever a task is not running, whatever the clock or the memory guard say; then Paused, No clock, On channel |
 | `test_radio_settings.cpp` | The app's channel key rule, the multicast group and port, the key mask, the talk button's GPIO, the transport node's `host[:port]` |

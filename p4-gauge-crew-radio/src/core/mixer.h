@@ -45,7 +45,10 @@ class Mixer {
             int64_t now_ms);
 
   // Reserves `count` slots for frames known lost, so timing holds; not for a
-  // stream at rest (nothing queued between bursts: nothing to repeat).
+  // stream at rest (nothing queued between bursts: nothing to repeat). Slots
+  // already concealed because the queue ran dry stood in for those frames, so
+  // they are not reserved twice (the app reserves them again, which holds the
+  // next frame back by as many slots, the last of them silent).
   void conceal(int32_t sender_id, int count);
 
   // A cue tone frame, played from the next slot over whatever is sounding.
@@ -70,6 +73,7 @@ class Mixer {
     bool primed = false;
     bool has_last = false;
     int concealed = 0;
+    int dry = 0;  // Slots concealed on an empty queue since the last frame
     int head = 0;
     int size = 0;
     bool hole[kMaxQueued] = {};

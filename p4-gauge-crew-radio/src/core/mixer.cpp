@@ -81,6 +81,7 @@ bool Mixer::push(int32_t sender_id, const int16_t frame[kSamples],
     rest(st);
   }
   st->last_seen_ms = now_ms;
+  st->dry = 0;  // Any dry slot before it was late audio, not lost
   enqueue(st, frame);
   return true;
 }
@@ -88,6 +89,10 @@ bool Mixer::push(int32_t sender_id, const int16_t frame[kSamples],
 void Mixer::conceal(int32_t sender_id, int count) {
   Stream* st = find(sender_id);
   if (st == nullptr || (!st->primed && st->size == 0)) return;
+  // The dry slots played meanwhile were these frames' slots.
+  const int played = st->dry < count ? st->dry : count;
+  count -= played;
+  st->dry = 0;
   if (count > conceal::kMaxFrames) count = conceal::kMaxFrames;
   for (int i = 0; i < count; i++) enqueue(st, nullptr);
 }
@@ -102,6 +107,7 @@ void Mixer::cue(const int16_t frame[kSamples]) {
 void Mixer::rest(Stream* st) {
   st->primed = false;
   st->concealed = 0;
+  st->dry = 0;
   st->has_last = false;
 }
 
@@ -117,6 +123,7 @@ const int16_t* Mixer::next_frame(Stream* st, int64_t now_ms) {
       memcpy(st->last, st->frames[at], sizeof(st->last));
       st->has_last = true;
       st->concealed = 0;
+      st->dry = 0;
       return st->last;
     }
     hole = true;
@@ -132,6 +139,7 @@ const int16_t* Mixer::next_frame(Stream* st, int64_t now_ms) {
     return nullptr;
   }
   st->concealed++;
+  if (!hole) st->dry++;
   concealed_frames_++;
   return fill_;
 }

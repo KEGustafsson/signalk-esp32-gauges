@@ -91,7 +91,7 @@ TEST(net_a_stranger_teaches_nothing_and_a_stale_packet_plays_nothing) {
   p = sealed_audio(kKey, 5, 1, Codec::kOpus, 40, kNow - 120);
   CHECK(!b.on_datagram(p.data(), p.size(), 9, 0, kNow, &au));
   CHECK(b.counters().stale == 1 && b.roster().size() == 0);
-  CHECK(b.peers().live(0) == 1);  // It did open: a crew member's address
+  CHECK(b.peers().live(0) == 0);  // Opened, but stale: anyone can replay it
   const uint8_t junk[5] = {'P', 'T', 4, 0, 0};
   CHECK(!b.on_datagram(junk, sizeof(junk), 9, 0, kNow, &au));
   CHECK(b.counters().malformed == 1);
@@ -165,4 +165,17 @@ TEST(net_a_hello_over_reticulum_marks_its_member_and_says_so_in_ours) {
   CHECK(m.size() == 1 && m[0].reticulum && m[0].hops == 0);
   CHECK(m.size() == 1 && m[0].transports == Hello::kReticulum);
   CHECK(b.peers().live(0) == 0);
+}
+
+TEST(net_a_replayed_copy_from_another_address_teaches_nothing) {
+  NetNode b(kKey, 2, config("Phone"));
+  NetNode::Audio au;
+  auto p = sealed_audio(kKey, 5, 1);
+  CHECK(b.on_datagram(p.data(), p.size(), 0x0A000001, 0, kNow, &au));
+  // The same packet again from addresses of a replayer's choosing.
+  for (uint32_t a = 0x0A000010; a < 0x0A000030; a++) {
+    CHECK(!b.on_datagram(p.data(), p.size(), a, 0, kNow, &au));
+  }
+  uint32_t addrs[LanPeers::kMax];
+  CHECK(b.peers().live_addrs(0, addrs) == 1 && addrs[0] == 0x0A000001);
 }
