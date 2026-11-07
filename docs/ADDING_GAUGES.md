@@ -125,7 +125,7 @@ on the host, and never a stale value shown as live.
 | `common/src/page_rules.cpp` | Its name in `page_style_name()` and in the list `parse_page_style()` walks; its name in the **Style** dropdown of `page_schema()`; which fields its card shows (`page_schema()` shows the unit, scale and zones only for a dial) |
 | `common/src/gauge_resolve.cpp` | Only if settings and metadata combine differently for it (as for the compass) |
 | `common/src/sk_data.cpp` | How its value is read. A number: the existing `StrictFloatListener` path. An object (like `navigation.attitude`): a listener in `sk_listeners.h` and a parser in `sk_parse.h` that accepts only real JSON numbers (`sk_number()`), with tests |
-| `common/src/ui/<style>_gauge.{h,cpp}` | The page: a class derived from `GaugePage` (`ui/gauge_page.h`) with `update(value, now_ms)`. Draw the static face once into the canvas; redraw only the moving part, invalidating only the area that changes (see `compass_gauge.cpp`). Dim or park it when the value is stale (`GaugeValue`, `set_stale_look()` in `gauge_page.h`). No Arduino or SensESP here. |
+| `common/src/ui/<style>_gauge.{h,cpp}` | The page: a class derived from `GaugePage` (`ui/gauge_page.h`) with `update(value, now_ms)`. Draw the static face once into the canvas, an LCD's panel with it (`LcdReadout::move_background_into()` while the face is drawn); redraw only the moving part, invalidating only the pixels it covers, at its old and its new place: boxes along a needle's blade (`radial_gauge.cpp`), the compass card's ring in bands (`compass_gauge.cpp`), a box per moving part (`attitude_gauge.cpp`), not one box round them all. Dim or park it when the value is stale (`GaugeValue`, `set_stale_look()` in `gauge_page.h`). No Arduino or SensESP here. |
 | `common/src/ui/gauge_page.cpp` | A `case` in `create_page()` |
 | `tools/preview/preview.cpp` | A sample page in `preview_pages()` |
 | `tests/` | `test_page_rules.cpp` (name, parsing, schema), `test_resolve.cpp`, `test_sk_parse.cpp` for a new parser, `test_factory.cpp` if the template matters |
@@ -137,11 +137,15 @@ Then:
 2. Preview at both sizes and **look at the images**:
    `cmake --build build/preview -j && build/preview/preview 480 && build/preview/preview 720`
    (`out/`). `preview <size> bench` times a redraw in the boards' strip
-   heights.
+   heights. A part the preview leaves behind when it moves (a needle's
+   ghost) is an invalid area too small: each page's value moves for 60
+   frames before its image is saved.
 3. Build both boards (`pio run -e p4`, `pio run -e s3`), flash one unit of
    each, and watch the page live, on the 2.1" in particular: its panel
    shares the PSRAM bus with drawing, and memory-heavy drawing shifts the
-   picture (AGENTS.md, Gotchas). Check the `loop: Slowest pass` log line.
+   picture (AGENTS.md, Gotchas). The 4"'s drawing is bound by PSRAM too:
+   less to redraw is what makes it faster. Check the `loop: Slowest pass`
+   log line.
 4. An entry in `docs/JOURNAL.md`.
 
 ## 4. A new board

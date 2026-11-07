@@ -97,7 +97,7 @@ Arduino examples ([ESP32-P4-WIFI6-Touch-LCD-XC](https://github.com/waveshareteam
 | Display | 4" round IPS 720×720, JD9365, 2-lane MIPI-DSI at 1500 Mbps/lane, 80 MHz DPI clock, reset GPIO27, DSI PHY on LDO channel 3 | yes |
 | Touch | GT9271 (GT911-compatible) on I2C SDA 7 / SCL 8, address 0x5D (0x14 alternative), reset/INT not routed | swipe / hold |
 | Backlight | GPIO26, LEDC PWM, active low | brightness (long press) |
-| Audio | ES8311 codec + NS4150B amplifier (speaker), ES7210 mic ADC; I2S MCLK 13, SCLK 12, LRCK 10, DOUT 9, DIN 11, PA enable GPIO53 | the Crew Radio, off until switched on in its card ([`p4-gauge-crew-radio`](../p4-gauge-crew-radio/README.md)): speaker and mic (MIC1/MIC2 through the ES7210) |
+| Audio | ES8311 codec + NS4150B amplifier (speaker), ES7210 mic ADC; I2S MCLK 13, SCLK 12, LRCK 10, DOUT 9, DIN 11, PA enable GPIO53 | the Crew Radio, off until switched on in its card ([`p4-gauge-crew-radio`](../p4-gauge-crew-radio/README.md)): speaker and mic: MIC1 and MIC2 through the ES7210, read in TDM with MIC3, the speaker's own signal, as the echo canceller's reference; the mics need [a board fix](#the-microphone-a-board-fix) |
 | microSD | 4-bit SDIO: D0–D3 GPIO39–42, CLK 43, CMD 44 | not used |
 | Camera | MIPI-CSI 2-lane connector | not used |
 | USB | USB-C (USB Serial/JTAG + UART), USB-A 2.0 OTG high speed | flashing, logs |

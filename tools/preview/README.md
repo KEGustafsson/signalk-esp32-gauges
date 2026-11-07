@@ -29,7 +29,7 @@ combines them into one PNG. Each page is rendered twice: live
 must show dashes, a parked needle, a dimmed compass card or a dimmed, level
 boat symbol.
 
-It also renders the Crew Radio mock-ups (`out/radio<size>_*.ppm`; sheet with
+It also renders the Crew Radio's screens from sample crews (`out/radio<size>_*.ppm`; sheet with
 `contact_sheet.py out/radio720 ...`): the radio halo over gauge pages
 (someone talking, two talkers, over Reticulum, muted through a relay, this
 unit transmitting, no clock) and the Crew page, on a gauge and as the

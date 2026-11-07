@@ -28,12 +28,20 @@ p4-gauge-crew-radio/
                     firmware (waveshare-esp32-p4-wifi6-touch-lcd-4c)
   src/core/         pure C++17 + mbedTLS (+ libopus), host-tested: the wire,
                     the crypto, the receive pipeline, peers, roster, mixer,
-                    decoders, clock, supervisor, memory guard, self-test
+                    decoders, clock, supervisor, memory guard, self-test;
+                    the mic's TDM slots and channels (mic.*), the screen's
+                    level steps (levels.*), the echo canceller and noise
+                    suppression (voice.*); Reticulum in rns/
+  src/dsp/          speexdsp compiled for the P4: one wrapper per source
+                    file, its configuration per file (speex_config.h:
+                    floating point, single precision throughout)
+  src/third_party/  speexdsp 1.2.1, vendored unmodified (BSD-3-Clause)
   src/port/         what the core needs from the platform: random bytes
                     (on the P4 an HMAC-DRBG seeded from the hardware RNG
                     with its ADC entropy source on: the P4 has no radio of
                     its own to make esp_fill_random() true random)
-  src/esp/          ESP-IDF: the ES8311, I2S, the socket, the FreeRTOS tasks
+  src/esp/          ESP-IDF: the ES8311 and ES7210, I2S (TDM in), the
+                    socket, Reticulum's TCP link, the FreeRTOS tasks
   src/glue/         SensESP: the "Crew radio" card, its status lines, the
                     GNSS time listener
   tests/            host tests; vectors/ copied from crew-radio
@@ -42,9 +50,10 @@ p4-gauge-crew-radio/
 There is no separate station firmware: this repository builds one firmware
 per board (a second env compiles everything again, and what a unit is lives
 in its cards, `AGENTS.md`). A 4" switched to the radio with only the Crew
-page on it (phase 3) is the station. The display side is drawn as mock-ups
-in `common/src/ui` (`radio_halo.*`, `crew_page.*`, `crew_view.h`) and
-rendered by `tools/preview` (`out/radio*`).
+page on it (phase 3) is the station. The display side is in
+`common/src/ui` (`radio_halo.*`, `crew_page.*`, `crew_view.h`), fed by the
+4"'s `src/crew_view_source.cpp`, and rendered on a PC by `tools/preview`
+from sample crews (`out/radio*`).
 
 ### SensESP stays
 
@@ -453,7 +462,7 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 
 | File | Covers |
 |---|---|
-| `test_vectors.cpp` | The app's vector: key derivation (ASCII and non-ASCII key), the hello, the sealed packet byte for byte; the Reticulum tag and confirm key |
+| `test_vectors.cpp` | The app's vector: key derivation (ASCII and non-ASCII key), the hello, the sealed packet byte for byte, and the same packet two relays on (ttl 2, hops 4: its ttl left out of the AAD, the hops in it); the Reticulum tag and confirm key |
 | `test_packet.cpp` | Header round trip, malformed packets, clamping, the AAD, the replay window and its wrap, the relay ttl |
 | `test_hello.cpp` | Hello round trip, name truncation on a code point, the wire contract, strict UTF-8, the name rule |
 | `test_crypto.cpp` | Seal/open, tamper and wrong-key refusal, PBKDF2 against Python's hashlib |
@@ -467,6 +476,7 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 | `test_clock_policy.cpp` | Trust for a day; GNSS only when it advances with real time (a retained or frozen value never sets the clock); SNTP preferred; Signal K's datetime parsed, impossible dates refused |
 | `test_source_limiter.cpp` | One budget per WLAN source address: a burst then its rate, each address its own, the least recently used evicted and never a newcomer refused, a clock that steps back |
 | `test_supervisor.cpp` | Stall detection across the 32-bit wrap, three restarts then off; the memory ladder with hysteresis |
+| `test_lifecycle.cpp` | Starting and stopping the three tasks: a start that fails part way stops what had started, a stall restarts both workers, a stall after the last restart stops the radio for good, a task that will not stop is never restarted beside itself |
 | `test_self_test.cpp` | The power-on test passes and its bytes are the vector file's |
 | `test_spsc_ring.cpp` | Capacity and order; 200 000 frames across two threads, none lost or reordered |
 | `test_net_node.cpp` | Two nodes with one key: hello onto the roster, audio handed on once with its gap; a stranger teaches nothing; a stale packet plays nothing and teaches no address, nor does a replayed copy; our own packets dropped unopened; a keyless flood from one host does not silence the crew; neither a relayed first copy nor a late frame moves its sender's address; a hello that does not decode makes no member; an audio-only talker keeps its bars; the bridge (a first copy to the other transport with one hop spent, never back, the hop rule, off unless asked; a hello over Reticulum marks its member) |
@@ -474,7 +484,8 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 | `test_radio_state.cpp` | What the radio reports while it runs: Stopped whenever a task is not running, whatever the clock or the memory guard say; then Paused, No clock, No network, On channel |
 | `test_radio_settings.cpp` | The app's channel key rule, the multicast group and port, the key mask, the talk button's GPIO (the board's own pins and the C6's SDIO refused), the transport node's `host[:port]` |
 | `test_levels.cpp` | The screen's level steps: the volume onto multiples of 5 between mute and full, the mic gain one ES7210 PGA step at a time from the gain the codec runs at, every step one the codec keeps |
-| `test_talk.cpp` | The talk key's debounce and its 90 s time-out with the lock-out until release, kept through a moment when talking is not allowed; the transmitter's packets open on another node as this node's voice, in sequence; the burst floor; the peer snapshot never read torn (two threads); the key tones; the mic channel, level and ES7210 gain codes |
+| `test_talk.cpp` | The talk key's debounce and its 90 s time-out with the lock-out until release, kept through a moment when talking is not allowed; the transmitter's packets open on another node as this node's voice, in sequence; the burst floor; the peer snapshot never read torn (two threads); the key tones; the TDM slots unpacked, the mic channel (MIC1, MIC2, or both averaged without overflow), its level and the ES7210 gain codes |
+| `test_voice.cpp` | The mic's cleanup (`core/voice.h`) on a synthetic room: everything off passes the mic through unchanged; the echo of the speaker taken out (over 25 dB); a near voice kept within 3 dB; steady noise cut by about the setting; the settings clamped |
 | `test_curve25519.cpp` | X25519 against RFC 7748, Ed25519 against RFC 8032; a tampered message or signature, another key, S + L and a point off the curve refused; random keys sign, verify and agree; the constants against their definitions |
 | `test_rns_primitives.cpp` | HMAC (RFC 4231, a refusal leaves no MAC), HKDF (RFC 5869), the token (tamper, wrong key, short), PKCS#7, packets and the hash that ignores the transport, HDLC framing with junk and oversized frames, announces (tampered, foreign, with a ratchet), links (an impostor's proof, data, keep-alive, close, MTU signalling, a low-order key), `Carry` whole and in parts with loss, rnsd's announce budget |
 | `test_rns_vectors.cpp` | `rns.vector.json`: the name hash, identity and destination; the announce byte for byte, framed and parsed; the link request, id, proof, key, token, data packet and RTT; each end's key proof; the PCM-sized cut |
