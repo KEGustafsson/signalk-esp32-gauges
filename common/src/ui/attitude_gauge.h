@@ -29,7 +29,9 @@ class AttitudeGaugePage : public GaugePage {
   void draw_dynamic(lv_layer_t* layer) const;
   void draw_window(lv_layer_t* layer) const;
   void draw_boat(lv_layer_t* layer) const;
-  void invalidate_dynamic();
+  // What the boat and the heel pointer cover at (roll, pitch): two
+  // boxes, not one over the whole window and scale.
+  void invalidate_dynamic(float roll, float pitch);
   static void draw_cb(lv_event_t* e);
 
   lv_obj_t* overlay_;

@@ -139,6 +139,7 @@ void RadialGaugePage::draw_face() {
     draw_knob(&layer, (int32_t)p.x, (int32_t)p.y, g_.px(kPinRadius));
   }
 
+  lcd_.move_background_into(&layer);
   lv_canvas_finish_layer(face_, &layer);
 
   // Scale numbers, rotated to read along the dial like the original.
@@ -155,15 +156,31 @@ void RadialGaugePage::draw_face() {
   }
 }
 
-void RadialGaugePage::needle_area(float angle, lv_area_t* area) const {
-  // Bounding box of tip, tail and cap, plus the shadow offset.
-  lv_point_precise_t tip = polar(g_, angle, g_.pxf(kNeedleTip));
-  lv_point_precise_t tail = polar(g_, angle + 180.0f, g_.pxf(kNeedleTail));
-  const float pad = g_.pxf(kCapRadius) + g_.pxf(0.04f) + 2.0f;
-  area->x1 = (int32_t)floorf(fminf(fminf(tip.x, tail.x), g_.cx) - pad);
-  area->y1 = (int32_t)floorf(fminf(fminf(tip.y, tail.y), g_.cy) - pad);
-  area->x2 = (int32_t)ceilf(fmaxf(fmaxf(tip.x, tail.x), g_.cx) + pad);
-  area->y2 = (int32_t)ceilf(fmaxf(fmaxf(tip.y, tail.y), g_.cy) + pad);
+void RadialGaugePage::invalidate_needle(float angle) const {
+  // Five boxes along the blade (tail to tip) and one round the cap: on a
+  // slanted needle they cover less than half of its bounding box.
+  constexpr int kStrips = 5;
+  const lv_point_precise_t tip = polar(g_, angle, g_.pxf(kNeedleTip));
+  const lv_point_precise_t tail =
+      polar(g_, angle + 180.0f, g_.pxf(kNeedleTail));
+  // The blade's half width, its shadow's offset (down and right: 0.015 R,
+  // 0.022 R) and the anti-aliasing.
+  const float pad = g_.pxf(kNeedleHalfWidth) + g_.pxf(0.022f) + 3.0f;
+  for (int i = 0; i < kStrips; i++) {
+    const float ax = tail.x + (tip.x - tail.x) * i / kStrips;
+    const float ay = tail.y + (tip.y - tail.y) * i / kStrips;
+    const float bx = tail.x + (tip.x - tail.x) * (i + 1) / kStrips;
+    const float by = tail.y + (tip.y - tail.y) * (i + 1) / kStrips;
+    lv_area_t a = {(int32_t)floorf(fminf(ax, bx) - pad),
+                   (int32_t)floorf(fminf(ay, by) - pad),
+                   (int32_t)ceilf(fmaxf(ax, bx) + pad),
+                   (int32_t)ceilf(fmaxf(ay, by) + pad)};
+    lv_obj_invalidate_area(needle_obj_, &a);
+  }
+  // The cap and its shadow (draw_knob(): r / 6 below it).
+  const int32_t cap = g_.px(kCapRadius) + g_.px(kCapRadius) / 6 + 3;
+  lv_area_t c = {g_.cx - cap, g_.cy - cap, g_.cx + cap, g_.cy + cap};
+  lv_obj_invalidate_area(needle_obj_, &c);
 }
 
 void RadialGaugePage::draw_needle(lv_layer_t* layer, float angle) const {
@@ -217,13 +234,10 @@ void RadialGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
   }
 
   const float target = value_to_angle(fresh ? value.value : def_.min);
-  lv_area_t before;
-  needle_area(shown_angle_, &before);
+  const float before = shown_angle_;
   if (smooth_toward(&shown_angle_, target, 0.25f, 0.05f)) {
-    lv_area_t after;
-    needle_area(shown_angle_, &after);
-    lv_obj_invalidate_area(needle_obj_, &before);
-    lv_obj_invalidate_area(needle_obj_, &after);
+    invalidate_needle(before);
+    invalidate_needle(shown_angle_);
   }
 }
 

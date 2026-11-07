@@ -23,6 +23,7 @@ enum class GaugeKind : uint8_t {
   kRadial,    // Classic steel dial with needle and LCD readout
   kCompass,   // Rotating compass card with lubber line and LCD heading
   kAttitude,  // Sea-horizon heel/trim indicator (navigation.attitude)
+  kCrew,      // The Crew Radio's roster as a compass (the 4"'s radio); no path
 };
 
 // What a unit is for (from its hostname: unit_identity.h): a starboard or a

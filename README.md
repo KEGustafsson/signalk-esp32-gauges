@@ -36,6 +36,24 @@ every unit of that board:
 | 4" | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4` |
 | 2.1" | `waveshare-esp32-s3-touch-lcd-2.1` | `s3` |
 
+On the 4": [`p4-gauge-crew-radio/`](p4-gauge-crew-radio/README.md), the
+[Crew Radio](https://github.com/KEGustafsson/crew-radio) intercom on the
+unit's own speaker and microphone, in the 4" firmware and off until switched
+on in its **Crew radio** card (the last card of the web UI's Configuration
+page). Running on both 4" units: the crew on the channel and over
+Reticulum, push to talk with two fingers on the screen, echo cancelling and
+noise suppression on the mic, the speaker volume and mic gain on the Crew
+page. Its microphone needs a small fix on the board
+([4" README](waveshare-esp32-p4-wifi6-touch-lcd-4c/README.md#the-microphone-a-board-fix)).
+
+![The Crew page and the radio halo, rendered at 4" resolution](docs/crew-radio-4in.png)
+
+*Top: the Crew page (the roster as compass points, the channel name, the
+head count, the volume arc), someone talking, the arc switched to the mic
+gain. Middle: muted, a full crew of twelve, no network. Bottom: the radio
+halo over gauge pages: one talker, two talkers, this unit transmitting.
+Rendered on a PC by [`tools/preview`](tools/preview/) from sample crews.*
+
 The **Unit** card in the web UI (Configuration) says what a unit is, and
 all of it can be changed there:
 
@@ -330,7 +348,9 @@ rebooting the gauge (board README).
 The firmware has been brought up on the 4" and 2.1" starboard units: boot,
 touch, WiFi, Signal K, live readings and updates over WiFi (OTA) work.
 Readings against another instrument and stale/recovery behaviour on the
-hardware are not verified yet (`docs/JOURNAL.md`).
+hardware are not verified yet (`docs/JOURNAL.md`). The Crew Radio runs on
+both 4" units (with the mic's board fix); an hour's memory run, 24 h
+without a restart and a voice against the mic gain are still to do.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), on every pull
 request and every push to `main`:
@@ -351,3 +371,29 @@ firmware change locally, one env per board.
 device, with the serial log to expect; the board-specific checks are in each
 board folder's README. Working rules for contributors (and AI agents) are in
 [AGENTS.md](AGENTS.md).
+
+## Licence and credits
+
+These gauges are free software under the **European Union Public Licence
+v. 1.2** (EUPL-1.2), the same as [Crew Radio](https://github.com/KEGustafsson/crew-radio);
+the text is in [LICENSE](LICENSE) and at
+[interoperable-europe.ec.europa.eu](https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12).
+You may use, copy, change and redistribute them, also commercially, under
+the EUPL's terms, its notices included: a changed version you distribute
+stays under the EUPL. Only a work that combines these with another work
+under one of the compatible licences the EUPL lists may be distributed
+under that licence (its Article 5).
+
+Built on, each under its own licence: [SensESP](https://github.com/SignalK/SensESP)
+(Apache-2.0), [LVGL](https://lvgl.io) (MIT),
+[ESP32_Display_Panel](https://github.com/esp-arduino-libs/ESP32_Display_Panel)
+and its companion libraries (Apache-2.0), [ArduinoJson](https://arduinojson.org)
+(MIT), Arduino-ESP32 (LGPL-2.1) and ESP-IDF (Apache-2.0) with mbedTLS
+(Apache-2.0), and, for the Crew Radio, libopus
+(BSD-3-Clause, as packaged by [codec-opus](https://github.com/pschatzmann/codec-opus))
+and Xiph.org's [speexdsp](https://github.com/xiph/speexdsp) echo canceller and
+preprocessor (BSD-3-Clause, vendored in `p4-gauge-crew-radio/src/third_party/speexdsp`);
+the ES8311 register values follow Espressif's esp_codec_dev (Apache-2.0),
+and the radio's X25519 and Ed25519 follow the public-domain
+[TweetNaCl](https://tweetnacl.cr.yp.to) design, ported from Crew Radio's own.
+

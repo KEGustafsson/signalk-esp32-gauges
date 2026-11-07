@@ -97,7 +97,7 @@ Arduino examples ([ESP32-P4-WIFI6-Touch-LCD-XC](https://github.com/waveshareteam
 | Display | 4" round IPS 720×720, JD9365, 2-lane MIPI-DSI at 1500 Mbps/lane, 80 MHz DPI clock, reset GPIO27, DSI PHY on LDO channel 3 | yes |
 | Touch | GT9271 (GT911-compatible) on I2C SDA 7 / SCL 8, address 0x5D (0x14 alternative), reset/INT not routed | swipe / hold |
 | Backlight | GPIO26, LEDC PWM, active low | brightness (long press) |
-| Audio | ES8311 codec + NS4150B amplifier (speaker), ES7210 mic ADC; I2S MCLK 13, SCLK 12, LRCK 10, DOUT 9, DIN 11, PA enable GPIO53 | not used |
+| Audio | ES8311 codec + NS4150B amplifier (speaker), ES7210 mic ADC; I2S MCLK 13, SCLK 12, LRCK 10, DOUT 9, DIN 11, PA enable GPIO53 | the Crew Radio, off until switched on in its card ([`p4-gauge-crew-radio`](../p4-gauge-crew-radio/README.md)): speaker and mic (MIC1/MIC2 through the ES7210) |
 | microSD | 4-bit SDIO: D0–D3 GPIO39–42, CLK 43, CMD 44 | not used |
 | Camera | MIPI-CSI 2-lane connector | not used |
 | USB | USB-C (USB Serial/JTAG + UART), USB-A 2.0 OTG high speed | flashing, logs |
@@ -108,6 +108,29 @@ ESP32_Display_Panel has no built-in entry for this board, so
 describes it. Its JD9365 init table is copied verbatim from Waveshare's BSP
 (720×720 variant); it is byte-identical to the 4C table in Waveshare's Arduino
 examples.
+
+### The microphone: a board fix
+
+The ES7210 reads the board in TDM, four slots a frame: MIC1 and MIC2 are
+the two microphones, MIC3 is the ES8311's output wired back (the echo
+reference the Crew Radio's echo canceller works from) and MIC4 is not
+connected. So the Crew radio card offers MIC1, MIC2 and **Both** (their
+average, the default: on the starboard unit 0.8-2.2 dB less noise than
+one mic, the speaker's tone 0.7 dB below the mics' mean (MIC2 hears it one
+sample, 0.06 ms, before MIC1), and the echo cancelled as well: 33 dB).
+
+As delivered, the mics are very quiet whatever the gain: MIC1 and MIC2
+are differential inputs, and their N legs (MIC1N, MIC2N), behind their
+own 1 µF DC blocks, reach AGND only through 30 pF. With the N legs
+floating the preamp's gain hardly acts: 0 to 37.5 dB gave about +11.5 dB.
+**The fix:** replace the two 30 pF capacitors on the far side of the
+N legs' 1 µF blocks with short circuits (0 Ω or a solder bridge), so the
+N legs are AC grounded through the 1 µF; the pins keep their bias. Done on
+both units here (2026-11-07): the gain is linear, a 1 kHz tone from the
+unit's own speaker reading 7-8 at 0 dB and 547-632 at 37.5 dB (+38 dB),
+the room's noise RMS 20-50 at 37.5 dB, and the speaker at full volume
+peaking near 25 000 (no clipping, even in full duplex). Measurements and
+the echo canceller's tuning: [`p4-gauge-crew-radio`](../p4-gauge-crew-radio/README.md).
 
 ## Build settings
 

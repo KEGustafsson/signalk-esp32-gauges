@@ -24,7 +24,9 @@ class RadialGaugePage : public GaugePage {
  private:
   float value_to_angle(float value) const;
   void draw_face();
-  void needle_area(float angle, lv_area_t* area) const;
+  // What a needle at `angle` covers, as a few boxes along the blade and one
+  // round the cap: a slanted needle's bounding box is mostly dial face.
+  void invalidate_needle(float angle) const;
   void draw_needle(lv_layer_t* layer, float angle) const;
   static void needle_draw_cb(lv_event_t* e);
 

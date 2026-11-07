@@ -183,6 +183,8 @@ jobs:
           python tools/preview/contact_sheet.py out/480 out/preview-480.png
           python tools/preview/contact_sheet.py out/720 out/preview-720.png
           python tools/preview/contact_sheet.py out/stale480 out/preview-stale-480.png
+          python tools/preview/contact_sheet.py out/radio480 out/preview-radio-480.png
+          python tools/preview/contact_sheet.py out/radio720 out/preview-radio-720.png
 
       - name: Upload renders
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -214,6 +216,29 @@ jobs:
 
       - name: Run
         run: timeout 120 build/tests/gauge_tests
+
+  # ---------------------------------------------------------------------------
+  # P4 Gauge Crew Radio's core on the host, with the same sanitizers: the wire
+  # format against the crew-radio app's own vectors, the channel crypto, the
+  # receive pipeline and the mixer (p4-gauge-crew-radio/tests/).
+  # ---------------------------------------------------------------------------
+  crew-radio-tests:
+    name: Crew radio core (host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build/crew-radio-tests -j
+
+      - name: Run
+        run: timeout 120 build/crew-radio-tests/crew_radio_tests
 
   # ---------------------------------------------------------------------------
   # The scripts and the credential rules. ota_auth.py only runs at upload time,

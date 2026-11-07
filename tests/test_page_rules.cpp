@@ -5,6 +5,8 @@
 
 #include "gauge_defs.h"
 #include "page_rules.h"
+#include <string>
+
 #include "test.h"
 
 using namespace skgauges;
@@ -32,8 +34,8 @@ TEST(factory_fields_of_a_page) {
 }
 
 TEST(style_names_round_trip) {
-  for (GaugeKind k :
-       {GaugeKind::kRadial, GaugeKind::kCompass, GaugeKind::kAttitude}) {
+  for (GaugeKind k : {GaugeKind::kRadial, GaugeKind::kCompass,
+                      GaugeKind::kAttitude, GaugeKind::kCrew}) {
     GaugeKind parsed = GaugeKind::kRadial;
     CHECK(parse_page_style(page_style_name(k), &parsed));
     CHECK(parsed == k);
@@ -42,6 +44,29 @@ TEST(style_names_round_trip) {
   CHECK(!parse_page_style("Off", &kind));
   CHECK(!parse_page_style(nullptr, &kind));
   CHECK(kind == GaugeKind::kCompass);  // Unchanged on failure
+}
+
+TEST(a_page_switched_to_crew_radio_has_no_path_and_saves) {
+  CHECK(std::string(page_style_name(GaugeKind::kCrew)) == "Crew radio");
+  const PageFields current = coolant();
+  PageFields next = current;
+  next.kind = GaugeKind::kCrew;
+  CHECK(finish_page_save(current, &next, true) == PageCheck::kOk);
+  CHECK(next.sk_path.empty());  // Nothing to subscribe to
+  CHECK(next.title.empty());
+  CHECK(next.min < next.max);
+  // Its card offers only what it uses: no title, path, decimals or timeout
+  // (every schema lists "Crew radio" among the styles, so that says nothing).
+  const std::string crew = page_schema(GaugeKind::kCrew, 6);
+  for (const char* field : {"\"title\":{", "\"sk_path\"", "\"decimals\"",
+                            "\"timeout_s\"", "\"unit\""}) {
+    CHECK(crew.find(field) == std::string::npos);
+  }
+  CHECK(crew.find("\"style\"") != std::string::npos);
+  CHECK(crew.find("\"swap_with\"") != std::string::npos);
+  const std::string dial = page_schema(GaugeKind::kRadial, 6);
+  CHECK(dial.find("\"sk_path\"") != std::string::npos);
+  CHECK(dial.find("\"timeout_s\"") != std::string::npos);
 }
 
 TEST(style_change_resets_untouched_fields) {
@@ -168,7 +193,7 @@ TEST(schema_is_valid_json_with_the_style_fields) {
     JsonDocument doc;
     CHECK(deserializeJson(doc, text) == DeserializationError::Ok);
     JsonObjectConst props = doc["properties"];
-    CHECK(props["style"]["items"]["enum"].size() == 3);
+    CHECK(props["style"]["items"]["enum"].size() == 4);  // + Crew radio
     CHECK(props["sk_path"].is<JsonObjectConst>());
     CHECK(props["timeout_s"]["maximum"] == kMaxTimeoutS);
     CHECK(props["reset"]["type"] == "boolean");
@@ -183,6 +208,18 @@ TEST(schema_is_valid_json_with_the_style_fields) {
       CHECK(props["unit"]["items"]["enum"].size() > 10);
     }
   }
+}
+
+TEST(schema_of_the_crew_style_is_valid_json_without_the_dial_fields) {
+  JsonDocument doc;
+  CHECK(deserializeJson(doc, page_schema(GaugeKind::kCrew, 7)) ==
+        DeserializationError::Ok);
+  JsonObjectConst props = doc["properties"];
+  CHECK(props["style"]["items"]["enum"].size() == 4);
+  CHECK(!props["sk_path"].is<JsonObjectConst>());
+  CHECK(!props["title"].is<JsonObjectConst>());
+  CHECK(!props["timeout_s"].is<JsonObjectConst>());
+  CHECK(props["swap_with"]["maximum"] == 7);
 }
 
 TEST(save_actions) {

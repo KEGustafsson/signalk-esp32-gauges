@@ -7,6 +7,7 @@
 #include <lvgl.h>
 
 #include <memory>
+#include <string>
 
 #include "../gauge_defs.h"
 #include "../gauge_value.h"
@@ -28,6 +29,16 @@ class GaugePage {
   // Pages are kept once built (gauge_ui.cpp): only the visible one is drawn.
   void set_visible(bool visible);
 
+  // A one-finger tap at (x, y), screen px, while this page shows (the info
+  // box closed). True when the page took it; `toast`, if the page fills
+  // it, is shown briefly. Most pages take none.
+  virtual bool tap(int32_t x, int32_t y, uint32_t now_ms, std::string* toast) {
+    (void)x;
+    (void)y;
+    (void)now_ms;
+    (void)toast;
+    return false;
+  }
 
  protected:
   // A transparent full-screen object whose draw callback paints the moving

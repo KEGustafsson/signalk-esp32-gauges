@@ -64,6 +64,13 @@ const GaugeDef kDial = {
     "dial", GaugeKind::kRadial, "Gauge", "SI", "", 0.0f, 100.0f, 20.0f, 4, 1,
     250, {}, 0};
 
+// The Crew Radio page: the channel's roster, not a Signal K value. No path,
+// so nothing is subscribed for it; on a unit without the radio (the 2.1",
+// or the radio off) it says RADIO OFF.
+const GaugeDef kCrewPage = {
+    "crew", GaugeKind::kCrew, "Crew", "SI", "", 0.0f, 1.0f, 1.0f, 1, 0,
+    1000, {}, 0};
+
 // Factory pages in swipe order; a device shows its own side's engine. The
 // first page is the one a freshly flashed device starts on.
 const GaugeDef* const kPortPages[] = {&kPortRpm,     &kSpeed,   &kHeading,
@@ -109,6 +116,8 @@ const GaugeDef& style_template(GaugeKind kind) {
       return kHeading;
     case GaugeKind::kAttitude:
       return kAttitude;
+    case GaugeKind::kCrew:
+      return kCrewPage;
     case GaugeKind::kRadial:
     default:
       return kDial;

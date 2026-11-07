@@ -4,6 +4,7 @@
 
 #include "attitude_gauge.h"
 #include "compass_gauge.h"
+#include "crew_page.h"
 #include "radial_gauge.h"
 
 namespace skgauges {
@@ -71,6 +72,9 @@ std::unique_ptr<GaugePage> create_page(lv_obj_t* parent, const GaugeDef& def,
     case GaugeKind::kAttitude:
       return std::unique_ptr<GaugePage>(
           new AttitudeGaugePage(parent, def, geometry));
+    case GaugeKind::kCrew:
+      return std::unique_ptr<GaugePage>(
+          new CrewGaugePage(parent, def, geometry));
     case GaugeKind::kRadial:
     default:
       return std::unique_ptr<GaugePage>(

@@ -7,14 +7,19 @@
 #include <lvgl.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "sensesp_app.h"
 #include "sensesp_base_app.h"
 #include "gauge_settings.h"
 #include "gauge_version.h"
+#include "lvgl_port.h"
 #include "sk_data.h"
+#include "ui/crew_draw.h"
+#include "ui/crew_view.h"
 #include "ui/gauge_page.h"
+#include "ui/radio_halo.h"
 
 namespace skgauges {
 
@@ -67,7 +72,14 @@ struct UiState {
   lv_timer_t* prefs_timer = nullptr;
   String saved_page;      // What NVS holds, to skip writes that change nothing
   int saved_bright = -1;
+  // The Crew Radio's halo, on units with a radio (crew_view_available()).
+  std::unique_ptr<ui::RadioHalo> halo;
+  ui::CrewView halo_view;
+  uint32_t halo_polled_ms = 0;
 };
+
+// How often the halo looks at the radio's view; it redraws only on a change.
+constexpr uint32_t kHaloPollMs = 250;
 
 UiState* state = nullptr;
 
@@ -208,6 +220,16 @@ void show_info() {
   text += sk_data().server_connected() ? "connected" : "not connected";
   text += "\nFirmware ";
   text += firmware_version();
+  if (ui::crew_view_available()) {
+    const ui::CrewView radio = ui::read_crew_view();
+    text += "\nRadio: ";
+    text += ui::crew_status_text(radio).c_str();
+    if (radio.state == ui::RadioState::kOnChannel) {
+      text += ", ";
+      text += (int)radio.members.size();
+      text += " crew";
+    }
+  }
   text += "\n";
   text += def.title;
   text += ": ";
@@ -255,6 +277,28 @@ void screen_event_cb(lv_event_t* e) {
   } else if (code == LV_EVENT_SHORT_CLICKED) {
     if (state->info_visible) {
       hide_overlay(nullptr);  // A tap only closes the info box
+      return;
+    }
+    // A second finger landing ends the first one's press as a release
+    // (lvgl_port.cpp): the start of a two-finger talk, not a tap.
+    if (touch_fingers() >= 2) {
+      return;
+    }
+    // Where the finger went down, if it stayed there: a finger that
+    // travelled was a slow swipe, as for the hold below.
+    lv_point_t point;
+    lv_indev_get_point(indev, &point);
+    const int32_t dx = point.x - state->press_point.x;
+    const int32_t dy = point.y - state->press_point.y;
+    const int32_t slop = state->geometry.px(kHoldSlop);
+    if (dx * dx + dy * dy > slop * slop || state->page == nullptr) {
+      return;
+    }
+    std::string toast;
+    if (state->page->tap(state->press_point.x, state->press_point.y, millis(),
+                         &toast) &&
+        !toast.empty()) {
+      show_overlay(toast.c_str(), kToastShowMs, false);
     }
   } else if (code == LV_EVENT_LONG_PRESSED) {
     // LVGL fires a long press after the hold time however far the finger
@@ -316,6 +360,15 @@ void ui_timer_cb(lv_timer_t*) {
   }
   if (state->page != nullptr) {
     state->page->update(sk_data().get(gauge), millis());
+  }
+  const uint32_t now = millis();
+  if (state->halo && (uint32_t)(now - state->halo_polled_ms) >= kHaloPollMs) {
+    state->halo_polled_ms = now;
+    const ui::CrewView v = ui::read_crew_view();
+    if (v != state->halo_view) {
+      state->halo->set(v);
+      state->halo_view = v;
+    }
   }
 }
 
@@ -394,6 +447,10 @@ void ui_begin(const UiConfig& config) {
   lv_obj_add_event_cb(screen, screen_event_cb, LV_EVENT_LONG_PRESSED,
                       nullptr);
 
+  // Under the status dot, above every page: the radio never takes a page.
+  if (ui::crew_view_available()) {
+    state->halo.reset(new ui::RadioHalo(lv_layer_top(), state->geometry));
+  }
   create_status_dot();
   create_overlay();
   state->prefs_timer = lv_timer_create(write_prefs, kPrefsSaveDelayMs, nullptr);

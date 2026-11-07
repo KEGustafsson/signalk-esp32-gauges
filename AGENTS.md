@@ -77,7 +77,9 @@ If a task would require breaking one of these, stop and flag it.
     reading) and `card_store.*` (a card's file replaced all or nothing; at
     boot, a save a power cut interrupted before it was done is undone, and
     one that was done is kept), `link_policy.h` (when a dead link restarts
-    the unit). Put new logic of this kind there, with a test, rather than in
+    the unit), `arc_fit.h` (how much of a name fits along an arc),
+    `text_fold.h` (names in the fonts' ASCII: Mäkelä as Makela), `crew_tap.h`
+    (where a tap on the Crew page lands). Put new logic of this kind there, with a test, rather than in
     the Arduino glue.
   - `ui/` -- pure LVGL drawing. No Arduino, no SensESP: it must keep compiling
     on the host for `tools/preview`, which CI runs.
@@ -86,7 +88,9 @@ If a task would require breaking one of these, stop and flag it.
     glue.
 - **`waveshare-*/`** -- one PlatformIO project per board: `platformio.ini`
   (one env for both sides), `src/main.cpp` (board bring-up only), `include/lv_conf.h`,
-  and for the 4" `include/esp_panel_board_custom_conf.h`.
+  and for the 4" `include/esp_panel_board_custom_conf.h` and
+  `src/crew_view_source.*` (the radio's status as the UI's `CrewView`: the
+  only file that knows both).
 - **`include/secrets.example.h`** -- template for the gitignored, shared
   `include/secrets.h`: WiFi, Signal K server, OTA password, device addresses.
 - **`VERSION`** -- the firmware's version (one line, e.g. `0.1.0`), shown in
@@ -104,6 +108,32 @@ If a task would require breaking one of these, stop and flag it.
   web API (with `--replace` for the other side's paths), carrying the
   target's `_rev`; the login from secrets.h.
 - **`tests/`** -- host unit tests (`tests/README.md`).
+- **`p4-gauge-crew-radio/`** -- P4 Gauge Crew Radio: a Crew Radio node for
+  the 4" (its own PlatformIO library, EUPL-1.2 like crew-radio, from which
+  its core is ported), design and phases in its `README.md`. `src/core` is
+  pure C++ + mbedTLS, host-tested in its `tests/` against the crew-radio
+  app's vectors (`tests/vectors/`, copies: when crew-radio's wire changes,
+  copy them again and make the tests pass in the same change). `src/esp`
+  (ESP-IDF: codec, I2S, socket, FreeRTOS tasks) and `src/glue` (SensESP:
+  the "Crew radio" card, status lines, GNSS time) are linked into the 4"
+  firmware only (its `platformio.ini`, its `main.cpp`); off until switched
+  on in its card. The radio is a guest: it never takes the display down or
+  keeps the unit from its own restart rules. libopus (codec-opus) keeps its
+  scratch memory in one global buffer: every libopus call, encoder and
+  decoders, stays in the `cr-audio` task. Its talk keys: a GPIO button, and
+  a two-finger hold that `common/src/lvgl_port.cpp` reports
+  (`touch_fingers()`) and hides from LVGL so it never swipes a page.
+  Reticulum (`src/core/rns/`, the app's `rns/` ported, its curves by hand
+  in `curve25519.*`) runs in its own `cr-rns` task below the audio, because
+  its signature work takes tens of milliseconds; its packets reach `cr-net`
+  through a ring, so `Ingress` keeps a single caller. Copy
+  `rns.vector.json` again when crew-radio's Reticulum wire changes.
+  The mic's echo canceller and noise suppression (`src/core/voice.*`) are
+  speexdsp, vendored unmodified in `src/third_party/speexdsp` and compiled
+  only through `src/dsp/` (its configuration per file, no `-D` flag).
+  The P4's FPU is single precision only: a `double` (a constant, `sqrt`,
+  `exp`) in per-frame code is a soft-float call; `src/dsp/speex_config.h`
+  makes speexdsp single precision (it took 10 ms a frame without).
 - **`docs/`** -- `PAGES.md` (end-user guide to the pages), `BRINGUP.md`
   (first power-up of a device), `ADDING_GAUGES.md` (another page, another
   unit, a new page style, a new board: what to change), `JOURNAL.md`.
@@ -117,6 +147,7 @@ cd waveshare-esp32-s3-touch-lcd-2.1 && pio run -e s3 -t upload --upload-port por
 cmake -S tools/preview -B build/preview && cmake --build build/preview -j
 mkdir -p out && build/preview/preview 480 && build/preview/preview 720
 cmake -S tests -B build/tests && cmake --build build/tests -j && build/tests/gauge_tests
+cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build build/crew-radio-tests -j && build/crew-radio-tests/crew_radio_tests
 ```
 
 Each board has one env, so building it builds every unit's firmware.
@@ -177,6 +208,13 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   buffers (LVGL's included) in PSRAM on the 4"; the boot log's `heap` line
   shows what is left. The C6 needs ESP-Hosted 2.12.13, the version of
   Arduino-ESP32 3.3.12 (`tools/c6-update`; 4" README).
+- 4" drawing is memory-bound: its draw buffer, the dial faces and the
+  panel's frame are all in PSRAM, and a PSRAM to PSRAM copy runs at about
+  40 MB/s once the working set outgrows the 128 KB L2 cache (350 MB/s for
+  16 KB blocks; 160-350 MB/s to or from internal RAM). Redraw less (exact
+  invalid areas), not cheaper arithmetic over more memory: sprites turned
+  into a PSRAM buffer were slower than drawing the parts (2026-11-07,
+  journal).
 - 4" WiFi calls block: `WiFi.SSID()`, `WiFi.RSSI()` and the like are
   requests to the C6, answered within ESP-Hosted's 5 s
   (`DEFAULT_RPC_RSP_TIMEOUT`) or given up. SensESP makes them from the loop.
@@ -252,6 +290,20 @@ server's zones on all six pages; OTA updates of both (2026-11-01).
 Readings against another instrument and stale/recovery behaviour on
 hardware are not verified yet. Follow `docs/BRINGUP.md` and the first power-up
 checklists in each board folder's README before trusting a reading.
+
+**Crew Radio on both 4" units** (2026-11-07): on the channel and over
+Reticulum, talking, echo cancelling measured with the unit's own speaker.
+The 4"'s mics need a board fix (its README, "The microphone: a board
+fix"); both units have it. Not yet checked: an hour's memory run, 24 h
+without a restart, a voice against the mic gain.
+
+## Licence
+
+EUPL-1.2 (`LICENSE`), the same as crew-radio, for the whole repository;
+`common/library.json` and `p4-gauge-crew-radio/library.json` say so.
+Keep it when adding files. A dependency must be compatible with it
+(permissive ones -- MIT, BSD, Apache-2.0 -- are); name it in the README's
+"Licence and credits".
 
 ## Journal
 

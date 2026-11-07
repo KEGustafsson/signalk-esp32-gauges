@@ -145,6 +145,8 @@ void AttitudeGaugePage::draw_face() {
 
   // The sea horizon is part of the static face: it never moves.
   draw_window(&layer);
+  heel_lcd_.move_background_into(&layer);
+  trim_lcd_.move_background_into(&layer);
   lv_canvas_finish_layer(face_, &layer);
 
   // Scale numbers (absolute values on both sides), rotated along the arc.
@@ -308,12 +310,35 @@ void AttitudeGaugePage::draw_cb(lv_event_t* e) {
   self->draw_dynamic(lv_event_get_layer(e));
 }
 
-void AttitudeGaugePage::invalidate_dynamic() {
-  const int32_t r = g_.px(kPointerBase) + 3;
-  const int32_t bottom =
-      g_.cy + g_.px(kDiscY) + g_.px(kDiscRadius + kRimWidth) + 3;
-  lv_area_t area = {g_.cx - r, g_.cy - r, g_.cx + r, bottom};
-  lv_obj_invalidate_area(overlay_, &area);
+void AttitudeGaugePage::invalidate_dynamic(float roll, float pitch) {
+  // The boat, as draw_boat() clamps and places it: everything it draws lies
+  // within its hull's half width (the widest point) of the waterline
+  // centre, plus the mast's line width and the anti-aliasing.
+  if (pitch > kMaxPitchShown) pitch = kMaxPitchShown;
+  if (pitch < -kMaxPitchShown) pitch = -kMaxPitchShown;
+  const float oy = g_.cy + g_.pxf(kDiscY) - pitch * g_.pxf(kPitchPxPerDeg);
+  const float reach =
+      fmaxf(g_.pxf(kHullHalfTop), g_.pxf(kFreeboard + kMastHeight)) +
+      g_.pxf(0.012f) + 4.0f;
+  lv_area_t boat = {(int32_t)floorf(g_.cx - reach), (int32_t)floorf(oy - reach),
+                    (int32_t)ceilf(g_.cx + reach), (int32_t)ceilf(oy + reach)};
+  lv_obj_invalidate_area(overlay_, &boat);
+
+  // The heel pointer, as draw_dynamic() clamps and places it.
+  float heel = roll;
+  if (heel > def_.max) heel = def_.max;
+  if (heel < def_.min) heel = def_.min;
+  const float angle = heel_to_angle(heel);
+  const float half_deg = (kPointerHalf / kPointerBase) * 57.2958f;
+  const lv_point_precise_t p0 = polar(g_, angle, g_.pxf(kPointerTip));
+  const lv_point_precise_t p1 = polar(g_, angle - half_deg, g_.pxf(kPointerBase));
+  const lv_point_precise_t p2 = polar(g_, angle + half_deg, g_.pxf(kPointerBase));
+  lv_area_t ptr = {
+      (int32_t)floorf(fminf(fminf(p0.x, p1.x), p2.x)) - 3,
+      (int32_t)floorf(fminf(fminf(p0.y, p1.y), p2.y)) - 3,
+      (int32_t)ceilf(fmaxf(fmaxf(p0.x, p1.x), p2.x)) + 3,
+      (int32_t)ceilf(fmaxf(fmaxf(p0.y, p1.y), p2.y)) + 3};
+  lv_obj_invalidate_area(overlay_, &ptr);
 }
 
 void AttitudeGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
@@ -345,10 +370,12 @@ void AttitudeGaugePage::update(const GaugeValue& value, uint32_t now_ms) {
     trim_lcd_.set_dashes();
   }
 
+  const float roll_before = shown_roll_, pitch_before = shown_pitch_;
   bool moved = smooth_toward(&shown_roll_, roll, 0.3f, 0.05f);
   moved = smooth_toward(&shown_pitch_, pitch, 0.3f, 0.05f) || moved;
   if (moved) {
-    invalidate_dynamic();
+    invalidate_dynamic(roll_before, pitch_before);
+    invalidate_dynamic(shown_roll_, shown_pitch_);
   }
 }
 

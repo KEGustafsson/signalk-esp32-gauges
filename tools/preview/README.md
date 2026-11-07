@@ -29,6 +29,29 @@ combines them into one PNG. Each page is rendered twice: live
 must show dashes, a parked needle, a dimmed compass card or a dimmed, level
 boat symbol.
 
+It also renders the Crew Radio mock-ups (`out/radio<size>_*.ppm`; sheet with
+`contact_sheet.py out/radio720 ...`): the radio halo over gauge pages
+(someone talking, two talkers, over Reticulum, muted through a relay, this
+unit transmitting, no clock) and the Crew page, on a gauge and as the
+standalone station's talk-disc screen, with a full crew, with no
+network, with the arc switched to the mic gain and muted at volume 0.
+They are drawn by `common/src/ui/radio_halo.*` and `crew_page.*`
+from sample `CrewView`s (`crew_view.h`); on the 4" the radio fills that
+view (`waveshare-esp32-p4-wifi6-touch-lcd-4c/src/crew_view_source.cpp`).
+
+The documentation's two sheets come from these renders (`--ids` picks
+renders by id, in that order; `--tile` scales each one):
+
+```bash
+python3 tools/preview/contact_sheet.py out/480 docs/preview-2.1in.png
+```
+
+```bash
+python3 tools/preview/contact_sheet.py out/radio720 docs/crew-radio-4in.png --tile 480 --ids crew,crew_receiving,crew_mic_gain,crew_volume_zero,crew_many,crew_no_network,receiving,two_talkers,transmitting
+```
+
+Make them again when a page's look changes.
+
 `build/preview/preview 480 bench` also times one redraw of each page while
 its value swings (the median of the 240 frames that redrew anything; a
 frame at an unchanged value is left out), drawn in strips as tall as the board's
