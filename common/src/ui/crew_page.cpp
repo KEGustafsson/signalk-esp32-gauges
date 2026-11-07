@@ -259,6 +259,10 @@ void CrewPage::draw(lv_layer_t* layer) const {
   }
   const std::string status = crew_status_text(view_);
   const uint32_t status_color = crew_status_color(view_);
+  // The link meter only while on channel: off it, the roster it would
+  // measure is not live (no clock, paused, stopped), so no bars are lit.
+  const uint8_t bars =
+      view_.state == RadioState::kOnChannel ? view_.weakest_bars() : 0;
   if (station_) {
     title_.draw(layer, g_, 0.0f, false);
     char count[24];
@@ -273,7 +277,7 @@ void CrewPage::draw(lv_layer_t* layer) const {
     const int32_t y = g_.cy + g_.px(kStationCountY);
     draw_text(layer, count, f, crew_color::kQuiet, g_.cx - g_.px(0.04f), y);
     draw_bars(layer, g_.cx - g_.px(0.04f) + size.x / 2 + g_.px(0.07f), y,
-              g_.pxf(kBarsH), view_.weakest_bars());
+              g_.pxf(kBarsH), bars);
     draw_disc(layer);
     draw_text(layer, status.c_str(), f, status_color, g_.cx,
               g_.cy + g_.px(kStationStatusY));
@@ -282,7 +286,7 @@ void CrewPage::draw(lv_layer_t* layer) const {
               color::kMarking, g_.cx, g_.cy + g_.px(kTitleY));
     // The weakest link beside the head count, as on the phones.
     draw_bars(layer, g_.cx + g_.pxf(kLcdW / 2 + 0.085f),
-              g_.cy + g_.pxf(kLcdY), g_.pxf(0.07f), view_.weakest_bars());
+              g_.cy + g_.pxf(kLcdY), g_.pxf(0.07f), bars);
     draw_text(layer, status.c_str(), font_for_px(g_.px(kStatusFont)),
               status_color, g_.cx, g_.cy + g_.px(kStatusY));
   }

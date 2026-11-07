@@ -224,7 +224,9 @@ uint32_t next_code_point(const char* text, size_t* i) {
 }  // namespace
 
 TextImage::TextImage(const char* text, const lv_font_t* font, uint32_t color,
-                     bool tabular_digits) {
+                     bool tabular_digits,
+                     const lv_draw_buf_handlers_t* handlers) {
+  if (handlers == nullptr) handlers = lv_draw_buf_get_handlers();
   if (tabular_digits) {
     // Lay the characters out one by one: digits centred in equal cells.
     int32_t cell = 0;
@@ -253,8 +255,8 @@ TextImage::TextImage(const char* text, const lv_font_t* font, uint32_t color,
       return;
     }
     const int32_t pad = 2;
-    buf_ = lv_draw_buf_create(x + 2 * pad, h + 2 * pad,
-                              LV_COLOR_FORMAT_ARGB8888, 0);
+    buf_ = lv_draw_buf_create_ex(handlers, x + 2 * pad, h + 2 * pad,
+                                 LV_COLOR_FORMAT_ARGB8888, 0);
     if (buf_ == nullptr) {
       return;
     }
@@ -284,8 +286,8 @@ TextImage::TextImage(const char* text, const lv_font_t* font, uint32_t color,
     return;
   }
   const int32_t pad = 2;
-  buf_ = lv_draw_buf_create(size.x + 2 * pad, size.y + 2 * pad,
-                            LV_COLOR_FORMAT_ARGB8888, 0);
+  buf_ = lv_draw_buf_create_ex(handlers, size.x + 2 * pad, size.y + 2 * pad,
+                               LV_COLOR_FORMAT_ARGB8888, 0);
   if (buf_ == nullptr) {
     return;
   }

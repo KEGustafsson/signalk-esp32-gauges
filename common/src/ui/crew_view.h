@@ -25,6 +25,7 @@ enum class RadioState : uint8_t {
   kStopped,         // Its tasks are not running (the gauge carries on)
   kOnChannel,
   kNoClock,         // No wall clock: every packet would be stale
+  kNoNetwork,       // Neither the WLAN nor Reticulum up
   kPausedMemory,    // The DMA RAM guard has shed the radio
   kSelfTestFailed,  // The power-on known-answer test failed
 };

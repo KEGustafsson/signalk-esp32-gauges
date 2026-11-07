@@ -198,7 +198,7 @@ void publish(NetNode& node, const Socket& sock, int64_t now) {
   xSemaphoreTake(g->status_lock, portMAX_DELAY);
   g->status.members.swap(members);
   g->status.received = c.received;
-  g->status.rejected = c.rejected;
+  g->status.rejected = c.rejected + c.flooded;  // Over its source budget too
   g->status.stale = c.stale;
   g->status.duplicates = c.duplicates;
   g->status.late = c.late;
@@ -264,6 +264,7 @@ void net_task(void* arg) {
   // waits at most that long in its ring.
   const int timeout_ms = g->config.reticulum ? 20 : 100;
   int64_t next_beat = 0;
+  int talkers = 0;       // As last published
   int64_t retry_at = 0;  // A socket that could not be opened: tried again
   g->supervisor.arm(kSlotNet, mono_ms());
   while (g->generation.load() == gen) {
@@ -288,7 +289,10 @@ void net_task(void* arg) {
         take(node, sock, buf, (size_t)n, NetNode::Via::kLan,
              ntohl(from.sin_addr.s_addr), mono_ms());
       } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-        sock.close_it();  // Reopened on the next turn
+        // Reopened, but not at once: an error that keeps coming back would
+        // otherwise spin this task (priority 16) on core 0.
+        sock.close_it();
+        retry_at = mono_ms() + 500;
       }
     } else {
       vTaskDelay(pdMS_TO_TICKS(timeout_ms));
@@ -330,6 +334,12 @@ void net_task(void* arg) {
       }
       node.roster().expire(now);
       publish(node, sock, now);
+      talkers = node.roster().talking_count(now);
+    } else if (node.roster().talking_count(now) != talkers) {
+      // Somebody started or stopped talking: the screen's halo shows it
+      // now, not at the next once-a-second copy.
+      publish(node, sock, now);
+      talkers = node.roster().talking_count(now);
     }
   }
   sock.close_it();
@@ -426,7 +436,7 @@ void audio_task(void* arg) {
     const bool touch = c.touch_talk && g->touch_held.load();
     const bool may_talk = g->mic_ok && g->clock_ok.load() &&
                           g->shed.load() < (uint8_t)Shed::kTransmit;
-    switch (key.sample(button && may_talk, touch && may_talk, now)) {
+    switch (key.sample(button, touch, may_talk, now)) {
       case TalkKey::Event::kKeyed:
         g->encoder->reset();
         g->mixer->set_gain(0.0f);  // Half duplex: the crew is not played
@@ -644,7 +654,14 @@ void beat_task(void*) {
     g->status.shed = shed;
     g->status.free_dma = free_dma;
     g->status.restarts = g->supervisor.restarts();
-    g->status.state = running_state(!g->lifecycle->stopped(), shed, source);
+    // Connected: the WLAN socket open or Reticulum up, as cr-net last
+    // published them.
+    const bool connected =
+        g->status.socket_open ||
+        g->status.reticulum.state == ReticulumStatus::State::kConnected;
+    g->status.state =
+        running_state(!g->lifecycle->stopped(), shed, source, connected);
+    g->status.beat_ms = mono_ms();
     xSemaphoreGive(g->status_lock);
   }
 }
@@ -723,6 +740,7 @@ const char* state_text(RadioState s) {
     case RadioState::kNoAudio: return "No audio (codec or I2S)";
     case RadioState::kNoClock: return "No clock";
     case RadioState::kOnChannel: return "On channel";
+    case RadioState::kNoNetwork: return "No network";
     case RadioState::kPaused: return "Paused: memory";
     case RadioState::kStopped: return "Stopped (radio tasks not running)";
   }

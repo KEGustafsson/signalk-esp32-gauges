@@ -50,7 +50,7 @@ struct FakePort : TaskPort {
 };
 
 RadioState reported(const Lifecycle& l) {
-  return running_state(!l.stopped(), Shed::kNone, ClockSource::kSntp);
+  return running_state(!l.stopped(), Shed::kNone, ClockSource::kSntp, true);
 }
 
 }  // namespace

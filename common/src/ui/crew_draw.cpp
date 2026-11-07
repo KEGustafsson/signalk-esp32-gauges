@@ -10,6 +10,11 @@ namespace skgauges {
 namespace ui {
 
 namespace {
+const lv_draw_buf_handlers_t* arc_text_handlers = nullptr;
+}  // namespace
+
+
+namespace {
 
 constexpr float kRadToDeg = 57.29577951308232f;
 
@@ -68,10 +73,15 @@ ArcText::ArcText(const std::string& text, const lv_font_t* font,
     at += p.width;
     if (p.utf8 == " ") continue;
     Glyph g;
-    g.image = std::make_shared<TextImage>(p.utf8.c_str(), font, color);
+    g.image = std::make_shared<TextImage>(p.utf8.c_str(), font, color, false,
+                                          arc_text_handlers);
     g.offset_deg = centre / radius_px * kRadToDeg;
     glyphs_.push_back(g);
   }
+}
+
+void set_arc_text_handlers(const lv_draw_buf_handlers_t* handlers) {
+  arc_text_handlers = handlers;
 }
 
 void ArcText::draw(lv_layer_t* layer, const Geometry& g, float dial_angle_deg,
@@ -123,6 +133,8 @@ std::string crew_status_text(const CrewView& view) {
       return "RADIO STOPPED";
     case RadioState::kNoClock:
       return "NO CLOCK";
+    case RadioState::kNoNetwork:
+      return "NO NETWORK";
     case RadioState::kPausedMemory:
       return "PAUSED: MEMORY";
     case RadioState::kSelfTestFailed:
@@ -165,6 +177,7 @@ void draw_radio_pip(lv_layer_t* layer, const Geometry& g,
   const int32_t cx = g.cx - g.px(0.075f);
   const int32_t cy = g.cy + g.px(0.925f);
   const int32_t r = LV_MAX(4, g.px(0.016f));
+  if (!in_clip(layer, cx, cy, cx, cy, (float)r + 2.0f)) return;
   uint32_t c = crew_color::kTalk;
   if (view.state == RadioState::kSelfTestFailed ||
       view.state == RadioState::kNoAudio ||
@@ -204,15 +217,38 @@ CrewView read_crew_view() {
   return v;
 }
 
+bool ring_in_clip(const lv_layer_t* layer, int32_t cx, int32_t cy,
+                  int32_t r_out, int32_t r_in) {
+  // LVGL's arc covers its circle's whole bounding square and masks every row
+  // of the clip it meets, so a needle's small refresh area in the middle of
+  // the face would pay for the whole ring, once per dash. Skipped when the
+  // clip lies wholly outside the ring's outer circle or wholly inside its
+  // hole: the nearest and the farthest point of the clip from the centre.
+  const lv_area_t& c = layer->_clip_area;
+  const int64_t near_x = c.x1 > cx ? c.x1 - cx : cx > c.x2 ? cx - c.x2 : 0;
+  const int64_t near_y = c.y1 > cy ? c.y1 - cy : cy > c.y2 ? cy - c.y2 : 0;
+  const int64_t far_x = LV_MAX(LV_ABS(c.x1 - cx), LV_ABS(c.x2 - cx));
+  const int64_t far_y = LV_MAX(LV_ABS(c.y1 - cy), LV_ABS(c.y2 - cy));
+  const int64_t near2 = near_x * near_x + near_y * near_y;
+  const int64_t far2 = far_x * far_x + far_y * far_y;
+  const int64_t ro = r_out + 1, ri = r_in - 1;
+  if (near2 > ro * ro) return false;
+  if (ri > 0 && far2 < ri * ri) return false;
+  return true;
+}
+
 void draw_arc_band(lv_layer_t* layer, const Geometry& g, float r_out_frac,
                    float width_frac, uint32_t color, lv_opa_t opa,
                    float from_deg, float to_deg) {
+  const int32_t radius = g.px(r_out_frac);
+  const int32_t width = LV_MAX(1, g.px(width_frac));
+  if (!ring_in_clip(layer, g.cx, g.cy, radius, radius - width)) return;
   lv_draw_arc_dsc_t arc;
   lv_draw_arc_dsc_init(&arc);
   arc.center.x = g.cx;
   arc.center.y = g.cy;
-  arc.radius = (uint16_t)g.px(r_out_frac);
-  arc.width = LV_MAX(1, g.px(width_frac));
+  arc.radius = (uint16_t)radius;
+  arc.width = width;
   arc.color = lv_color_hex(color);
   arc.opa = opa;
   if (to_deg - from_deg >= 360.0f) {
@@ -221,6 +257,14 @@ void draw_arc_band(lv_layer_t* layer, const Geometry& g, float r_out_frac,
   } else {
     arc.start_angle = to_lv_arc_angle(from_deg);
     arc.end_angle = to_lv_arc_angle(to_deg);
+    // A part of the ring (a dash): only where its own bounds meet the clip.
+    lv_area_t area;
+    lv_draw_arc_get_area(g.cx, g.cy, arc.radius, arc.start_angle,
+                         arc.end_angle, arc.width, arc.rounded, &area);
+    const lv_area_t& c = layer->_clip_area;
+    if (area.x2 < c.x1 || area.x1 > c.x2 || area.y2 < c.y1 || area.y1 > c.y2) {
+      return;
+    }
   }
   lv_draw_arc(layer, &arc);
 }
