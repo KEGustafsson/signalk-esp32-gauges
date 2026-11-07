@@ -12,7 +12,8 @@
 // the channel for the whole crew, and nobody else could be heard. Only the
 // inputs themselves being let go ends the lock-out: a moment when talking
 // is not allowed (the memory guard, the clock) un-keys like a release but
-// does not, or a stuck button would key again after every such moment.
+// does not, and neither does it restart the 90 s: a stuck button keys again
+// after such a moment but times out 90 s after it first keyed.
 // Pure; owned by the audio task.
 
 #include <stdint.h>
@@ -43,7 +44,8 @@ class TalkKey {
   int down_ = 0;
   int up_ = 0;
   int released_ = 0;
-  int64_t keyed_ms_ = 0;
+  int64_t keyed_ms_ = 0;  // The first keying since everything was let go
+  bool fresh_ = true;
 };
 
 }  // namespace crewradio

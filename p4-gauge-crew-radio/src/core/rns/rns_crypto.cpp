@@ -47,7 +47,9 @@ bool truncated_hash(uint8_t out[kHashBytes], const uint8_t* p, size_t len) {
 // RFC 2104 over SHA-256 itself rather than mbedtls_md: the md layer
 // allocates its context, and a failed allocation left `out` as whatever the
 // stack held (a tag from an earlier packet, as it happened), which a MAC
-// check then compared against. Nothing here allocates.
+// check then compared against. No context is allocated here; SHA-256
+// itself still can fail on the P4, whose hardware SHA takes DMA buffers
+// from the heap, and every failure is reported, the output zeroed.
 bool hmac_sha256(uint8_t out[32], const uint8_t* key, size_t key_len,
                  const Part* parts, size_t n) {
   constexpr size_t kBlock = 64;

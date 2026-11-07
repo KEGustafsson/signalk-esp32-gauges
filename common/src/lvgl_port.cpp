@@ -49,6 +49,7 @@ int touch_count = 0;
 // A two-finger hold that has not yet ended with every finger lifted.
 bool touch_held_two = false;
 int touch_zero_reads = 0;  // Zero-point reads in a row during a hold
+uint32_t touch_read_at = 0;  // lv_tick_get() of the last panel read that answered
 lv_point_t touch_last = {0, 0};
 
 bool touch_isr(void*) {
@@ -83,7 +84,10 @@ void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
   // release.
   const bool blip = n == 0 && touch_held_two && ++touch_zero_reads < 2;
   if (n > 0) touch_zero_reads = 0;
+  // A blip confirms nothing: after a stall, the first read is the release
+  // the stall hid, and the count before it must not look freshly read.
   if (n >= 0 && !blip) {
+    touch_read_at = lv_tick_get();
     touch_pressed = n > 0;
     touch_count = n > 2 ? 2 : n;
   }
@@ -133,7 +137,13 @@ void* alloc_draw_buffer(size_t bytes, bool psram_only) {
 
 }  // namespace
 
-int touch_fingers() { return touch_count; }
+// A count the panel has not confirmed for kTouchStaleMs is no count: after
+// a stall of the loop (a WiFi call to the C6), the last read before it must
+// not reach the radio as fingers still down.
+constexpr uint32_t kTouchStaleMs = 500;
+int touch_fingers() {
+  return lv_tick_elaps(touch_read_at) > kTouchStaleMs ? 0 : touch_count;
+}
 
 lv_display_t* lvgl_port_init(Board* board, int buffer_lines,
                              bool buffer_in_psram) {

@@ -232,6 +232,16 @@ void task(void*) {
   RingSink sink;
   rns::ReticulumNode* node =
       new rns::ReticulumNode(g->config.tag, g->config.confirm_key, writer);
+  // A node whose identity or destination could not be hashed (the P4's
+  // hardware SHA takes DMA RAM, which can run short) would announce a
+  // destination nobody accepts, and stay unheard all session: another
+  // identity a second later instead.
+  while (!node->ok() && !g->config.stopped()) {
+    ESP_LOGW(kTag, "Reticulum identity could not be hashed: trying again");
+    delete node;
+    wait(1000);
+    node = new rns::ReticulumNode(g->config.tag, g->config.confirm_key, writer);
+  }
   rns::Deframer* deframer = new rns::Deframer();
   static uint8_t buf[1024];  // One cr-rns
   int64_t backoff = kBackoffMinMs;
@@ -248,6 +258,8 @@ void task(void*) {
     const int fd = open_connection(&why);
     if (fd < 0) {
       if (g->config.stopped()) break;
+      // Shed meanwhile: not a failure, so no backoff; back to waiting.
+      if (!g->config.may_connect()) continue;
       snprintf(note, sizeof(note), "can't connect (%s); again in %lld s", why,
                (long long)(backoff / 1000));
       set_state(ReticulumStatus::State::kConnecting, note);

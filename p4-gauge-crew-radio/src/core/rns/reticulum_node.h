@@ -108,6 +108,11 @@ class ReticulumNode {
   ReticulumNode(const ReticulumNode&) = delete;
   ReticulumNode& operator=(const ReticulumNode&) = delete;
 
+  // False when its identity, name or destination could not be hashed: it
+  // would announce a destination nobody accepts, so the caller makes
+  // another rather than connect with it.
+  bool ok() const { return ok_; }
+
   // The transport node is reachable: announce at once.
   void connected(int64_t now);
   // The connection is gone, and every link with it; the peers stay, their
@@ -235,6 +240,7 @@ class ReticulumNode {
   int64_t (*wall_s_)();
   uint8_t name_hash_[kNameHashBytes];
   uint8_t destination_[kHashBytes];
+  bool ok_ = false;
 
   Entry entries_[kMaxLinks];
   Peer peers_[kMaxPeers];

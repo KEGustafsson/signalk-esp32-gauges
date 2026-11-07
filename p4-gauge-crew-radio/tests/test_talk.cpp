@@ -200,3 +200,26 @@ TEST(talk_not_allowed_unkeys_and_does_not_key) {
   }
   CHECK(!k.talking());
 }
+
+// A stuck input with a moment every minute when talking is not allowed: it
+// keys again after each, but the 90 s run from its first keying, so it still
+// times out (each moment used to restart them, and it held the channel for
+// good).
+TEST(talk_a_stuck_input_times_out_through_moments_when_talking_is_not_allowed) {
+  TalkKey k;
+  int timeouts = 0;
+  int64_t t = 0;
+  for (; t < 10 * 60000 && timeouts == 0; t += 20) {
+    const bool allowed = (t % 60000) >= 100;  // 100 ms not allowed a minute
+    if (k.sample(true, false, allowed, t) == TalkKey::Event::kTimedOut) timeouts++;
+  }
+  CHECK(timeouts == 1);
+  CHECK(t <= 20 + TalkKey::kTimeoutMs + 60000);  // Within a minute of the 90 s
+  CHECK(k.locked_out() && !k.talking());
+  // A real release and a new press: a new 90 s.
+  for (int i = 0; i < 3; i++) k.sample(false, false, true, t += 20);
+  k.sample(true, false, true, t += 20);
+  CHECK(k.sample(true, false, true, t += 20) == TalkKey::Event::kKeyed);
+  CHECK(k.sample(true, false, true, t += TalkKey::kTimeoutMs - 100) ==
+        TalkKey::Event::kNone);
+}

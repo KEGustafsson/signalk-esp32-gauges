@@ -55,8 +55,8 @@ ReticulumNode::ReticulumNode(const char* tag, const uint8_t confirm_key[32],
   memcpy(confirm_key_, confirm_key, 32);
   char name[64];
   snprintf(name, sizeof(name), "crewradio.channel.%s", tag);
-  rns::name_hash(name, name_hash_);
-  destination_hash(name_hash_, identity_.hash(), destination_);
+  ok_ = rns::name_hash(name, name_hash_) && identity_.ok();
+  ok_ = destination_hash(name_hash_, identity_.hash(), destination_) && ok_;
 }
 
 int ReticulumNode::link_count() const {

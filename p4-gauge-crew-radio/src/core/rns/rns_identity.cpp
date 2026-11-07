@@ -14,7 +14,7 @@ Identity::Identity(const uint8_t enc_priv[32], const uint8_t sig_seed[32]) {
   memcpy(sig_seed_, sig_seed, 32);
   curve25519::x25519_public(public_key_, enc_priv_);
   curve25519::ed25519_public(public_key_ + 32, sig_seed_);
-  truncated_hash(hash_, public_key_, kPublicBytes);
+  ok_ = truncated_hash(hash_, public_key_, kPublicBytes);
 }
 
 Identity::~Identity() {
@@ -49,17 +49,18 @@ bool agree(const uint8_t priv[32], const uint8_t peer_pub[32],
   return any != 0;
 }
 
-void name_hash(const char* name, uint8_t out[kNameHashBytes]) {
+bool name_hash(const char* name, uint8_t out[kNameHashBytes]) {
   uint8_t full[32];
-  sha256(full, (const uint8_t*)name, strlen(name));
+  const bool ok = sha256(full, (const uint8_t*)name, strlen(name));
   memcpy(out, full, kNameHashBytes);
+  return ok;
 }
 
-void destination_hash(const uint8_t nh[kNameHashBytes],
+bool destination_hash(const uint8_t nh[kNameHashBytes],
                       const uint8_t identity_hash[kHashBytes],
                       uint8_t out[kHashBytes]) {
   const Part parts[2] = {{nh, kNameHashBytes}, {identity_hash, kHashBytes}};
-  truncated_hash(out, parts, 2);
+  return truncated_hash(out, parts, 2);
 }
 
 namespace {

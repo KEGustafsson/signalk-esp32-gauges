@@ -154,7 +154,12 @@ std::string fit_width(const std::string& s, const lv_font_t* font,
   while (!t.empty()) {
     t.pop_back();
     while (!t.empty() && ((uint8_t)t.back() & 0xC0) == 0x80) t.pop_back();
-    if (text_width(t + "..", font) <= max_px) return t + "..";
+    // "NOKIA..", not "NOKIA ..": a space before the dots is dropped, as the
+    // halo's arc text drops it (arc_fit.h).
+    std::string cut = t;
+    while (!cut.empty() && cut.back() == ' ') cut.pop_back();
+    if (cut.empty()) continue;
+    if (text_width(cut + "..", font) <= max_px) return cut + "..";
   }
   return "..";
 }

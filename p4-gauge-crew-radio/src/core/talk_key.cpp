@@ -16,6 +16,9 @@ TalkKey::Event TalkKey::sample(bool button, bool touch, bool may_talk,
   down_ = keying ? more(down_) : 0;
   up_ = keying ? 0 : more(up_);
   released_ = held ? 0 : more(released_);
+  // Let go of everything: the next keying starts a new 90 s. A moment when
+  // talking was not allowed does not, or a stuck input would never time out.
+  if (released_ >= kReleaseFrames) fresh_ = true;
   if (locked_) {
     // After a time-out: back only once everything has been let go.
     if (released_ >= kReleaseFrames) locked_ = false;
@@ -23,8 +26,14 @@ TalkKey::Event TalkKey::sample(bool button, bool touch, bool may_talk,
   }
   if (!talking_) {
     if (down_ >= kPressFrames) {
+      if (fresh_) {
+        keyed_ms_ = now_ms;
+        fresh_ = false;
+      } else if (now_ms - keyed_ms_ >= kTimeoutMs) {
+        locked_ = true;  // Held through the pauses for the whole time-out
+        return Event::kTimedOut;
+      }
       talking_ = true;
-      keyed_ms_ = now_ms;
       return Event::kKeyed;
     }
     return Event::kNone;

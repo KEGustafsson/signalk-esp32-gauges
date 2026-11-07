@@ -42,6 +42,9 @@ class Identity {
   const uint8_t* enc_pub() const { return public_key_; }     // 32
   const uint8_t* sig_pub() const { return public_key_ + 32; }
   const uint8_t* hash() const { return hash_; }  // kHashBytes
+  // False when hashing the key failed (the P4's hardware SHA needs DMA
+  // RAM): its hash is then zeros, a destination nobody would accept.
+  bool ok() const { return ok_; }
 
   void sign(const uint8_t* msg, size_t len, uint8_t sig[kSigBytes]) const;
   // The X25519 secret with peer_pub; false for a low-order key that yields
@@ -53,13 +56,15 @@ class Identity {
   uint8_t sig_seed_[32];
   uint8_t public_key_[kPublicBytes];
   uint8_t hash_[kHashBytes];
+  bool ok_ = false;
 };
 
 // The X25519 secret of priv and peer_pub; false when it is all zeros.
 bool agree(const uint8_t priv[32], const uint8_t peer_pub[32], uint8_t out[32]);
 
-void name_hash(const char* name, uint8_t out[kNameHashBytes]);
-void destination_hash(const uint8_t name_hash[kNameHashBytes],
+// Both false when the hash failed (their output then zeros).
+bool name_hash(const char* name, uint8_t out[kNameHashBytes]);
+bool destination_hash(const uint8_t name_hash[kNameHashBytes],
                       const uint8_t identity_hash[kHashBytes],
                       uint8_t out[kHashBytes]);
 

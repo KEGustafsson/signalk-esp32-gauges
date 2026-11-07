@@ -65,8 +65,10 @@ constexpr int kCore = 0;
 constexpr UBaseType_t kAudioPriority = 17;
 constexpr UBaseType_t kNetPriority = 16;
 constexpr UBaseType_t kBeatPriority = 3;
-// A touch sample older than this is a release (the loop samples every 20 ms).
-constexpr int64_t kTouchFreshMs = 150;
+// A touch sample older than this is a release. The loop samples every 20 ms
+// but an LVGL pass can take 150-175 ms (a compass page turning), so well
+// clear of that, and far under the 5 s WiFi stall it is for.
+constexpr int64_t kTouchFreshMs = 500;
 
 enum Slot { kSlotNet = 0, kSlotAudio = 1 };
 
@@ -886,6 +888,9 @@ void begin(const RadioConfig& config) {
   g->decoders.reset(new DecoderPool(std::move(decoders)));
   g->playout.reset(new Playout(g->mixer.get(), g->decoders.get()));
   g->status.state = RadioState::kNoClock;
+  // As fresh as cr-beat's first write a second from now: the screen would
+  // otherwise read 0 as a stalled radio and show it stopped at boot.
+  g->status.beat_ms = mono_ms();
   ESP_LOGI(kTag, "Crew radio as \"%s\", sender %08lx", config.name.c_str(),
            (unsigned long)(uint32_t)self_id);
   // The workers, then cr-beat; any of them failing leaves the radio
