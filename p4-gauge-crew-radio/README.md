@@ -18,7 +18,7 @@ switched on in its card; a gauge that never switches it on runs as before.
 |---|---|
 | **Status** | Phases 1, 2, 2b and 3 written: the 4" firmware listens to the channel, is listed on the phones' roster, talks (two-finger hold or a button), reaches the crew over Reticulum and bridges it to the WLAN, and shows the crew on the screen. Built for the board; not yet run on one (see "First power-up") |
 | **Licence** | EUPL-1.2, as the whole repository and crew-radio, from which the core is ported (`LICENSE` here too, for the library on its own) |
-| **Tests** | `tests/`: 153 host tests plus 3 with libopus, the app's own vectors (the channel's and Reticulum's) included |
+| **Tests** | `tests/`: 176 host tests plus 3 with libopus, the app's own vectors (the channel's and Reticulum's) included |
 
 ## What runs where
 
@@ -30,6 +30,9 @@ p4-gauge-crew-radio/
                     the crypto, the receive pipeline, peers, roster, mixer,
                     decoders, clock, supervisor, memory guard, self-test
   src/port/         what the core needs from the platform: random bytes
+                    (on the P4 an HMAC-DRBG seeded from the hardware RNG
+                    with its ADC entropy source on: the P4 has no radio of
+                    its own to make esp_fill_random() true random)
   src/esp/          ESP-IDF: the ES8311, I2S, the socket, the FreeRTOS tasks
   src/glue/         SensESP: the "Crew radio" card, its status lines, the
                     GNSS time listener
@@ -81,8 +84,10 @@ shorted by spray or a hand resting on the screen would otherwise hold the
 channel for the whole crew (`core/talk_key.h`).
 
 Save, then restart the unit. The Status page's **Crew radio** group shows
-the state (`On channel`, `No clock`, `No channel key`, `Self-test failed`,
-`No audio`, `Paused: memory`, `Stopped`), who is on the channel, the clock's
+the state (`On channel`, `No clock`, `No network` (neither the WLAN nor
+Reticulum up), `No channel key`, `Self-test failed`, `No audio`,
+`Paused: memory`, `Stopped`; the screen also shows a running radio whose
+status has not been refreshed for 5 s as stopped), who is on the channel, the clock's
 source, packet and audio counters, the free DMA RAM and, with Reticulum on,
 where it stands (`Waiting for the clock`, the node and why it cannot be
 reached, or its links, peers, packets each way, relayed and reconnects).
@@ -98,7 +103,9 @@ The core mirrors crew-radio's `Packet.kt`, `Hello.kt`, `ChannelCrypto.kt`,
   ttl zeroed as AAD; packets over 1024 bytes dropped unread.
 - Packet key: PBKDF2-HMAC-SHA256 over the channel key's UTF-8 bytes, 600 000
   rounds, salt `CrewRadio channel key v4`, written out by hand as in the app.
-- Receive order: global budget, our own id, AEAD (junk budget on failure),
+- Receive order: the WLAN source address's own budget (500/s, burst 1000,
+  as the app's `SourceLimiter`; before the parse), global budget, our own
+  id, AEAD (junk budget on failure),
   60 s replay window, seen-cache look, sender budget, seen-cache write; the
   caches (16384 audio, 2048 hello) and sequence marks for the process.
 - Hello v2 with `versionCode = 0`, as the plugin sends, so no phone marks
@@ -143,29 +150,44 @@ path takes no lock (`src/esp/radio_runtime.*`).
   it and the roster need no locks, where the app has a thread per
   transport. `cr-rns` is a task of its own only because its signature work
   (an announce or a link: some tens of milliseconds) must never hold up the
-  audio; it runs below `cr-net` and `cr-audio`.
+  audio; it runs below `cr-net` and `cr-audio`, and below `cr-beat` too, so
+  a flood of signatures cannot hold up the memory guard that sheds it.
 - The socket: bound to the port, joined to the group on the station
   interface, re-opened when the address changes; hellos go to the group,
   the subnet broadcast and every peer heard (`core/lan_peers.h`). Peers are
-  learned only from packets that opened with the key and were a fresh first
-  copy: a copy or a stale packet, which anyone can replay from any address,
-  teaches nothing. The table holds one address per (authenticated) sender
-  id, so a fresh packet the unit missed, replayed from a spoofed address,
-  moves only that sender's entry until its next hello, and pushes nobody
-  out. Both stricter than the app, which learns from every packet that
-  opens.
+  learned as the plugin learns them: only from packets that opened with the
+  key, were a fresh first copy, came straight from their sender (hops ==
+  ttl: a relayed copy arrives from the relay) and moved its sequence on (a
+  late frame, replayed from elsewhere, teaches nothing). The table holds one
+  address per (authenticated) sender id, so a fresh packet the unit missed,
+  replayed from a spoofed address, moves only that sender's entry until its
+  next hello, and pushes nobody out. Stricter than the app, which learns
+  from every packet that opens.
 - No resampling: the ES8311 runs at 16 kHz from MCLK = 256 fs, and libopus
   decodes at 16 kHz natively. libopus is pschatzmann/codec-opus (1.6.1,
   fixed point), pinned to one commit in both the 4"'s `platformio.ini` and
   the tests. That build keeps its scratch memory in one global buffer, so
-  every libopus call, the encoder's too, stays in `cr-audio`.
+  every libopus call, the encoder's too, stays in `cr-audio`. It is also
+  built with libopus's assertions on (its `config.h`), and a failed one
+  calls `abort()`, which restarts the unit: none trips at the fixed
+  24 kbit/s, complexity 5, constant bitrate (3000 frames each of silence,
+  tone, noise, square and DC), nor in the decoder (2 M fuzzed packets), but
+  the encoder's do at 6-12 kbit/s. Do not make the bitrate a setting
+  without a libopus built without them.
+- Decoders as the app's: one taken over only once its talker has been
+  silent 2 s (else the newcomer's frame is dropped), a gap of up to three
+  frames concealed and a longer one not.
 - I2S full duplex on one controller: out to the ES8311, in from the ES7210
   (MIC1 left, MIC2 right), the same stereo 16-bit slots both ways, three DMA
   buffers of one frame. The ES7210 is optional: without it the unit listens.
 - Talk keys: the button's GPIO is read by `cr-audio` once a frame; the
   two-finger hold comes from the gauges' touch port (`common/src/lvgl_port`,
   which reads two points and shows LVGL a release while two are down, so a
-  hold never swipes a page), passed in from the loop task every 20 ms.
+  hold never swipes a page), passed in from the loop task every 20 ms; a
+  sample older than 150 ms is a release, since the loop can wait seconds on
+  the C6. The time-out's lock-out ends only when every input is let go,
+  not at a moment when talking is not allowed. The button's GPIO may not be
+  one the board uses, the C6's SDIO lines (14-19) and reset (54) included.
 - The codec is set up once, in `setup()`, over I2C port 0 through ESP-IDF's
   legacy driver: the one ESP32_Display_Panel installs there for touch
   (linking the new driver beside it aborts at boot).
@@ -375,17 +397,18 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 | `test_mixer.cpp` | Concealment, prefill, holes, dry queues (and dry slots that stood in for frames a later gap reports, not reserved twice), the cap, gain and cues, headroom and clipping, the sweep |
 | `test_lan_peers.cpp` | Unicast once a peer is known, the burst floor, hellos' group copies, expiry, the bounded table; one address per sender (a replay moves only its own entry), one copy per address |
 | `test_roster.cpp` | Names from hellos, sorted; talking; dropped after 4 s; bounded; the 1-4 bars (`core/link_quality.h`, the app's rule: missing hellos of the last ten, lost audio of the last five seconds of talk, the worse; an overdue hello counts as missing) |
-| `test_clock_policy.cpp` | Trust for a day; GNSS only when it advances with real time (a retained or frozen value never sets the clock); SNTP preferred; Signal K's datetime parsed |
+| `test_clock_policy.cpp` | Trust for a day; GNSS only when it advances with real time (a retained or frozen value never sets the clock); SNTP preferred; Signal K's datetime parsed, impossible dates refused |
+| `test_source_limiter.cpp` | One budget per WLAN source address: a burst then its rate, each address its own, the least recently used evicted and never a newcomer refused, a clock that steps back |
 | `test_supervisor.cpp` | Stall detection across the 32-bit wrap, three restarts then off; the memory ladder with hysteresis |
 | `test_self_test.cpp` | The power-on test passes and its bytes are the vector file's |
 | `test_spsc_ring.cpp` | Capacity and order; 200 000 frames across two threads, none lost or reordered |
-| `test_net_node.cpp` | Two nodes with one key: hello onto the roster, audio handed on once with its gap; a stranger teaches nothing; a stale packet plays nothing and teaches no address, nor does a replayed copy; our own packets dropped unopened; the bridge (a first copy to the other transport with one hop spent, never back, the hop rule, off unless asked; a hello over Reticulum marks its member) |
-| `test_playout.cpp` | The decoder pool (own decoder per sender, the quietest taken over, idle released); PCM and Opus to the mixer with gaps concealed |
-| `test_radio_state.cpp` | What the radio reports while it runs: Stopped whenever a task is not running, whatever the clock or the memory guard say; then Paused, No clock, On channel |
-| `test_radio_settings.cpp` | The app's channel key rule, the multicast group and port, the key mask, the talk button's GPIO, the transport node's `host[:port]` |
-| `test_talk.cpp` | The talk key's debounce and its 90 s time-out with the lock-out until release; the transmitter's packets open on another node as this node's voice, in sequence; the burst floor; the peer snapshot never read torn (two threads); the key tones; the mic channel, level and ES7210 gain codes |
+| `test_net_node.cpp` | Two nodes with one key: hello onto the roster, audio handed on once with its gap; a stranger teaches nothing; a stale packet plays nothing and teaches no address, nor does a replayed copy; our own packets dropped unopened; a keyless flood from one host does not silence the crew; neither a relayed first copy nor a late frame moves its sender's address; a hello that does not decode makes no member; an audio-only talker keeps its bars; the bridge (a first copy to the other transport with one hop spent, never back, the hop rule, off unless asked; a hello over Reticulum marks its member) |
+| `test_playout.cpp` | The decoder pool (own decoder per sender, the quietest taken over only once it has paused, a ninth talker never resetting a live one, idle released); PCM and Opus to the mixer with short gaps concealed and a long one not |
+| `test_radio_state.cpp` | What the radio reports while it runs: Stopped whenever a task is not running, whatever the clock or the memory guard say; then Paused, No clock, No network, On channel |
+| `test_radio_settings.cpp` | The app's channel key rule, the multicast group and port, the key mask, the talk button's GPIO (the board's own pins and the C6's SDIO refused), the transport node's `host[:port]` |
+| `test_talk.cpp` | The talk key's debounce and its 90 s time-out with the lock-out until release, kept through a moment when talking is not allowed; the transmitter's packets open on another node as this node's voice, in sequence; the burst floor; the peer snapshot never read torn (two threads); the key tones; the mic channel, level and ES7210 gain codes |
 | `test_curve25519.cpp` | X25519 against RFC 7748, Ed25519 against RFC 8032; a tampered message or signature, another key, S + L and a point off the curve refused; random keys sign, verify and agree; the constants against their definitions |
-| `test_rns_primitives.cpp` | HKDF (RFC 5869), the token (tamper, wrong key, short), PKCS#7, packets and the hash that ignores the transport, HDLC framing with junk and oversized frames, announces (tampered, foreign, with a ratchet), links (an impostor's proof, data, keep-alive, close, MTU signalling, a low-order key), `Carry` whole and in parts with loss, rnsd's announce budget |
+| `test_rns_primitives.cpp` | HMAC (RFC 4231, a refusal leaves no MAC), HKDF (RFC 5869), the token (tamper, wrong key, short), PKCS#7, packets and the hash that ignores the transport, HDLC framing with junk and oversized frames, announces (tampered, foreign, with a ratchet), links (an impostor's proof, data, keep-alive, close, MTU signalling, a low-order key), `Carry` whole and in parts with loss, rnsd's announce budget |
 | `test_rns_vectors.cpp` | `rns.vector.json`: the name hash, identity and destination; the announce byte for byte, framed and parsed; the link request, id, proof, key, token, data packet and RTT; each end's key proof; the PCM-sized cut |
 | `test_rns_node.cpp` | The app's ReticulumNodeTest on a fake medium: two nodes link, prove the key and carry the channel (PCM in two parts); a stranger with another key gets nothing, its reflected proof included; a lost proof is resent; another channel and an older announce; silence, redials, time-outs; full peer and link tables; flood budgets; a link's own rate budget; announces on connect and while alone; the takeover; a dropped connection; and the plugin's two dead-connection rules |
 | `test_opus.cpp` | libopus decodes the app's 20 ms frames at 16 kHz and refuses anything else; the encoder round-trips through it (with `CREW_RADIO_OPUS`, on by default) |

@@ -18,6 +18,8 @@ constexpr float kMaxStepDeg = 52.0f;
 constexpr float kPip = 0.045f;
 constexpr float kNameDy = 0.085f;  // Name under its pip, upright
 constexpr float kNameFont = 0.052f;
+constexpr float kNameMaxW = 0.40f;  // The widest a name may be, of R
+constexpr float kNameGap = 0.03f;   // Between neighbouring names, of R
 constexpr float kBarsDy = 0.055f;  // Bars under the name
 constexpr float kBarsH = 0.045f;
 constexpr float kTitleY = -0.30f;
@@ -136,8 +138,31 @@ void CrewPage::draw_cb(lv_event_t* e) {
   self->draw(lv_event_get_layer(e));
 }
 
+namespace {
+
+int32_t text_width(const std::string& t, const lv_font_t* font) {
+  lv_point_t p;
+  lv_text_get_size(&p, t.c_str(), font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+  return p.x;
+}
+
+// `s` cut to fit max_px, ending in ".." when cut (as the halo's arc text).
+std::string fit_width(const std::string& s, const lv_font_t* font,
+                      int32_t max_px) {
+  if (text_width(s, font) <= max_px) return s;
+  std::string t = s;
+  while (!t.empty()) {
+    t.pop_back();
+    while (!t.empty() && ((uint8_t)t.back() & 0xC0) == 0x80) t.pop_back();
+    if (text_width(t + "..", font) <= max_px) return t + "..";
+  }
+  return "..";
+}
+
+}  // namespace
+
 void CrewPage::draw_member(lv_layer_t* layer, const CrewMember& m,
-                           float angle) const {
+                           float angle, float step_deg) const {
   float x, y;
   dial_point(g_, angle, kRing, &x, &y);
   const int32_t r = g_.px(kPip);
@@ -170,9 +195,21 @@ void CrewPage::draw_member(lv_layer_t* layer, const CrewMember& m,
   }
   const float nx = x;
   const float ny = y + g_.pxf(kNameDy);
-  std::string name = m.name;
-  if (m.reticulum) name += " (R)";
-  draw_text(layer, name.c_str(), font_for_px(g_.px(kNameFont)),
+  // As wide as the room to its neighbours on the ring (the chord between
+  // two pips), and never wider than kNameMaxW: a long name must not run
+  // into the next one or through the title.
+  const lv_font_t* font = font_for_px(g_.px(kNameFont));
+  float room = g_.pxf(kNameMaxW);
+  if (step_deg > 0.0f) {
+    const float chord = 2.0f * g_.pxf(kRing) *
+                        sinf(step_deg * 0.5f * 3.14159265f / 180.0f);
+    room = fminf(room, chord - g_.pxf(kNameGap));
+  }
+  const std::string suffix = m.reticulum ? " (R)" : "";
+  const std::string name =
+      fit_width(m.name, font, (int32_t)room - text_width(suffix, font)) +
+      suffix;
+  draw_text(layer, name.c_str(), font,
             m.talking && on ? crew_color::kTalk : color::kMarking,
             (int32_t)nx, (int32_t)ny, opa);
   draw_bars(layer, nx, ny + g_.pxf(kBarsDy), g_.pxf(kBarsH), on ? m.bars : 0,
@@ -254,11 +291,15 @@ void CrewPage::draw(lv_layer_t* layer) const {
         n > 1 ? fminf(kMaxStepDeg, 2.0f * kRingSpanDeg / (float)(n - 1)) : 0;
     const float first = -step * (float)(n - 1) / 2.0f;
     for (size_t i = 0; i < n; i++) {
-      draw_member(layer, view_.members[i], first + step * (float)i);
+      draw_member(layer, view_.members[i], first + step * (float)i, step);
     }
   }
   const std::string status = crew_status_text(view_);
   const uint32_t status_color = crew_status_color(view_);
+  // The link meter only while on channel: off it, the roster it would
+  // measure is not live (no clock, paused, stopped), so no bars are lit.
+  const uint8_t bars =
+      view_.state == RadioState::kOnChannel ? view_.weakest_bars() : 0;
   if (station_) {
     title_.draw(layer, g_, 0.0f, false);
     char count[24];
@@ -273,7 +314,7 @@ void CrewPage::draw(lv_layer_t* layer) const {
     const int32_t y = g_.cy + g_.px(kStationCountY);
     draw_text(layer, count, f, crew_color::kQuiet, g_.cx - g_.px(0.04f), y);
     draw_bars(layer, g_.cx - g_.px(0.04f) + size.x / 2 + g_.px(0.07f), y,
-              g_.pxf(kBarsH), view_.weakest_bars());
+              g_.pxf(kBarsH), bars);
     draw_disc(layer);
     draw_text(layer, status.c_str(), f, status_color, g_.cx,
               g_.cy + g_.px(kStationStatusY));
@@ -282,7 +323,7 @@ void CrewPage::draw(lv_layer_t* layer) const {
               color::kMarking, g_.cx, g_.cy + g_.px(kTitleY));
     // The weakest link beside the head count, as on the phones.
     draw_bars(layer, g_.cx + g_.pxf(kLcdW / 2 + 0.085f),
-              g_.cy + g_.pxf(kLcdY), g_.pxf(0.07f), view_.weakest_bars());
+              g_.cy + g_.pxf(kLcdY), g_.pxf(0.07f), bars);
     draw_text(layer, status.c_str(), font_for_px(g_.px(kStatusFont)),
               status_color, g_.cx, g_.cy + g_.px(kStatusY));
   }

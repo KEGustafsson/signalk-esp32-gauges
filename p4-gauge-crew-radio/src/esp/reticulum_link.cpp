@@ -16,6 +16,7 @@
 
 #include <atomic>
 
+#include "core/packet.h"
 #include "core/rns/reticulum_node.h"
 #include "core/rns/rns_packet.h"
 
@@ -28,7 +29,10 @@ namespace {
 constexpr const char* kTag = "radio-rns";
 constexpr size_t kRingBytes = 16 * 1024;  // Each way: ~100 Opus frames
 constexpr uint32_t kStack = 12288;
-constexpr UBaseType_t kPriority = 5;
+// Below cr-beat (3): a flood of announces and link requests (20 signature
+// checks a second, tens of ms each) must not delay the memory guard and the
+// stall supervisor, which are what shed it.
+constexpr UBaseType_t kPriority = 2;
 constexpr BaseType_t kCore = 0;
 constexpr int64_t kConnectTimeoutMs = 10000;
 constexpr int64_t kStableMs = 30000;
@@ -81,7 +85,12 @@ void publish(const rns::ReticulumNode& node, uint32_t reconnects) {
 }
 
 // Writes each Reticulum packet framed, whole or not at all: a send that
-// fails or times out breaks the connection, which is then opened again.
+// fails, or a frame not out within kSendTimeoutS in all, breaks the
+// connection, which is then opened again. SO_SNDTIMEO alone only catches a
+// send that makes no progress: lwIP returns what it got out when the time
+// is up, so an uplink that trickles a few bytes every 2 s would hold cr-rns
+// in here for good, its links unread and its ring overflowing (the app
+// closes a connection whose queue is stuck full; this is the same rule).
 class SocketWriter : public rns::ReticulumNode::Writer {
  public:
   int fd = -1;
@@ -89,10 +98,11 @@ class SocketWriter : public rns::ReticulumNode::Writer {
   void write(const uint8_t* raw, size_t len) override {
     if (fd < 0 || broken) return;
     const size_t n = rns::frame(raw, len, frame_);
+    const int64_t deadline = mono_ms() + kSendTimeoutS * 1000;
     size_t off = 0;
     while (off < n) {
       const int w = ::send(fd, frame_ + off, n - off, 0);
-      if (w <= 0) {
+      if (w <= 0 || (off + (size_t)w < n && mono_ms() >= deadline)) {
         broken = true;
         return;
       }
@@ -107,7 +117,13 @@ class SocketWriter : public rns::ReticulumNode::Writer {
 class RingSink : public rns::ReticulumNode::Sink {
  public:
   void packet(const uint8_t* p, size_t len) override {
-    if (xRingbufferSend(g->from_rns, p, len, 0) != pdTRUE) g->dropped_in++;
+    // A joined carry packet can be up to 1284 bytes; nothing over the
+    // channel's own limit is a channel packet, so it is dropped (and counted)
+    // here rather than left in the ring for cr-net to trip over.
+    if (len > packet::kMaxSize ||
+        xRingbufferSend(g->from_rns, p, len, 0) != pdTRUE) {
+      g->dropped_in++;
+    }
   }
 };
 
@@ -128,6 +144,11 @@ void wait(int64_t ms) {
   }
 }
 
+// True while a connection attempt should go on: not stopped, and not shed
+// by the memory guard or the clock (a TCP control block and its buffers are
+// internal RAM, which is what the guard sheds Reticulum to keep).
+bool may_go_on() { return !g->config.stopped() && g->config.may_connect(); }
+
 // A connected, blocking socket to the node, or -1 with *why.
 int open_connection(const char** why) {
   addrinfo hints = {};
@@ -139,6 +160,12 @@ int open_connection(const char** why) {
   if (getaddrinfo(g->config.host.c_str(), port, &hints, &found) != 0 ||
       found == nullptr) {
     *why = "name not found";
+    return -1;
+  }
+  // The name lookup can take seconds; whatever changed meanwhile wins.
+  if (!may_go_on()) {
+    freeaddrinfo(found);
+    *why = "paused";
     return -1;
   }
   const int fd = socket(found->ai_family, SOCK_STREAM, IPPROTO_TCP);
@@ -153,14 +180,14 @@ int open_connection(const char** why) {
   freeaddrinfo(found);
   if (rc != 0 && errno != EINPROGRESS) {
     ::close(fd);
-    *why = "connect refused";
+    *why = errno == ECONNREFUSED ? "connection refused" : "connect failed";
     return -1;
   }
   // The connect, a second at a time, so a stop cuts it short.
   bool done = rc == 0;
   for (int64_t waited = 0; !done && waited < kConnectTimeoutMs;
        waited += 1000) {
-    if (g->config.stopped()) break;
+    if (!may_go_on()) break;
     fd_set wr;
     FD_ZERO(&wr);
     FD_SET(fd, &wr);
@@ -181,7 +208,7 @@ int open_connection(const char** why) {
   }
   if (!done) {
     ::close(fd);
-    *why = "no answer";
+    *why = may_go_on() ? "no answer" : "paused";
     return -1;
   }
   fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
@@ -368,13 +395,18 @@ bool send(const uint8_t* packet, size_t len) {
 size_t receive(uint8_t* out, size_t cap) {
   Shared* s = ready();
   if (s == nullptr || s->from_rns == nullptr) return 0;
-  size_t len = 0;
-  void* item = xRingbufferReceive(s->from_rns, &len, 0);
-  if (item == nullptr) return 0;
-  const size_t n = len <= cap ? len : 0;  // Larger than any channel packet
-  if (n > 0) memcpy(out, item, n);
-  vRingbufferReturnItem(s->from_rns, item);
-  return n;
+  // 0 only when the ring is empty: an item too large for `cap` is dropped
+  // and the next one taken, so it never ends the caller's drain early.
+  for (;;) {
+    size_t len = 0;
+    void* item = xRingbufferReceive(s->from_rns, &len, 0);
+    if (item == nullptr) return 0;
+    const bool fits = len > 0 && len <= cap;
+    if (fits) memcpy(out, item, len);
+    vRingbufferReturnItem(s->from_rns, item);
+    if (fits) return len;
+    s->dropped_in++;
+  }
 }
 
 bool connected() {

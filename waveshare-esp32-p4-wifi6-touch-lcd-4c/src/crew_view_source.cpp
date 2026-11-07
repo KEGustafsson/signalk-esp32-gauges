@@ -1,5 +1,7 @@
 #include "crew_view_source.h"
 
+#include <esp_timer.h>
+
 #include "core/hello.h"
 #include "text_fold.h"
 #include "esp/radio_runtime.h"
@@ -17,16 +19,34 @@ ui::RadioState ui_state(crewradio::RadioState s) {
     case RadioState::kNoAudio: return ui::RadioState::kNoAudio;
     case RadioState::kNoClock: return ui::RadioState::kNoClock;
     case RadioState::kOnChannel: return ui::RadioState::kOnChannel;
+    case RadioState::kNoNetwork: return ui::RadioState::kNoNetwork;
     case RadioState::kPaused: return ui::RadioState::kPausedMemory;
     case RadioState::kStopped: return ui::RadioState::kStopped;
   }
   return ui::RadioState::kOff;
 }
 
+// A running radio's supervisor (cr-beat) writes the status once a second. If
+// it has not for this long, nothing on the screen can be confirmed: the
+// radio is shown stopped rather than on channel with its last roster.
+constexpr int64_t kBeatStaleMs = 5000;
+
+bool running(crewradio::RadioState s) {
+  using crewradio::RadioState;
+  return s == RadioState::kNoClock || s == RadioState::kOnChannel ||
+         s == RadioState::kPaused || s == RadioState::kNoNetwork;
+}
+
 }  // namespace
 
 bool crew_view_from_radio(ui::CrewView* out) {
-  const crewradio::esp::RadioStatus s = crewradio::esp::status();
+  crewradio::esp::RadioStatus s = crewradio::esp::status();
+  if (running(s.state) &&
+      esp_timer_get_time() / 1000 - s.beat_ms > kBeatStaleMs) {
+    s.state = crewradio::RadioState::kStopped;
+    s.members.clear();
+    s.talking = false;
+  }
   // Names in the fonts' ASCII (text_fold.h): a Mäkelä is drawn as Makela,
   // not as Mkel.
   out->channel = s.channel.empty() ? "CREW" : ascii_fold(s.channel);

@@ -38,7 +38,7 @@ class Transmitter {
   ChannelCrypto crypto_;
   int32_t self_;
   int hops_;
-  int32_t seq_ = 0;
+  uint32_t seq_ = 0;  // Wraps, as the phones expect (int32 on the wire)
   uint64_t sent_ = 0;
   uint8_t payload_[FrameEncoder::kMaxPayload];
 };

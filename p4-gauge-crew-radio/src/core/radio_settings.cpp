@@ -47,13 +47,16 @@ bool parse_group(const std::string& text, uint32_t* group) {
   return true;
 }
 
-bool valid_port(int port) { return port >= 1024 && port <= 65535; }
+bool valid_port(int port) {
+  return port >= 1024 && port <= 65535 && port != 3232 && port != 5353;
+}
 
 bool valid_talk_gpio(int gpio) {
   if (gpio == -1) return true;
   if (gpio < 0 || gpio > 54) return false;
-  static const int kTaken[] = {7,  8,  9,  10, 11, 12, 13, 24, 25, 26,
-                               27, 39, 40, 41, 42, 43, 44, 53};
+  static const int kTaken[] = {7,  8,  9,  10, 11, 12, 13, 14, 15, 16,
+                               17, 18, 19, 24, 25, 26, 27, 39, 40, 41,
+                               42, 43, 44, 53, 54};
   for (int t : kTaken) {
     if (gpio == t) return false;
   }

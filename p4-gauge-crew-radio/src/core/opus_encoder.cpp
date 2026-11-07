@@ -16,6 +16,9 @@ OpusFrameEncoder::OpusFrameEncoder() {
   opus_encoder_ctl(enc_, OPUS_SET_BITRATE(kBitrate));
   opus_encoder_ctl(enc_, OPUS_SET_COMPLEXITY(kComplexity));
   opus_encoder_ctl(enc_, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+  // Constant bitrate, as the app asks of MediaCodec (BITRATE_MODE_CBR): the
+  // same size every frame, so a burst never spikes the WLAN or a link.
+  opus_encoder_ctl(enc_, OPUS_SET_VBR(0));
 }
 
 OpusFrameEncoder::~OpusFrameEncoder() {

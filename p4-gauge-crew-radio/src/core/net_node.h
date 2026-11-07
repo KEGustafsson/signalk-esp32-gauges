@@ -2,8 +2,10 @@
 #pragma once
 
 // The network task's whole job, without the sockets: a datagram in, an
-// action out. It parses, runs the receive pipeline (ingress.h) with the
-// channel key, learns WLAN peers only from fresh first copies (lan_peers.h),
+// action out. It charges the WLAN source address its own budget
+// (source_limiter.h), parses, runs the receive pipeline (ingress.h) with the
+// channel key, learns WLAN peers only from fresh first copies that came
+// straight from their sender and moved its sequence on (lan_peers.h),
 // keeps the roster (roster.h), and hands audio on with the frames lost
 // before it. It also builds this node's own hello, once a second. One owner
 // (the network task), so no locks; the UI gets roster copies.
@@ -29,6 +31,7 @@
 #include "lan_peers.h"
 #include "packet.h"
 #include "roster.h"
+#include "source_limiter.h"
 
 namespace crewradio {
 
@@ -43,6 +46,7 @@ class NetNode {
   enum class Via : uint8_t { kLan, kReticulum };
   struct Counters {
     uint64_t received = 0;
+    uint64_t flooded = 0;  // Over its source address's own budget
     uint64_t malformed = 0;
     uint64_t rejected = 0;
     uint64_t junk_floods = 0;
@@ -99,6 +103,7 @@ class NetNode {
 
   int32_t self_id() const { return self_; }
   LanPeers& peers() { return peers_; }
+  SourceLimiter& sources() { return sources_; }
   Roster& roster() { return roster_; }
   const Counters& counters() const { return c_; }
 
@@ -107,9 +112,10 @@ class NetNode {
   Ingress ingress_;
   Roster roster_;
   LanPeers peers_;
+  SourceLimiter sources_;
   Config config_;
   int32_t self_;
-  int32_t hello_seq_ = 0;
+  uint32_t hello_seq_ = 0;  // Wraps, as the phones expect (int32 on the wire)
   Counters c_;
   uint8_t plain_[packet::kMaxSize];
   uint8_t relay_[packet::kMaxSize];

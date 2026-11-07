@@ -25,7 +25,6 @@ bool Roster::seen(int32_t id, int64_t now_ms) {
     *n = Node();
     n->used = true;
     n->m.id = id;
-    n->last_hello_ms = now_ms;
   }
   n->last_seen_ms = now_ms;
   return true;
@@ -37,6 +36,7 @@ void Roster::hello(int32_t id, const Hello& hello, int hops, int64_t now_ms,
   Node* n = find(id);
   n->link.hello_heard(gap);
   n->last_hello_ms = now_ms;
+  n->has_hello = true;
   n->m.name = hello.name;
   n->m.transports = hello.transports;
   n->m.hops = hops < 0 ? 0 : hops;
@@ -69,7 +69,10 @@ void Roster::snapshot(int64_t now_ms, std::vector<Member>* out) const {
     if (!n.used) continue;
     Member m = n.m;
     m.talking = now_ms - n.last_audio_ms < kTalkMs;
-    m.bars = n.link.level(now_ms - n.last_hello_ms, now_ms - n.last_audio_ms);
+    // Before its first hello a member is measured from its last packet, as
+    // the app's: an audio-only member talking cleanly keeps its bars.
+    const int64_t hello_at = n.has_hello ? n.last_hello_ms : n.last_seen_ms;
+    m.bars = n.link.level(now_ms - hello_at, now_ms - n.last_audio_ms);
     out->push_back(m);
   }
   std::sort(out->begin(), out->end(), [](const Member& a, const Member& b) {
@@ -84,10 +87,15 @@ int Roster::size() const {
 }
 
 bool Roster::anyone_talking(int64_t now_ms) const {
+  return talking_count(now_ms) > 0;
+}
+
+int Roster::talking_count(int64_t now_ms) const {
+  int count = 0;
   for (const Node& n : nodes_) {
-    if (n.used && now_ms - n.last_audio_ms < kTalkMs) return true;
+    if (n.used && now_ms - n.last_audio_ms < kTalkMs) count++;
   }
-  return false;
+  return count;
 }
 
 }  // namespace crewradio

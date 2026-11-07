@@ -48,6 +48,7 @@ bool touch_pressed = false;
 int touch_count = 0;
 // A two-finger hold that has not yet ended with every finger lifted.
 bool touch_held_two = false;
+int touch_zero_reads = 0;  // Zero-point reads in a row during a hold
 lv_point_t touch_last = {0, 0};
 
 bool touch_isr(void*) {
@@ -75,8 +76,14 @@ void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
     touch_last.y = points[0].y;
   }
   // A failed read (n < 0, e.g. an I2C glitch) repeats the last state rather
-  // than inventing a release, which would turn a hold into a tap.
-  if (n >= 0) {
+  // than inventing a release, which would turn a hold into a tap. During a
+  // two-finger hold a single read of no points does too: the GT911 answers
+  // "no new data" that way when polled between its own reports, and the
+  // radio's talk key must not un-key and re-key on it. Two in a row are a
+  // release.
+  const bool blip = n == 0 && touch_held_two && ++touch_zero_reads < 2;
+  if (n > 0) touch_zero_reads = 0;
+  if (n >= 0 && !blip) {
     touch_pressed = n > 0;
     touch_count = n > 2 ? 2 : n;
   }
@@ -84,7 +91,10 @@ void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
   // goes on seeing one until every finger is off. Lifting one of the two
   // first must not turn the other into a press, a tap or a swipe.
   if (touch_count >= 2) touch_held_two = true;
-  if (n == 0) touch_held_two = false;
+  if (n == 0 && !blip) {
+    touch_held_two = false;
+    touch_zero_reads = 0;
+  }
   if (touch_pressed && touch_count < 2 && !touch_held_two) {
     data->point = touch_last;
     data->state = LV_INDEV_STATE_PRESSED;

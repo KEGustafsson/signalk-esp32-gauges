@@ -59,10 +59,49 @@ TEST(rns_hkdf_matches_rfc5869_case_1) {
   const auto salt = seq(0, 13);
   const auto info = seq(0xf0, 10);
   uint8_t okm[42];
-  hkdf(okm, sizeof(okm), ikm.data(), ikm.size(), salt.data(), salt.size(),
-       info.data(), info.size());
+  CHECK(hkdf(okm, sizeof(okm), ikm.data(), ikm.size(), salt.data(),
+             salt.size(), info.data(), info.size()));
   CHECK(hex(okm, sizeof(okm)) ==
         "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865");
+}
+
+// RFC 4231's HMAC-SHA256 cases 1, 2 and 6 (a key longer than the block,
+// which is hashed first), one of them split across parts.
+TEST(rns_hmac_matches_rfc4231) {
+  uint8_t mac[32];
+  const std::vector<uint8_t> k1(20, 0x0b);
+  const char* d1 = "Hi There";
+  const Part p1 = {(const uint8_t*)d1, strlen(d1)};
+  CHECK(hmac_sha256(mac, k1.data(), k1.size(), &p1, 1));
+  CHECK(hex(mac, 32) ==
+        "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+
+  const char* k2 = "Jefe";
+  const char* d2a = "what do ya want ";
+  const char* d2b = "for nothing?";
+  const Part p2[2] = {{(const uint8_t*)d2a, strlen(d2a)},
+                      {(const uint8_t*)d2b, strlen(d2b)}};
+  CHECK(hmac_sha256(mac, (const uint8_t*)k2, strlen(k2), p2, 2));
+  CHECK(hex(mac, 32) ==
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
+
+  const std::vector<uint8_t> k6(131, 0xaa);
+  const char* d6 = "Test Using Larger Than Block-Size Key - Hash Key First";
+  const Part p6 = {(const uint8_t*)d6, strlen(d6)};
+  CHECK(hmac_sha256(mac, k6.data(), k6.size(), &p6, 1));
+  CHECK(hex(mac, 32) ==
+        "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54");
+}
+
+// More parts than it takes is a refusal with nothing in the output, never a
+// MAC over some of them.
+TEST(rns_hmac_refuses_too_many_parts) {
+  uint8_t mac[32];
+  memset(mac, 0x5A, sizeof(mac));
+  const uint8_t b = 1;
+  const Part parts[5] = {{&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}};
+  CHECK(!hmac_sha256(mac, &b, 1, parts, 5));
+  for (uint8_t v : mac) CHECK(v == 0);
 }
 
 TEST(rns_a_token_opens_only_with_its_key_and_untouched) {

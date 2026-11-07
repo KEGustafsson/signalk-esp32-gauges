@@ -124,8 +124,13 @@ std::string page_schema(GaugeKind kind, size_t page_count) {
   // A select is an array schema in SensESP's web UI; its value is a string.
   std::string s = R"J({"type":"object","properties":{)J";
   s += R"J("style":{"title":"Style","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Dial","Compass","Sea horizon","Crew radio"]},"description":"Dial: rpm, temperature, speed, any number. Compass: a heading. Sea horizon: navigation.attitude (heel and trim). Crew radio: who is on the Crew Radio channel (the 4\" with its radio on); no path. Save and reload the page to see the new style's settings."},)J";
-  s += R"J("title":{"title":"Title","type":"string","description":"Text on the dial face; empty for the style's default."},)J";
-  s += R"J("sk_path":{"title":"Signal K path","type":"string","description":"Empty: a compass or sea horizon reads its usual path; a dial shows dashes."},)J";
+  // The Crew radio style draws the radio's own channel name and roster: no
+  // title, no path, no decimals, no data timeout of its own to set.
+  const bool crew = kind == GaugeKind::kCrew;
+  if (!crew) {
+    s += R"J("title":{"title":"Title","type":"string","description":"Text on the dial face; empty for the style's default."},)J";
+    s += R"J("sk_path":{"title":"Signal K path","type":"string","description":"Empty: a compass or sea horizon reads its usual path; a dial shows dashes."},)J";
+  }
   if (kind == GaugeKind::kRadial) {
     s += R"J("unit":{"title":"Display unit","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":[)J" +
          units +
@@ -135,8 +140,10 @@ std::string page_schema(GaugeKind kind, size_t page_count) {
     s += R"J("max":{"title":"Scale maximum","type":"number"},)J";
     s += R"J("show_zones":{"title":"Show Signal K zones","type":"boolean","description":"The path's meta.zones from the server: nominal, alert, warn, alarm, emergency."},)J";
   }
-  s += R"J("decimals":{"title":"Decimals","type":"integer","minimum":0,"maximum":3},)J";
-  s += R"J("timeout_s":{"title":"Data timeout [s]","type":"integer","minimum":1,"maximum":600,"description":"A value older than this shows dashes."},)J";
+  if (!crew) {
+    s += R"J("decimals":{"title":"Decimals","type":"integer","minimum":0,"maximum":3},)J";
+    s += R"J("timeout_s":{"title":"Data timeout [s]","type":"integer","minimum":1,"maximum":600,"description":"A value older than this shows dashes."},)J";
+  }
   s += R"J("reset":{"title":"Reset to factory settings","type":"boolean","description":"Tick and save: this page goes back to its factory setting (other changes in the same save are ignored). Reload the page before saving this card again."},)J";
   s += R"J("swap_with":{"title":"Swap with page","type":"integer","minimum":0,"maximum":)J" +
        std::to_string(page_count) +

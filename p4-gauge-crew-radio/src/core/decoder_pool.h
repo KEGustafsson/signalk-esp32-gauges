@@ -3,8 +3,10 @@
 
 // Per-sender decoders, as the app's engine: a decoder keeps state between
 // frames, so each talker needs its own; at most kMax at once, the quietest
-// (least recently used) taken over when a new talker needs one, and released
-// after kIdleMs of silence. The decoders are made once, up front (on the
+// (least recently used) taken over when a new talker needs one, but only if
+// it has been silent kEvictIdleMs (else the newcomer's frame is dropped: a
+// ninth talker must not garble all eight by resetting a live decoder every
+// frame), and released after kIdleMs of silence. The decoders are made once, up front (on the
 // node each Opus decoder is about 18 KB, in PSRAM) and reset when they
 // change hands, so nothing is allocated while audio flows. Owned by the
 // playout task.
@@ -33,6 +35,7 @@ class DecoderPool {
  public:
   static constexpr size_t kMax = 8;
   static constexpr int64_t kIdleMs = 30000;
+  static constexpr int64_t kEvictIdleMs = 2000;  // The app's EVICT_IDLE_NS
 
   explicit DecoderPool(std::vector<std::unique_ptr<FrameDecoder>> decoders)
       : slots_(decoders.size()) {
@@ -41,8 +44,9 @@ class DecoderPool {
     }
   }
 
-  // The decoder for `sender`, taking over the quietest one if none is free;
-  // nullptr only for a pool made without decoders.
+  // The decoder for `sender`, taking over the quietest one if none is free
+  // and it has paused; nullptr when every one is in use by a talker heard
+  // within kEvictIdleMs (or for a pool made without decoders).
   FrameDecoder* get(int32_t sender, int64_t now_ms) {
     Slot* free_slot = nullptr;
     Slot* quietest = nullptr;
@@ -57,7 +61,11 @@ class DecoderPool {
         quietest = &s;
       }
     }
-    Slot* slot = free_slot != nullptr ? free_slot : quietest;
+    Slot* slot = free_slot;
+    if (slot == nullptr && quietest != nullptr &&
+        now_ms - quietest->last_ms >= kEvictIdleMs) {
+      slot = quietest;
+    }
     if (slot == nullptr) return nullptr;
     slot->decoder->reset();  // Someone else's state is not ours
     slot->used = true;

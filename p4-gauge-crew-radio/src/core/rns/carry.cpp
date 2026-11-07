@@ -15,12 +15,12 @@ constexpr uint8_t kAskAnswer = 0x82;
 constexpr size_t kAskHead = 5;  // kind | id u16 | index | count
 }  // namespace
 
-void key_proof(const uint8_t confirm_key[32], const uint8_t link_id[kHashBytes],
+bool key_proof(const uint8_t confirm_key[32], const uint8_t link_id[kHashBytes],
                bool initiator, uint8_t out[kProofBytes]) {
   const uint8_t role = initiator ? 1 : 0;
   const Part parts[2] = {{&role, 1}, {link_id, kHashBytes}};
   out[0] = kKeyProof;
-  hmac_sha256(out + 1, confirm_key, 32, parts, 2);
+  return hmac_sha256(out + 1, confirm_key, 32, parts, 2);
 }
 
 bool is_key_proof(const uint8_t* payload, size_t len) {
@@ -32,7 +32,7 @@ bool proof_matches(const uint8_t* payload, size_t len,
                    const uint8_t link_id[kHashBytes], bool initiator) {
   if (!is_key_proof(payload, len)) return false;
   uint8_t expected[kProofBytes];
-  key_proof(confirm_key, link_id, initiator, expected);
+  if (!key_proof(confirm_key, link_id, initiator, expected)) return false;
   return equal(payload, expected, kProofBytes);
 }
 

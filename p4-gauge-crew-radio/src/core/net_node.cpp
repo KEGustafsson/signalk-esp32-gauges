@@ -14,6 +14,12 @@ bool NetNode::on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
                         Relay* relay) {
   c_.received++;
   if (relay != nullptr) *relay = Relay();
+  // Before anything else, even the parse: a flood from one host costs that
+  // host's budget, never the crew's share of the global one.
+  if (via == Via::kLan && !sources_.allow(from, now_ms)) {
+    c_.flooded++;
+    return false;
+  }
   Header h;
   if (!packet::parse(p, len, &h)) {
     c_.malformed++;
@@ -47,13 +53,6 @@ bool NetNode::on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
 
   switch (r.kind) {
     case Ingress::Kind::kAccept:
-      // A first copy, fresh, that opened with the channel key: its address
-      // is a crew member's. Not from a copy or a stale packet, which anyone
-      // can replay from any address they like to fill the table and send
-      // the unit's voice elsewhere; a crew member's own first copy (one a
-      // second, its hello) still teaches it. Only over the WLAN: a packet
-      // that came over Reticulum has no LAN address.
-      if (via == Via::kLan) peers_.confirm(from, h.sender_id, now_ms);
       break;
     case Ingress::Kind::kDuplicate:
     case Ingress::Kind::kRelayOnly:  // Forwarded at most, never played twice
@@ -68,15 +67,28 @@ bool NetNode::on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
       return false;
   }
 
+  // Where the sender's unicast copies go, learnt as the plugin does: only
+  // from a first copy, fresh, that opened with the channel key (not a copy
+  // or a stale packet, which anyone can replay from any address), that came
+  // straight from its sender (hops - ttl == 0: a relayed one arrives from
+  // the relay's address, which would then get them instead), and that moved
+  // its sender's sequence on (a late one, replayed from elsewhere, must not
+  // re-point them). Only over the WLAN: Reticulum has no LAN address. The
+  // address itself is not authenticated (the AEAD covers the packet, not
+  // the IP source); a crew member's own next first copy, one a second,
+  // corrects it.
+  const bool direct = via == Via::kLan && h.hops == h.ttl;
+
   if (h.codec == Codec::kHello) {
     c_.hellos++;
     const int gap = ingress_.hello_gap(h.sender_id, h.seq);
+    if (direct && gap >= 0) peers_.confirm(from, h.sender_id, now_ms);
     Hello hello;
+    // A hello that does not decode says nothing about its sender, as in the
+    // app: no roster entry from it.
     if (Hello::decode(plain_, (size_t)r.plain_len, &hello)) {
       roster_.hello(h.sender_id, hello, hello.ttl - h.ttl, now_ms, gap,
                     via == Via::kReticulum);
-    } else {
-      roster_.seen(h.sender_id, now_ms);
     }
     return false;
   }
@@ -86,6 +98,7 @@ bool NetNode::on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
     c_.late++;
     return false;
   }
+  if (direct) peers_.confirm(from, h.sender_id, now_ms);
   c_.audio++;
   roster_.audio(h.sender_id, now_ms, gap);
   audio->sender = h.sender_id;
@@ -107,7 +120,7 @@ size_t NetNode::build_hello(int64_t now_s, uint8_t out[kMaxHello]) {
 
   Header h;
   h.sender_id = self_;
-  h.seq = hello_seq_++;
+  h.seq = (int32_t)hello_seq_++;
   h.codec = Codec::kHello;
   h.ttl = config_.max_hops;
   h.hops = config_.max_hops;

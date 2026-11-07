@@ -35,15 +35,19 @@ TEST(settings_group_is_a_plain_ipv4_multicast_address) {
 TEST(settings_port_and_mask) {
   CHECK(valid_port(47474) && valid_port(1024) && valid_port(65535));
   CHECK(!valid_port(1023) && !valid_port(65536));
+  CHECK(!valid_port(3232) && !valid_port(5353));  // OTA, mDNS
   CHECK(mask_key("abcd-efgh-jkmn").size() > 4);
   CHECK(mask_key("abcd-efgh-jkmn").substr(mask_key("abcd-efgh-jkmn").size() - 4) == "jkmn");
   CHECK(mask_key("abc").empty());
 }
 
 TEST(settings_talk_gpio_avoids_the_boards_own_pins) {
-  CHECK(valid_talk_gpio(-1) && valid_talk_gpio(0) && valid_talk_gpio(54));
+  CHECK(valid_talk_gpio(-1) && valid_talk_gpio(0) && valid_talk_gpio(20));
   CHECK(valid_talk_gpio(32) && valid_talk_gpio(45));
   CHECK(!valid_talk_gpio(-2) && !valid_talk_gpio(55));
+  // The C6's SDIO lines and its reset: the WiFi, with no web UI left to undo
+  // a pin set wrong.
+  for (int sdio : {14, 15, 16, 17, 18, 19, 54}) CHECK(!valid_talk_gpio(sdio));
   for (int taken : {7, 8, 9, 10, 11, 12, 13, 24, 25, 26, 27, 39, 44, 53}) {
     CHECK(!valid_talk_gpio(taken));
   }

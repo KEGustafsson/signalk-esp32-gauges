@@ -92,6 +92,9 @@ struct RadioStatus {
   int mic_level = 0;  // RMS of the last frame heard by the mic
   uint64_t relayed = 0;
   ReticulumStatus reticulum;
+  // When cr-beat last wrote this (esp_timer ms): a screen that sees it old
+  // knows the radio stopped telling it anything, and says so.
+  int64_t beat_ms = 0;
   // For the screen (the 4"'s Crew page and halo).
   std::string channel;
   int volume = 0;  // 0..100, the card's

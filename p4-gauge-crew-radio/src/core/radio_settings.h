@@ -28,11 +28,17 @@ bool valid_channel_key(const std::string& key);
 // the group in host byte order.
 bool parse_group(const std::string& text, uint32_t* group);
 
+// The channel's UDP port: 1024-65535, but not one the gauge itself listens
+// on with SO_REUSEADDR as well (ArduinoOTA 3232, mDNS 5353), where lwIP
+// would hand each datagram to only one of the two and OTA updates over WiFi
+// could stop.
 bool valid_port(int port);
 
 // A GPIO for the talk button: -1 (none), or one of the ESP32-P4's 0-54 that
-// the 4" does not already use (touch I2C 7/8, I2S 9-13, backlight 26, LCD
-// reset 27, microSD 39-44, amplifier enable 53, USB 24/25).
+// the 4" does not already use (touch I2C 7/8, I2S 9-13, the SDIO link to the
+// C6 14-19 and its reset 54, backlight 26, LCD reset 27, microSD 39-44,
+// amplifier enable 53, USB 24/25). Configuring an SDIO pin as an input
+// would take the WiFi down with no web UI left to undo it.
 bool valid_talk_gpio(int gpio);
 
 // The port of a Reticulum transport node's TCP server interface when none

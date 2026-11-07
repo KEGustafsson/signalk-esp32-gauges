@@ -1,6 +1,6 @@
 #pragma once
 
-// Drawing pieces shared by the radio halo and the Crew page (MOCK-UP; see
+// Drawing pieces shared by the radio halo and the Crew page (see
 // crew_view.h).
 
 #include <lvgl.h>
@@ -24,6 +24,12 @@ constexpr uint32_t kQuiet = 0xBDBDBD;     // Status text with nothing to say
 constexpr uint32_t kUnlit = 0x5A5A60;     // A bar or a pip that is off
 constexpr uint32_t kBand = 0x0A0A0C;      // The halo's band over the bezel
 }  // namespace crew_color
+
+// Where ArcText's glyph images are allocated (nullptr: LVGL's default). The
+// 4" sets PSRAM (its main.cpp): a talker's name is tens of small images,
+// each under the 4 KB at which the heap moves to PSRAM by itself, made again
+// whenever the talker changes, and internal RAM is what ESP-Hosted needs.
+void set_arc_text_handlers(const lv_draw_buf_handlers_t* handlers);
 
 // Text set along an arc of the round screen, one glyph image per character,
 // each rotated to the arc's tangent: the name of whoever is talking, around
@@ -66,6 +72,13 @@ uint32_t crew_status_color(const CrewView& view);
 void draw_radio_pip(lv_layer_t* layer, const Geometry& g,
                     const CrewView& view);
 
+// False when the refresh area (layer's clip) cannot touch the ring between
+// r_in and r_out around (cx, cy).
+bool ring_in_clip(const lv_layer_t* layer, int32_t cx, int32_t cy,
+                  int32_t r_out, int32_t r_in);
+
+// A band of the ring r_out_frac wide width_frac, from from_deg to to_deg;
+// nothing when the refresh area cannot touch it.
 void draw_arc_band(lv_layer_t* layer, const Geometry& g, float r_out_frac,
                    float width_frac, uint32_t color, lv_opa_t opa,
                    float from_deg = 0.0f, float to_deg = 360.0f);
