@@ -30,6 +30,7 @@ add_executable(gauge_tests
   test_card_store.cpp
   test_link_policy.cpp
   test_arc_fit.cpp
+  test_text_fold.cpp
   test_unit_identity.cpp
   ${COMMON}/card_store.cpp
   ${COMMON}/gauge_defs.cpp

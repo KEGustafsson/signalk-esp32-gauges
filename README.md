@@ -363,9 +363,11 @@ These gauges are free software under the **European Union Public Licence
 v. 1.2** (EUPL-1.2), the same as [Crew Radio](https://github.com/KEGustafsson/crew-radio);
 the text is in [LICENSE](LICENSE) and at
 [interoperable-europe.ec.europa.eu](https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12).
-You may use, copy, change and redistribute them, also commercially, as long
-as changed versions you distribute stay under the EUPL (or one of the
-compatible licences it lists) and keep the notices.
+You may use, copy, change and redistribute them, also commercially, under
+the EUPL's terms, its notices included: a changed version you distribute
+stays under the EUPL. Only a work that combines these with another work
+under one of the compatible licences the EUPL lists may be distributed
+under that licence (its Article 5).
 
 Built on, each under its own licence: [SensESP](https://github.com/SignalK/SensESP)
 (Apache-2.0), [LVGL](https://lvgl.io) (MIT),

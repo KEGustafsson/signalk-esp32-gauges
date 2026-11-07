@@ -77,7 +77,8 @@ If a task would require breaking one of these, stop and flag it.
     reading) and `card_store.*` (a card's file replaced all or nothing; at
     boot, a save a power cut interrupted before it was done is undone, and
     one that was done is kept), `link_policy.h` (when a dead link restarts
-    the unit), `arc_fit.h` (how much of a name fits along an arc). Put new logic of this kind there, with a test, rather than in
+    the unit), `arc_fit.h` (how much of a name fits along an arc),
+    `text_fold.h` (names in the fonts' ASCII: Mäkelä as Makela). Put new logic of this kind there, with a test, rather than in
     the Arduino glue.
   - `ui/` -- pure LVGL drawing. No Arduino, no SensESP: it must keep compiling
     on the host for `tools/preview`, which CI runs.
