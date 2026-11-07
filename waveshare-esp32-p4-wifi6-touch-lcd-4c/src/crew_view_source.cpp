@@ -1,6 +1,7 @@
 #include "crew_view_source.h"
 
 #include "core/hello.h"
+#include "text_fold.h"
 #include "esp/radio_runtime.h"
 
 namespace skgauges {
@@ -26,7 +27,9 @@ ui::RadioState ui_state(crewradio::RadioState s) {
 
 bool crew_view_from_radio(ui::CrewView* out) {
   const crewradio::esp::RadioStatus s = crewradio::esp::status();
-  out->channel = s.channel.empty() ? "CREW" : s.channel;
+  // Names in the fonts' ASCII (text_fold.h): a Mäkelä is drawn as Makela,
+  // not as Mkel.
+  out->channel = s.channel.empty() ? "CREW" : ascii_fold(s.channel);
   out->state = ui_state(s.state);
   out->muted = false;  // The radio has no mute of its own yet
   out->transmitting = s.talking;
@@ -35,7 +38,7 @@ bool crew_view_from_radio(ui::CrewView* out) {
   out->members.clear();
   for (const crewradio::Member& m : s.members) {
     ui::CrewMember c;
-    c.name = m.name.empty() ? "?" : m.name;  // Before its first hello
+    c.name = m.name.empty() ? "?" : ascii_fold(m.name);  // "?": no hello yet
     c.bars = (uint8_t)m.bars;
     c.relayed = m.hops > 0;
     // Over Reticulum: heard on this unit's own Reticulum link, or through a
