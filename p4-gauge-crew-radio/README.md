@@ -16,9 +16,9 @@ switched on in its card; a gauge that never switches it on runs as before.
 
 | | |
 |---|---|
-| **Status** | Phases 1, 2, 2b and 3 written: the 4" firmware listens to the channel, is listed on the phones' roster, talks (two-finger hold or a button), reaches the crew over Reticulum and bridges it to the WLAN, and shows the crew on the screen. Built for the board; not yet run on one (see "First power-up") |
+| **Status** | Phases 1, 2, 2b and 3 written and running on both 4" units (2026-11-07): the firmware listens to the channel, is listed on the phones' roster, talks (two-finger hold or a button), reaches the crew over Reticulum and bridges it to the WLAN, cleans up its mic (echo cancelling, noise suppression) and shows the crew on the screen. The mic needs a board fix (the 4" README). Not yet checked: the hour's memory run, 24 h without a restart, a voice against the mic gain |
 | **Licence** | EUPL-1.2, as the whole repository and crew-radio, from which the core is ported (`LICENSE` here too, for the library on its own) |
-| **Tests** | `tests/`: 176 host tests plus 3 with libopus, the app's own vectors (the channel's and Reticulum's) included |
+| **Tests** | `tests/`: 191 host tests (libopus's included), the app's own vectors (the channel's and Reticulum's) included |
 
 ## What runs where
 
@@ -55,7 +55,8 @@ which also brings the boat's GNSS time for the radio's clock (`src/glue`).
 
 ## Using it
 
-In the unit's web UI, Configuration, **Crew radio**:
+In the unit's web UI, Configuration, **Crew radio** (the last card on the
+page):
 
 | Field | |
 |---|---|
@@ -298,7 +299,11 @@ path takes no lock (`src/esp/radio_runtime.*`).
 
 ## On the display
 
-Mock-ups, drawn with the gauges' own LVGL code and rendered by the preview:
+![The Crew page and the radio halo, rendered at 4" resolution](../docs/crew-radio-4in.png)
+
+Drawn with the gauges' own LVGL code; the preview renders them from sample
+crews (above: the Crew page, talking, the mic gain, muted, a full crew, no
+network; the halo over gauge pages):
 
 - **Halo** on every gauge page: nothing but a radio pip beside the status
   dot until someone talks; then an opaque band over the bezel (outside the
@@ -357,17 +362,18 @@ ported rule for rule into `src/core/rns/` and checked against the same
 | Phase | Content | Done when |
 |---|---|---|
 | **0. Core** (done) | The wire format, crypto, receive pipeline, mixer and concealment ported; host tests against the app's vectors; CI job | The vector packet byte for byte, under ASan/UBSan |
-| **1. Listen** (written, to be run) | ES8311 + amplifier, I2S, the WLAN socket, Opus decode, hello and roster, clock (SNTP, GNSS), self-test, supervisor, memory guard; the card and status lines in the 4" firmware | Phones list the unit; the plugin's announcements are heard clearly; the `heap` line steady for an hour with two talkers |
-| **2. Talk** (written, to be run) | ES7210 capture (TDM, with the echo reference), two-finger and GPIO talk keys with the time-out, Opus or PCM, the burst floor, key beeps, half duplex (full duplex as an option), echo cancelling and noise suppression | The phones' Status counters show no loss from the unit |
-| **2b. Reticulum** (written, to be run) | The `rns` port (curves, crypto, packets, links, the node), `cr-rns`, the bridge, the card's Reticulum fields | A phone ashore and the unit talk through rnsd 1.5.4; a phone on board hears the phone ashore through the unit |
-| **3. On the screen** (written, to be run) | The halo on every page, the "Crew radio" page style, the radio's state on the info overlay, the roster's 1-4 bars (`core/link_quality.h`), a channel name in the card | Preview renders both; 24 h with no restart caused by the radio |
+| **1. Listen** (running; the hour's memory run to do) | ES8311 + amplifier, I2S, the WLAN socket, Opus decode, hello and roster, clock (SNTP, GNSS), self-test, supervisor, memory guard; the card and status lines in the 4" firmware | Phones list the unit; the plugin's announcements are heard clearly; the `heap` line steady for an hour with two talkers |
+| **2. Talk** (running; the mic measured with the unit's own speaker, a voice against the gain to do) | ES7210 capture (TDM, with the echo reference), two-finger and GPIO talk keys with the time-out, Opus or PCM, the burst floor, key beeps, half duplex (full duplex as an option), echo cancelling and noise suppression | The phones' Status counters show no loss from the unit |
+| **2b. Reticulum** (running: links up, the WLAN bridged) | The `rns` port (curves, crypto, packets, links, the node), `cr-rns`, the bridge, the card's Reticulum fields | A phone ashore and the unit talk through rnsd 1.5.4; a phone on board hears the phone ashore through the unit |
+| **3. On the screen** (running; 24 h to do) | The halo on every page, the "Crew radio" page style, the radio's state on the info overlay, the roster's 1-4 bars (`core/link_quality.h`), a channel name in the card | Preview renders both; 24 h with no restart caused by the radio |
 | **3b. Station** | The talk disc (one-finger hold on the disc, which must not fight the page gestures), a mute on the screen (the Crew page's volume and mic gain taps are done: dragging the arc would be a page swipe) | The station screen in use at the nav table |
 | **4. Extras** | Adaptive playout, two-mic wind gate | Measured against the fixed buffer and the one-mic gate in engine noise |
 
 ## First power-up (phase 1)
 
-Nothing of this has run on a board yet. Before trusting it, with a phone
-on the channel and the serial log open (`pio device monitor`):
+Run on both 4" units on 2026-11-07 (`docs/JOURNAL.md`); for a new unit,
+or after a change to the radio, with a phone on the channel and the serial
+log open (`pio device monitor`):
 
 1. **Off by default.** A unit with the card untouched: no `radio:` lines,
    the gauge as before.
@@ -391,9 +397,11 @@ on the channel and the serial log open (`pio device monitor`):
 
 Then talking (phase 2):
 
-9. **The mic:** `ES7210 at 0x40, MIC1 + MIC2`; the Radio talk line's mic
+9. **The mic:** `ES7210 at 0x40, MIC1-4 in TDM`; the Radio mic line's
    level moves when someone speaks near the unit (a level stuck at 0: the
-   I2S input or the ES7210's format is wrong).
+   I2S input or the ES7210's format is wrong). A mic that stays quiet at
+   every gain, its level rising only a few dB from 0 to 37.5 dB, is a
+   board without the fix (the 4" README, "The microphone: a board fix").
 10. **Two fingers on the screen:** `Talking` in the log, the phones show the
     unit talking and hear it; the page does not swipe or change brightness.
     Lift them: `Listening`.

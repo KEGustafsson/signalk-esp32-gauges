@@ -36,6 +36,13 @@ when they come through a relay), red with `TALKING` while this unit
 transmits. It covers the bezel only, never the dial. Swipe down for the
 info box: it says the radio's state and how many are on the channel.
 
+![The Crew page and the radio halo, rendered at 4" resolution](crew-radio-4in.png)
+
+*Top: the Crew page, someone talking, the volume arc switched to the mic
+gain (a tap on its label). Middle: muted (volume 0), a full crew, no
+network. Bottom: the halo over gauge pages: one talker, two talkers, this
+unit transmitting.*
+
 ## Opening the web UI
 
 1. Make sure your phone or computer is on the same network as the device.

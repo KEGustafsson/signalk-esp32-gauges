@@ -1367,3 +1367,26 @@ then echo cancelling, since the board has an echo reference.
   over the air with the probe and again without it. Not yet heard: a
   voice against the gain (the cards are at 37.5 dB; the card's default
   is 30).
+
+## 2026-11-07 — The Crew radio card last; the docs and their pictures brought up to date
+
+- Asked for: the gauges and the radio on separate web UI pages ("Gauges",
+  "Crew Radio"). SensESP's page list is fixed in its C++
+  (`add_routes_handlers`) and its Configuration page shows every card, so
+  that is a change to the SensESP fork (the routes and the frontend);
+  settled instead on the Crew radio card last on the page: sort order 97
+  -> 2000, after the gauges' cards (98-111) and SensESP's WiFi watchdog
+  (1000). Both 4" units flashed; `/api/config?cards` lists `/crewradio`
+  last.
+- `docs/preview-2.1in.png` made again: it had 12 pages, the preview
+  renders 14 (depth, wind and battery were missing). New
+  `docs/crew-radio-4in.png`: the Crew page (talking, the mic gain, muted,
+  a full crew, no network) and the halo over gauge pages, in the README,
+  `docs/PAGES.md` and the radio's README. `contact_sheet.py` takes `--ids`
+  and `--tile` for it; the commands are in `tools/preview/README.md`.
+- The docs said the radio had not run on a board: the README, the
+  radio's README (status, phases, first power-up), and AGENTS.md's
+  hardware status now say what runs on both 4" units and what is still
+  to check. The 4" README has the mic's board fix ("The microphone: a
+  board fix") and why the card offers only MIC1 and MIC2.
+- Checks: the preview at 480 and 720, looked at; `pio run -e p4`.

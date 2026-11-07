@@ -284,6 +284,12 @@ Readings against another instrument and stale/recovery behaviour on
 hardware are not verified yet. Follow `docs/BRINGUP.md` and the first power-up
 checklists in each board folder's README before trusting a reading.
 
+**Crew Radio on both 4" units** (2026-11-07): on the channel and over
+Reticulum, talking, echo cancelling measured with the unit's own speaker.
+The 4"'s mics need a board fix (its README, "The microphone: a board
+fix"); both units have it. Not yet checked: an hour's memory run, 24 h
+without a restart, a voice against the mic gain.
+
 ## Licence
 
 EUPL-1.2 (`LICENSE`), the same as crew-radio, for the whole repository;

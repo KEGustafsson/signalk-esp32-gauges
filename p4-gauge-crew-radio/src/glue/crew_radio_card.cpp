@@ -388,7 +388,9 @@ void begin(int (*finger_count)()) {
           "a phone off the boat's WLAN; with Relay on, this unit bridges "
           "the two. The rest takes effect when the unit restarts.")
       ->set_requires_restart(true)
-      ->set_sort_order(97);
+      // Last on the page: after the gauges' cards (98-111) and SensESP's
+      // own (1000, the WiFi watchdog's).
+      ->set_sort_order(2000);
 
   esp::RadioConfig config;
   config.enabled = card->enabled;

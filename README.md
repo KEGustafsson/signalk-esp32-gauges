@@ -36,10 +36,23 @@ every unit of that board:
 | 4" | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4` |
 | 2.1" | `waveshare-esp32-s3-touch-lcd-2.1` | `s3` |
 
-In development: [`p4-gauge-crew-radio/`](p4-gauge-crew-radio/README.md), the
-[Crew Radio](https://github.com/KEGustafsson/crew-radio) intercom on the 4"'s own
-speaker and microphone: in the 4" firmware, off until switched on in its card;
-listening written, not yet run on a board.
+On the 4": [`p4-gauge-crew-radio/`](p4-gauge-crew-radio/README.md), the
+[Crew Radio](https://github.com/KEGustafsson/crew-radio) intercom on the
+unit's own speaker and microphone, in the 4" firmware and off until switched
+on in its **Crew radio** card (the last card of the web UI's Configuration
+page). Running on both 4" units: the crew on the channel and over
+Reticulum, push to talk with two fingers on the screen, echo cancelling and
+noise suppression on the mic, the speaker volume and mic gain on the Crew
+page. Its microphone needs a small fix on the board
+([4" README](waveshare-esp32-p4-wifi6-touch-lcd-4c/README.md#the-microphone-a-board-fix)).
+
+![The Crew page and the radio halo, rendered at 4" resolution](docs/crew-radio-4in.png)
+
+*Top: the Crew page (the roster as compass points, the channel name, the
+head count, the volume arc), someone talking, the arc switched to the mic
+gain. Middle: muted, a full crew of twelve, no network. Bottom: the radio
+halo over gauge pages: one talker, two talkers, this unit transmitting.
+Rendered on a PC by [`tools/preview`](tools/preview/) from sample crews.*
 
 The **Unit** card in the web UI (Configuration) says what a unit is, and
 all of it can be changed there:
@@ -335,7 +348,9 @@ rebooting the gauge (board README).
 The firmware has been brought up on the 4" and 2.1" starboard units: boot,
 touch, WiFi, Signal K, live readings and updates over WiFi (OTA) work.
 Readings against another instrument and stale/recovery behaviour on the
-hardware are not verified yet (`docs/JOURNAL.md`).
+hardware are not verified yet (`docs/JOURNAL.md`). The Crew Radio runs on
+both 4" units (with the mic's board fix); an hour's memory run, 24 h
+without a restart and a voice against the mic gain are still to do.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), on every pull
 request and every push to `main`:
