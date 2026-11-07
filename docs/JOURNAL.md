@@ -1103,3 +1103,16 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   slot's armed flag before its time. `library.json`: Arduino only.
 - Checks: radio host tests 117 on the library branch, 158 with Reticulum;
   `pio run -e p4` after the first round.
+
+## 2026-11-07 — The gauge side: CodeRabbit's review
+
+- Touch: after a two-finger hold LVGL sees a release until every finger
+  is off, so lifting one of the two no longer swipes or taps with the
+  other. `touch_fingers()` still follows every read.
+- Names: Montserrat has ASCII only, and "Mäkelä" drew as "Mkel".
+  `text_fold.h` (host-safe, tested) spells names in ASCII (Makela, ß ss,
+  Æ AE, anything else '?'); `crew_view_source` folds the members' and the
+  channel's names.
+- README: the EUPL's compatible-licence option as Article 5 states it.
+- Checks: gauge tests 72, preview built, `pio run -e p4`. The 2.1" shares
+  the `lvgl_port` change and was not built.
