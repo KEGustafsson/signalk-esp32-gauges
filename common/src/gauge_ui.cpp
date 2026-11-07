@@ -14,7 +14,10 @@
 #include "gauge_settings.h"
 #include "gauge_version.h"
 #include "sk_data.h"
+#include "ui/crew_draw.h"
+#include "ui/crew_view.h"
 #include "ui/gauge_page.h"
+#include "ui/radio_halo.h"
 
 namespace skgauges {
 
@@ -67,7 +70,14 @@ struct UiState {
   lv_timer_t* prefs_timer = nullptr;
   String saved_page;      // What NVS holds, to skip writes that change nothing
   int saved_bright = -1;
+  // The Crew Radio's halo, on units with a radio (crew_view_available()).
+  std::unique_ptr<ui::RadioHalo> halo;
+  ui::CrewView halo_view;
+  uint32_t halo_polled_ms = 0;
 };
+
+// How often the halo looks at the radio's view; it redraws only on a change.
+constexpr uint32_t kHaloPollMs = 250;
 
 UiState* state = nullptr;
 
@@ -208,6 +218,16 @@ void show_info() {
   text += sk_data().server_connected() ? "connected" : "not connected";
   text += "\nFirmware ";
   text += firmware_version();
+  if (ui::crew_view_available()) {
+    const ui::CrewView radio = ui::read_crew_view();
+    text += "\nRadio: ";
+    text += ui::crew_status_text(radio).c_str();
+    if (radio.state == ui::RadioState::kOnChannel) {
+      text += ", ";
+      text += (int)radio.members.size();
+      text += " crew";
+    }
+  }
   text += "\n";
   text += def.title;
   text += ": ";
@@ -317,6 +337,15 @@ void ui_timer_cb(lv_timer_t*) {
   if (state->page != nullptr) {
     state->page->update(sk_data().get(gauge), millis());
   }
+  const uint32_t now = millis();
+  if (state->halo && (uint32_t)(now - state->halo_polled_ms) >= kHaloPollMs) {
+    state->halo_polled_ms = now;
+    const ui::CrewView v = ui::read_crew_view();
+    if (v != state->halo_view) {
+      state->halo->set(v);
+      state->halo_view = v;
+    }
+  }
 }
 
 void create_status_dot() {
@@ -394,6 +423,10 @@ void ui_begin(const UiConfig& config) {
   lv_obj_add_event_cb(screen, screen_event_cb, LV_EVENT_LONG_PRESSED,
                       nullptr);
 
+  // Under the status dot, above every page: the radio never takes a page.
+  if (ui::crew_view_available()) {
+    state->halo.reset(new ui::RadioHalo(lv_layer_top(), state->geometry));
+  }
   create_status_dot();
   create_overlay();
   state->prefs_timer = lv_timer_create(write_prefs, kPrefsSaveDelayMs, nullptr);

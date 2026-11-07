@@ -8,12 +8,16 @@
 #include <string.h>
 #include <algorithm>
 #include <chrono>
+#include <memory>
 #include <vector>
 #include <string>
 #include "gauge_defs.h"
 #include "gauge_resolve.h"
 #include "gauge_value.h"
+#include "ui/crew_page.h"
+#include "ui/crew_view.h"
 #include "ui/gauge_page.h"
+#include "ui/radio_halo.h"
 
 static std::vector<uint16_t> fb;
 static int W, H;
@@ -135,6 +139,181 @@ static std::vector<PreviewPage> preview_pages() {
   return pages;
 }
 
+// ---- Crew Radio mock-ups (out/radio<size>_<n>_<id>.ppm) ----
+// The radio halo over gauge pages and the Crew page, from sample views: a
+// design to look at, not a radio. See common/src/ui/crew_view.h.
+
+static skgauges::ui::CrewView sample_view() {
+  using skgauges::ui::CrewMember;
+  skgauges::ui::CrewView v;
+  v.channel = "S/Y AURORA";
+  v.state = skgauges::ui::RadioState::kOnChannel;
+  v.volume = 6;
+  v.volume_max = 10;
+  CrewMember anna{"ANNA", 4};
+  CrewMember juha{"JUHA", 3};
+  CrewMember lisa{"LISA", 2};
+  lisa.relayed = true;
+  CrewMember mikko{"MIKKO", 4};
+  mikko.reticulum = true;  // Ashore, over the Reticulum hub
+  CrewMember pekka{"PEKKA", 4};
+  CrewMember plugin{"SIGNAL K", 4};
+  plugin.speaker = true;
+  v.members = {anna, juha, lisa, mikko, pekka, plugin};
+  return v;
+}
+
+static skgauges::ui::CrewMember* member(skgauges::ui::CrewView& v,
+                                        const char* name) {
+  for (auto& m : v.members) {
+    if (m.name == name) return &m;
+  }
+  return nullptr;
+}
+
+struct RadioScene {
+  const char* id;
+  const char* page;  // A preview page id, or "crew" / "station"
+  skgauges::ui::CrewView view;
+};
+
+static std::vector<RadioScene> radio_scenes() {
+  using skgauges::ui::RadioState;
+  std::vector<RadioScene> s;
+  skgauges::ui::CrewView v = sample_view();
+  s.push_back({"quiet", "port_rpm", v});
+  v = sample_view();
+  member(v, "PEKKA")->talking = true;
+  s.push_back({"receiving", "port_rpm", v});
+  v = sample_view();
+  member(v, "PEKKA")->talking = true;
+  member(v, "ANNA")->talking = true;
+  s.push_back({"two_talkers", "heading", v});
+  v = sample_view();
+  member(v, "MIKKO")->talking = true;
+  s.push_back({"reticulum", "wind", v});
+  v = sample_view();
+  member(v, "LISA")->talking = true;
+  v.muted = true;
+  s.push_back({"muted", "ui_depth", v});
+  // A name too long for its arc: cut, with "..", inside the band.
+  v = sample_view();
+  member(v, "MIKKO")->talking = true;
+  member(v, "MIKKO")->name = "MIKKO THE NAVIGATOR AT THE HELM";
+  member(v, "PEKKA")->talking = true;
+  s.push_back({"long_name", "port_oil", v});
+  v = sample_view();
+  v.transmitting = true;
+  s.push_back({"transmitting", "stbd_rpm", v});
+  v = sample_view();
+  v.state = RadioState::kNoClock;
+  s.push_back({"no_clock", "speed", v});
+  v = sample_view();
+  s.push_back({"crew", "crew", v});
+  v = sample_view();
+  member(v, "PEKKA")->talking = true;
+  s.push_back({"crew_receiving", "crew", v});
+  v = sample_view();
+  v.muted = true;
+  member(v, "LISA")->bars = 1;
+  s.push_back({"crew_muted_weak", "crew", v});
+  v = sample_view();
+  v.state = RadioState::kNoClock;
+  s.push_back({"crew_no_clock", "crew", v});
+  v = sample_view();
+  s.push_back({"station", "station", v});
+  v = sample_view();
+  v.transmitting = true;
+  s.push_back({"station_talking", "station", v});
+  // A full crew with a long name: each name cut to the room it has, none
+  // running into the next or through the title.
+  v = sample_view();
+  member(v, "MIKKO")->name = "MIKKO THE NAVIGATOR AT THE HELM";
+  for (const char* extra : {"GALAXY S25 FE", "NOKIA 7.2", "S20 FE", "ESA",
+                            "KAISA", "TIMO"}) {
+    v.members.push_back({extra, 3});
+  }
+  s.push_back({"crew_many", "crew", v});
+  // Running with a clock, but neither the WLAN nor Reticulum up.
+  v = sample_view();
+  v.state = RadioState::kNoNetwork;
+  s.push_back({"crew_no_network", "crew", v});
+  return s;
+}
+
+// What the view source hands the Crew page style in each scene.
+static skgauges::ui::CrewView g_scene_view;
+static bool scene_view(skgauges::ui::CrewView* out) {
+  *out = g_scene_view;
+  return true;
+}
+
+static bool render_radio_mockups(lv_display_t* d, lv_obj_t* scr,
+                                 const std::vector<PreviewPage>& pages) {
+  const skgauges::ui::Geometry g{W / 2, H / 2, W / 2};
+  const std::vector<RadioScene> scenes = radio_scenes();
+  skgauges::ui::set_crew_view_source(scene_view);
+  for (size_t i = 0; i < scenes.size(); i++) {
+    const RadioScene& sc = scenes[i];
+    std::unique_ptr<skgauges::ui::GaugePage> page;
+    std::unique_ptr<skgauges::ui::CrewPage> crew;
+    skgauges::GaugeDef def;
+    skgauges::GaugeValue v;
+    const bool station = strcmp(sc.page, "station") == 0;
+    g_scene_view = sc.view;
+    if (station) {
+      crew.reset(new skgauges::ui::CrewPage(scr, g, station));
+      crew->set(sc.view);
+    } else if (strcmp(sc.page, "crew") == 0) {
+      // Through the page system, as the firmware builds it: the "Crew
+      // radio" page style reading the view source.
+      def = skgauges::style_template(skgauges::GaugeKind::kCrew);
+      page = skgauges::ui::create_page(scr, def, g);
+    } else {
+      const PreviewPage* p = nullptr;
+      for (const auto& candidate : pages) {
+        if (strcmp(candidate.id, sc.page) == 0) p = &candidate;
+      }
+      if (p == nullptr) {
+        fprintf(stderr, "radio scene %s: no page %s\n", sc.id, sc.page);
+        return false;
+      }
+      def = skgauges::resolve_gauge(p->base, p->options, p->meta);
+      page = skgauges::ui::create_page(scr, def, g);
+      v.value = p->sample;
+      v.value2 = -0.7f;
+      v.seen = true;
+    }
+    // The halo on the top layer, then a stand-in for the status dot
+    // (gauge_ui.cpp draws the real one there, above everything).
+    skgauges::ui::RadioHalo halo(lv_layer_top(), g);
+    halo.set(sc.view);
+    lv_obj_t* dot = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(dot);
+    const int32_t size = LV_MAX(8, g.px(0.035f));
+    lv_obj_set_size(dot, size, size);
+    lv_obj_set_pos(dot, g.cx - size / 2, g.cy + g.px(0.925f) - size / 2);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(dot, lv_color_hex(0x303030), 0);
+    lv_obj_set_style_border_width(dot, 1, 0);
+    lv_obj_set_style_border_color(dot, lv_color_hex(0x101010), 0);
+    for (int k = 0; k < 60; k++) {
+      if (page) {
+        v.updated_ms = now_ms();
+        page->update(v, now_ms());
+      }
+      lv_refr_now(d);
+    }
+    char path[80];
+    snprintf(path, sizeof(path), "out/radio%d_%zu_%s.ppm", W, i, sc.id);
+    if (!save(path)) return false;
+    printf("saved %s\n", path);
+    lv_obj_delete(dot);
+  }
+  return true;
+}
+
 int main(int argc, char** argv) {
   W = H = argc > 1 ? atoi(argv[1]) : 480;
   const bool bench = argc > 2 && strcmp(argv[2], "bench") == 0;
@@ -235,5 +414,5 @@ int main(int argc, char** argv) {
     }
     printf("saved %s\n", path);
   }
-  return 0;
+  return render_radio_mockups(d, scr, pages) ? 0 : 1;
 }

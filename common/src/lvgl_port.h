@@ -27,4 +27,10 @@ namespace skgauges {
 lv_display_t* lvgl_port_init(esp_panel::board::Board* board,
                              int buffer_lines, bool buffer_in_psram = false);
 
+// Fingers on the screen at the last touch read: 0, 1 or 2 (a panel that
+// reports one point never says 2). While two are down LVGL is told the
+// screen is released, so a two-finger hold (the 4"'s Crew Radio talk key)
+// never swipes a page or starts the brightness hold. From the loop task.
+int touch_fingers();
+
 }  // namespace skgauges

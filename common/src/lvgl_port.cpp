@@ -45,6 +45,11 @@ void flush_cb(lv_display_t* display, const lv_area_t* area,
 // Set from the touch interrupt (2.1" only; the 4" has no interrupt line).
 volatile bool touch_irq = false;
 bool touch_pressed = false;
+int touch_count = 0;
+// A two-finger hold that has not yet ended with every finger lifted.
+bool touch_held_two = false;
+int touch_zero_reads = 0;  // Zero-point reads in a row during a hold
+uint32_t touch_read_at = 0;  // lv_tick_get() of the last panel read that answered
 lv_point_t touch_last = {0, 0};
 
 bool touch_isr(void*) {
@@ -65,18 +70,36 @@ void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
     return;
   }
   touch_irq = false;
-  TouchPoint point;
-  const int n = touch->readPoints(&point, 1, 0);
-  if (n > 0) {
-    touch_last.x = point.x;
-    touch_last.y = point.y;
+  TouchPoint points[2];
+  const int n = touch->readPoints(points, 2, 0);
+  if (n == 1) {
+    touch_last.x = points[0].x;
+    touch_last.y = points[0].y;
   }
   // A failed read (n < 0, e.g. an I2C glitch) repeats the last state rather
-  // than inventing a release, which would turn a hold into a tap.
-  if (n >= 0) {
+  // than inventing a release, which would turn a hold into a tap. During a
+  // two-finger hold a single read of no points does too: the GT911 answers
+  // "no new data" that way when polled between its own reports, and the
+  // radio's talk key must not un-key and re-key on it. Two in a row are a
+  // release.
+  const bool blip = n == 0 && touch_held_two && ++touch_zero_reads < 2;
+  if (n > 0) touch_zero_reads = 0;
+  // A blip confirms nothing: after a stall, the first read is the release
+  // the stall hid, and the count before it must not look freshly read.
+  if (n >= 0 && !blip) {
+    touch_read_at = lv_tick_get();
     touch_pressed = n > 0;
+    touch_count = n > 2 ? 2 : n;
   }
-  if (touch_pressed) {
+  // Two fingers are not a gesture for the pages: LVGL sees a release, and
+  // goes on seeing one until every finger is off. Lifting one of the two
+  // first must not turn the other into a press, a tap or a swipe.
+  if (touch_count >= 2) touch_held_two = true;
+  if (n == 0 && !blip) {
+    touch_held_two = false;
+    touch_zero_reads = 0;
+  }
+  if (touch_pressed && touch_count < 2 && !touch_held_two) {
     data->point = touch_last;
     data->state = LV_INDEV_STATE_PRESSED;
   }
@@ -113,6 +136,14 @@ void* alloc_draw_buffer(size_t bytes, bool psram_only) {
 }
 
 }  // namespace
+
+// A count the panel has not confirmed for kTouchStaleMs is no count: after
+// a stall of the loop (a WiFi call to the C6), the last read before it must
+// not reach the radio as fingers still down.
+constexpr uint32_t kTouchStaleMs = 500;
+int touch_fingers() {
+  return lv_tick_elaps(touch_read_at) > kTouchStaleMs ? 0 : touch_count;
+}
 
 lv_display_t* lvgl_port_init(Board* board, int buffer_lines,
                              bool buffer_in_psram) {

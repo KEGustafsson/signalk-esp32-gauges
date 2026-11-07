@@ -82,8 +82,10 @@ class TextImage {
  public:
   // tabular_digits: every digit in a cell as wide as the widest one, so a
   // changing number does not shift (291 -> 292 keeps its place).
+  // handlers: where its pixels are allocated (nullptr: LVGL's default).
   TextImage(const char* text, const lv_font_t* font, uint32_t color,
-            bool tabular_digits = false);
+            bool tabular_digits = false,
+            const lv_draw_buf_handlers_t* handlers = nullptr);
   ~TextImage();
   TextImage(const TextImage&) = delete;
   TextImage& operator=(const TextImage&) = delete;
