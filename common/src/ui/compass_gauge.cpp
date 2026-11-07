@@ -109,6 +109,7 @@ void CompassGaugePage::draw_face() {
   draw_steel_bezel(&layer, g_, kFace);
   draw_text(&layer, def_.title, font_for_px(g_.px(kTitleFont)), 0xDADADA,
             g_.cx, g_.cy + g_.px(kTitleY));
+  lcd_.move_background_into(&layer);
   lv_canvas_finish_layer(face_, &layer);
 }
 

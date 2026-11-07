@@ -76,6 +76,14 @@ void draw_text(lv_layer_t* layer, const char* text, const lv_font_t* font,
                uint32_t color, int32_t cx, int32_t cy,
                lv_opa_t opa = LV_OPA_COVER);
 
+// Where small glyph images are allocated (nullptr: LVGL's default): the
+// halo's talker names (crew_draw.h) and the 4"'s LCD characters
+// (lcd_readout.h), each under the 4 KB at which the heap moves to PSRAM by
+// itself. The 4" sets PSRAM (its main.cpp, set_arc_text_handlers()):
+// internal RAM is what ESP-Hosted needs.
+void set_glyph_handlers(const lv_draw_buf_handlers_t* handlers);
+const lv_draw_buf_handlers_t* glyph_handlers();
+
 // Text pre-rendered into a transparent ARGB8888 buffer so it can be drawn
 // rotated (lv_draw_image). Owns its buffer.
 class TextImage {
@@ -96,11 +104,17 @@ class TextImage {
             lv_opa_t opa = LV_OPA_COVER, float scale = 1.0f) const;
   bool valid() const { return buf_ != nullptr; }
   int32_t width() const { return buf_ != nullptr ? buf_->header.w : 0; }
+  // Scales the image itself by `scale` (> 1), once: drawing it then needs
+  // no transform, which LVGL would otherwise redo at every redraw (the
+  // needle sweeping over an LCD redraws it every step). False, and the
+  // image as it was, when there is no memory for it.
+  bool bake_scale(float scale);
   // Half the diagonal: no rotation draws outside this radius of the centre.
   float radius() const;
 
  private:
   lv_draw_buf_t* buf_ = nullptr;
+  const lv_draw_buf_handlers_t* handlers_ = nullptr;
 };
 
 // Invalidates the ring between r_in and r_out around (cx, cy) on `obj` as a

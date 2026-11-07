@@ -1435,3 +1435,60 @@ then echo cancelling, since the board has an echo reference.
   `CONFIG_LV_DRAW_BUF_ALIGN`, which lv_conf.h must define (64, the P4's
   cache line) in an Arduino build.
 - Where a faster 4" would come from: the compass card's turn.
+
+## 2026-11-07 — Faster drawing: what was tried, and what was kept
+
+Asked for: the best possible, novel ways to speed up the drawing. Measured
+on the starboard 4" with a boot-time bench (now removed): each page shown
+and redrawn whole (fastest of 3), then its value swung over 30 frames
+(median step), the flush to the panel and the page's update timed apart.
+
+- Kept, in the drawing code of both boards:
+  - The sea horizon invalidates two boxes, round the boat and round the
+    heel pointer, at the old and the new attitude, instead of one box over
+    the window and the scale: a step 46.1 -> 12.2 ms.
+  - A needle invalidates five boxes along its blade and one round the cap
+    instead of its bounding box (about half the pixels on a slanted
+    needle): the coolant and oil dials 14.5 -> 12.2 ms.
+  - The LCD's panel (gradient, rounded corners, border) is drawn into the
+    dial face once (`LcdReadout::move_background_into()`); the readout
+    draws only its texts. The gradient is now dithered with the face:
+    smoother than LVGL's own, which banded. 2.1" renders: 50 pixels
+    differ, by at most 11 levels.
+  - 4": the LCD's digits (63 px, above the largest font) were a text image
+    scaled at every redraw; now each character is scaled once, the first
+    time it is needed, and the text is laid out from them in the same
+    tabular cells (`lcd_readout.cpp`). The rpm dials, whose readout changes
+    every step: 26.7 -> 16.8 ms. Scaling the whole text once per change
+    instead (tried first) cost 10 ms a change and was slower.
+  - The halo's glyph images and the LCDs' characters share one setting for
+    where small images go (`set_glyph_handlers()`, PSRAM on the 4").
+- All pages summed, 4": steps 222 -> 157 ms, full redraws 582 -> 562 ms.
+  The compass is still 87 ms a step (it was 92).
+- Tried and dropped:
+  - Sprites: the compass card and the needles rendered once into images
+    and turned each step by a rotor of my own (16.16 fixed point,
+    bilinear, empty blocks skipped through a summed-area table of the
+    sprite, the rows split with a helper task on core 0), into a
+    screen-sized buffer LVGL blended unrotated. Pixel-for-pixel close to
+    the vector drawing in the preview, but slower on the board: the card's
+    turn alone took 50 ms, a needle's 10-13 ms, and the blend of the
+    buffer 45 ms on a full redraw.
+  - A 12-line draw buffer, in internal RAM (full redraws 568 -> 436 ms,
+    steps 185 -> 168 ms, but the radio's memory guard turned Reticulum off
+    twice) and in PSRAM (no gain).
+- Why: the 4"'s drawing is bound by memory. A PSRAM to PSRAM copy runs at
+  38-42 MB/s with 96 KB blocks and 350 MB/s with 16 KB ones (the L2 cache
+  is 128 KB); PSRAM to internal 160-274 MB/s, internal to PSRAM 250-352
+  MB/s; the CPU at 400 MHz. A sprite adds memory passes; less to redraw
+  takes them away. Even with nothing moving drawn, a compass step costs
+  about 40 ms (LVGL's pipeline over 284 000 pixels and the flush, 9 ms);
+  its marks and rotated labels about 46 ms more.
+- Left for later, if the compass matters: a custom LVGL draw unit that
+  turns an A8 card straight into each chunk of the draw buffer (a working
+  set the cache holds), or labels drawn without a transform.
+- Checks: gauge host tests 77, the preview at 480 and 720 (the 720 pages
+  differ from before only inside the LCD panels: no needle left behind
+  by the smaller invalid areas), `pio run -e p4`, `pio run -e s3`, both 4"
+  units flashed. The 2.1" panel to be looked at with this build (its
+  drawing changed: less of it).

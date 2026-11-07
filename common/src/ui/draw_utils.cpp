@@ -52,6 +52,15 @@ constexpr uint8_t kBayer[4][4] = {
 
 }  // namespace
 
+namespace {
+const lv_draw_buf_handlers_t* g_glyph_handlers = nullptr;
+}  // namespace
+
+void set_glyph_handlers(const lv_draw_buf_handlers_t* handlers) {
+  g_glyph_handlers = handlers;
+}
+const lv_draw_buf_handlers_t* glyph_handlers() { return g_glyph_handlers; }
+
 lv_point_precise_t polar(const Geometry& g, float dial_angle_deg,
                          float radius_px) {
   float a = dial_angle_deg * kDegToRad;
@@ -230,6 +239,7 @@ TextImage::TextImage(const char* text, const lv_font_t* font, uint32_t color,
                      bool tabular_digits,
                      const lv_draw_buf_handlers_t* handlers) {
   if (handlers == nullptr) handlers = lv_draw_buf_get_handlers();
+  handlers_ = handlers;
   if (tabular_digits) {
     // Lay the characters out one by one: digits centred in equal cells.
     int32_t cell = 0;
@@ -313,6 +323,32 @@ TextImage::~TextImage() {
     lv_image_cache_drop(buf_);
     lv_draw_buf_destroy(buf_);
   }
+}
+
+bool TextImage::bake_scale(float scale) {
+  if (buf_ == nullptr || scale <= 1.0f) return false;
+  const int32_t w = buf_->header.w, h = buf_->header.h;
+  const int32_t w2 = (int32_t)ceilf(w * scale), h2 = (int32_t)ceilf(h * scale);
+  lv_draw_buf_t* big = lv_draw_buf_create_ex(handlers_, w2, h2,
+                                             LV_COLOR_FORMAT_ARGB8888, 0);
+  if (big == nullptr) return false;
+  lv_draw_buf_clear(big, nullptr);
+  lv_layer_t layer;
+  init_offscreen_layer(&layer, big);
+  lv_draw_image_dsc_t dsc;
+  lv_draw_image_dsc_init(&dsc);
+  dsc.src = buf_;
+  dsc.scale_x = dsc.scale_y = (int32_t)lroundf(LV_SCALE_NONE * scale);
+  dsc.pivot.x = 0;
+  dsc.pivot.y = 0;
+  dsc.antialias = 1;
+  lv_area_t area = {0, 0, w - 1, h - 1};
+  lv_draw_image(&layer, &dsc, &area);
+  finish_offscreen_layer(&layer);
+  lv_image_cache_drop(buf_);
+  lv_draw_buf_destroy(buf_);
+  buf_ = big;
+  return true;
 }
 
 float TextImage::radius() const {

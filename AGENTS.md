@@ -208,6 +208,13 @@ A logic change in the host-safe files is not done until `tests/` covers it.
   buffers (LVGL's included) in PSRAM on the 4"; the boot log's `heap` line
   shows what is left. The C6 needs ESP-Hosted 2.12.13, the version of
   Arduino-ESP32 3.3.12 (`tools/c6-update`; 4" README).
+- 4" drawing is memory-bound: its draw buffer, the dial faces and the
+  panel's frame are all in PSRAM, and a PSRAM to PSRAM copy runs at about
+  40 MB/s once the working set outgrows the 128 KB L2 cache (350 MB/s for
+  16 KB blocks; 160-350 MB/s to or from internal RAM). Redraw less (exact
+  invalid areas), not cheaper arithmetic over more memory: sprites turned
+  into a PSRAM buffer were slower than drawing the parts (2026-11-07,
+  journal).
 - 4" WiFi calls block: `WiFi.SSID()`, `WiFi.RSSI()` and the like are
   requests to the C6, answered within ESP-Hosted's 5 s
   (`DEFAULT_RPC_RSP_TIMEOUT`) or given up. SensESP makes them from the loop.

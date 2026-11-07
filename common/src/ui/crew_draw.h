@@ -25,10 +25,11 @@ constexpr uint32_t kUnlit = 0x5A5A60;     // A bar or a pip that is off
 constexpr uint32_t kBand = 0x0A0A0C;      // The halo's band over the bezel
 }  // namespace crew_color
 
-// Where ArcText's glyph images are allocated (nullptr: LVGL's default). The
-// 4" sets PSRAM (its main.cpp): a talker's name is tens of small images,
-// each under the 4 KB at which the heap moves to PSRAM by itself, made again
-// whenever the talker changes, and internal RAM is what ESP-Hosted needs.
+// Where ArcText's glyph images are allocated (nullptr: LVGL's default), and
+// the LCDs' characters (set_glyph_handlers(), draw_utils.h). The 4" sets
+// PSRAM (its main.cpp): a talker's name is tens of small images, each under
+// the 4 KB at which the heap moves to PSRAM by itself, made again whenever
+// the talker changes, and internal RAM is what ESP-Hosted needs.
 void set_arc_text_handlers(const lv_draw_buf_handlers_t* handlers);
 
 // Text set along an arc of the round screen, one glyph image per character,

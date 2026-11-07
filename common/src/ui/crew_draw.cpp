@@ -10,7 +10,6 @@ namespace skgauges {
 namespace ui {
 
 namespace {
-const lv_draw_buf_handlers_t* arc_text_handlers = nullptr;
 }  // namespace
 
 
@@ -74,14 +73,14 @@ ArcText::ArcText(const std::string& text, const lv_font_t* font,
     if (p.utf8 == " ") continue;
     Glyph g;
     g.image = std::make_shared<TextImage>(p.utf8.c_str(), font, color, false,
-                                          arc_text_handlers);
+                                          glyph_handlers());
     g.offset_deg = centre / radius_px * kRadToDeg;
     glyphs_.push_back(g);
   }
 }
 
 void set_arc_text_handlers(const lv_draw_buf_handlers_t* handlers) {
-  arc_text_handlers = handlers;
+  set_glyph_handlers(handlers);  // The LCDs' characters too (draw_utils.h)
 }
 
 void ArcText::draw(lv_layer_t* layer, const Geometry& g, float dial_angle_deg,
