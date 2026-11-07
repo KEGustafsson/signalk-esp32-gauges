@@ -151,8 +151,8 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 ```
 
 Each board has one env, so building it builds every unit's firmware.
-CI (`.github/workflows/ci.yml`) runs the host unit tests,
-renders the preview at both sizes, and checks the scripts and credential
+CI (`.github/workflows/ci.yml`) runs the host unit tests (the gauges'
+and the Crew Radio's), renders the preview at both sizes, and checks the scripts and credential
 rules on every push to `main` and every pull request. The firmware builds
 (`p4`, `s3`) are too heavy for every change: they run only when the
 workflow is started by hand, so build a firmware change locally, both

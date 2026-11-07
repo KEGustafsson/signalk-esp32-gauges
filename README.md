@@ -359,11 +359,15 @@ request and every push to `main`:
   UndefinedBehaviorSanitizer: unit conversion and scales, the factory pages,
   the page cards' rules, and what a page accepts from Signal K and when it
   stops trusting it;
+- runs the Crew Radio's host tests
+  ([`p4-gauge-crew-radio/tests`](p4-gauge-crew-radio/README.md#tests)), with
+  the sanitizers too: the wire and the crypto against the crew-radio app's
+  own vectors, Reticulum, the receive pipeline, the mic's cleanup;
 - renders every gauge page on the host ([`tools/preview`](tools/preview/));
 - checks the scripts and that no credential is committed.
 
 It does not build the firmware there: that is too heavy for every change.
-Building both boards (as their starboard devices) runs only when the
+Building both boards (`p4`, `s3`) runs only when the
 workflow is started by hand (Actions -> CI -> Run workflow), so build a
 firmware change locally, one env per board.
 

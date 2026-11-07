@@ -1492,3 +1492,27 @@ and redrawn whole (fastest of 3), then its value swung over 30 frames
   by the smaller invalid areas), `pio run -e p4`, `pio run -e s3`, both 4"
   units flashed; both 2.1" units flashed and their panels looked at: no
   flicker or shift.
+
+## 2026-11-07 — The docs on main checked against the code
+
+After the crew branch was merged (#13), every document was read against
+what is in the tree. Fixed:
+
+- The radio's README: its layout leaves nothing out now (`src/dsp/`,
+  `src/third_party/` with speexdsp, the mic's TDM reading and the echo
+  canceller in `src/core`, the ES7210 and Reticulum in `src/esp`); the
+  tests table has `test_voice.cpp` and `test_lifecycle.cpp`, the relayed
+  vector and the averaged mics; the screen is no longer called mock-ups.
+- The 4" README's hardware table: the mic is read in TDM with MIC3 as the
+  echo reference, and needs the board fix.
+- ADDING_GAUGES.md, a new page style: the LCD's panel into the face, exact
+  invalid areas (the needle's strips, a box per moving part), a ghost in
+  the preview as the sign of one too small, and the 4"'s drawing being
+  bound by PSRAM too.
+- README and AGENTS.md: CI runs the Crew Radio's host tests too.
+- CodeRabbit's review of #14: the preview's images test movement only
+  where a page starts away from its sample (a dial's needle; a compass
+  card starts at its heading), so a new style's moving part is checked
+  moving too; and the station's talk-disc screen (phase 3b) is preview
+  only, the firmware's Crew page has it off (the radio's README said a 4"
+  with only the Crew page was the station).

@@ -29,11 +29,12 @@ combines them into one PNG. Each page is rendered twice: live
 must show dashes, a parked needle, a dimmed compass card or a dimmed, level
 boat symbol.
 
-It also renders the Crew Radio mock-ups (`out/radio<size>_*.ppm`; sheet with
+It also renders the Crew Radio's screens from sample crews (`out/radio<size>_*.ppm`; sheet with
 `contact_sheet.py out/radio720 ...`): the radio halo over gauge pages
 (someone talking, two talkers, over Reticulum, muted through a relay, this
 unit transmitting, no clock) and the Crew page, on a gauge and as the
-standalone station's talk-disc screen, with a full crew, with no
+standalone station's talk-disc screen (preview only: the station is phase
+3b, not in the firmware yet), with a full crew, with no
 network, with the arc switched to the mic gain and muted at volume 0.
 They are drawn by `common/src/ui/radio_halo.*` and `crew_page.*`
 from sample `CrewView`s (`crew_view.h`); on the 4" the radio fills that
