@@ -130,9 +130,9 @@ TEST(rns_vector_the_key_proof_of_each_end_of_a_link) {
   const auto ck = b(doc["keyProof"]["confirmKey"]);
   const auto id = b(doc["keyProof"]["linkId"]);
   uint8_t proof[carry::kProofBytes];
-  carry::key_proof(ck.data(), id.data(), true, proof);
+  CHECK(carry::key_proof(ck.data(), id.data(), true, proof));
   CHECK(hex(proof, sizeof(proof)) == doc["keyProof"]["initiator"].as<std::string>());
-  carry::key_proof(ck.data(), id.data(), false, proof);
+  CHECK(carry::key_proof(ck.data(), id.data(), false, proof));
   CHECK(hex(proof, sizeof(proof)) == doc["keyProof"]["responder"].as<std::string>());
   const auto initiator = b(doc["keyProof"]["initiator"]);
   CHECK(carry::proof_matches(initiator.data(), initiator.size(), ck.data(), id.data(), true));

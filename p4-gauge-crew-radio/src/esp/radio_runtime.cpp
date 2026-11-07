@@ -40,6 +40,7 @@
 #include "core/talk_key.h"
 #include "core/tones.h"
 #include "core/transmitter.h"
+#include "port/random.h"
 #include "es7210.h"
 #include "es8311.h"
 #include "reticulum_link.h"
@@ -778,8 +779,10 @@ void begin(const RadioConfig& config) {
   // A new sender id every boot: the phones remember each sender's last
   // sequence number for their whole run, so a node that came back with the
   // same id and numbers from 0 would be refused as a replay.
+  // The first draw also seeds the DRBG (port/random_esp.cpp), here at boot
+  // rather than mid-session.
   int32_t self_id;
-  esp_fill_random(&self_id, sizeof(self_id));
+  port::random_bytes((uint8_t*)&self_id, sizeof(self_id));
   NetNode::Config net;
   net.name = config.name;
   net.max_hops = config.max_hops;

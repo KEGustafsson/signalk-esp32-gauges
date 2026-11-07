@@ -223,7 +223,11 @@ class ReticulumNode {
   Pending* find_pending(const uint8_t id[kHashBytes]);
   bool verified(const uint8_t hash[kHashBytes]) const;
   void mark_verified(const uint8_t hash[kHashBytes]);
-  void write(const uint8_t* raw, size_t len) { writer_->write(raw, len); }
+  // A packet that could not be built (length 0) is not sent: an empty frame
+  // is nothing on the wire but costs the hub a parse.
+  void write(const uint8_t* raw, size_t len) {
+    if (len > 0) writer_->write(raw, len);
+  }
 
   uint8_t confirm_key_[32];
   Writer* writer_;

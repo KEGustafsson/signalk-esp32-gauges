@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+#include <mbedtls/platform_util.h>
+
 #include "core/rns/curve25519.h"
 #include "port/random.h"
 
@@ -13,9 +15,9 @@ namespace {
 constexpr uint8_t kKeepaliveAsk = 0xFF;
 constexpr uint8_t kKeepaliveAnswer = 0xFE;
 
-void derive_key(const uint8_t shared[32], const uint8_t id[kHashBytes],
+bool derive_key(const uint8_t shared[32], const uint8_t id[kHashBytes],
                 uint8_t key[64]) {
-  hkdf(key, 64, shared, 32, id, kHashBytes);
+  return hkdf(key, 64, shared, 32, id, kHashBytes);
 }
 }  // namespace
 
@@ -39,13 +41,14 @@ Link::Link(const uint8_t id[kHashBytes], const uint8_t key[64], bool initiator)
   memcpy(key_, key, 64);
 }
 
-Link::~Link() { memset(key_, 0, sizeof(key_)); }
+Link::~Link() { mbedtls_platform_zeroize(key_, sizeof(key_)); }
 
 size_t Link::data_packet(const uint8_t* plain, size_t len, uint8_t* out,
                          const uint8_t* iv) const {
   if (len > kMdu) return 0;
   uint8_t token[token_len(kMdu)];
   const size_t n = token_encrypt(key_, plain, len, token, iv);
+  if (n == 0) return 0;
   return encode(out, kData, kLink, id_, kCtxNone, token, n);
 }
 
@@ -54,12 +57,14 @@ size_t Link::rtt_packet(double seconds, uint8_t* out) const {
   pack_rtt(seconds, rtt);
   uint8_t token[token_len(sizeof(rtt))];
   const size_t n = token_encrypt(key_, rtt, sizeof(rtt), token);
+  if (n == 0) return 0;
   return encode(out, kData, kLink, id_, kCtxLrRtt, token, n);
 }
 
 size_t Link::close_packet(uint8_t* out) const {
   uint8_t token[token_len(kHashBytes)];
   const size_t n = token_encrypt(key_, id_, kHashBytes, token);
+  if (n == 0) return 0;
   return encode(out, kData, kLink, id_, kCtxLinkClose, token, n);
 }
 
@@ -120,11 +125,11 @@ bool Request::complete(const Packet& proof, Link* out) const {
   }
   uint8_t shared[32], key[64];
   if (!agree(enc_priv, peer_enc_pub, shared)) return false;
-  derive_key(shared, id, key);
-  *out = Link(id, key, /*initiator=*/true);
-  memset(shared, 0, sizeof(shared));
-  memset(key, 0, sizeof(key));
-  return true;
+  const bool ok = derive_key(shared, id, key);
+  if (ok) *out = Link(id, key, /*initiator=*/true);
+  mbedtls_platform_zeroize(shared, sizeof(shared));
+  mbedtls_platform_zeroize(key, sizeof(key));
+  return ok;
 }
 
 void request(const Announce& peer, const uint8_t* transport_id, Request* out,
@@ -182,11 +187,15 @@ bool accept(const Identity& identity, const Packet& req, Link* link,
   memcpy(body + kSigBytes, enc_pub, 32);
   *proof_len = encode(proof, kProof, kLink, id, kCtxLrProof, body, sizeof(body));
   uint8_t key[64];
-  derive_key(shared, id, key);
-  *link = Link(id, key, /*initiator=*/false);
-  memset(shared, 0, sizeof(shared));
-  memset(key, 0, sizeof(key));
-  return true;
+  const bool ok = derive_key(shared, id, key);
+  if (ok) {
+    *link = Link(id, key, /*initiator=*/false);
+  } else {
+    *proof_len = 0;  // No link, so no proof of one
+  }
+  mbedtls_platform_zeroize(shared, sizeof(shared));
+  mbedtls_platform_zeroize(key, sizeof(key));
+  return ok;
 }
 
 }  // namespace rns

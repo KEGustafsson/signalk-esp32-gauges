@@ -2,9 +2,11 @@
 #pragma once
 
 // Cryptographically secure random bytes: the one thing the core needs from
-// the platform. On the ESP32 it is esp_fill_random() (random_esp.cpp; the
-// hardware RNG, which ESP-IDF documents as true random while the radio is
-// running); the host tests link their own (tests/random_host.cpp).
+// the platform. On the ESP32-P4 (random_esp.cpp) an HMAC-DRBG seeded from
+// the hardware RNG with its SAR ADC entropy source switched on, since the P4
+// has no radio of its own to make esp_fill_random() true random, and fed
+// fresh hardware bytes on every draw. Thread-safe. The host tests link their
+// own (tests/random_host.cpp).
 
 #include <stddef.h>
 #include <stdint.h>

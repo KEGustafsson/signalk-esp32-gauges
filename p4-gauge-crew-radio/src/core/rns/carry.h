@@ -37,8 +37,9 @@ constexpr size_t kMaxPacket = kMaxParts * kRoom;
 constexpr size_t kProofBytes = 1 + 32;
 
 // The key proof the end in `initiator`'s role sends on link_id.
-void key_proof(const uint8_t confirm_key[32], const uint8_t link_id[kHashBytes],
-               bool initiator, uint8_t out[kProofBytes]);
+[[nodiscard]] bool key_proof(const uint8_t confirm_key[32],
+                             const uint8_t link_id[kHashBytes],
+                             bool initiator, uint8_t out[kProofBytes]);
 // True when payload is a key proof frame, whatever it proves.
 bool is_key_proof(const uint8_t* payload, size_t len);
 // True when payload is the far end's proof for this link, made in

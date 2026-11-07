@@ -36,26 +36,31 @@ struct Part {
   size_t len;
 };
 
-void sha256(uint8_t out[32], const Part* parts, size_t n);
-void sha256(uint8_t out[32], const uint8_t* p, size_t len);
+// Each returns false, with its output zeroed, when mbedTLS fails: a caller
+// that checks a MAC or derives a key must then refuse, never compare or use
+// what the buffer happens to hold.
+bool sha256(uint8_t out[32], const Part* parts, size_t n);
+bool sha256(uint8_t out[32], const uint8_t* p, size_t len);
 // Reticulum's truncated hash: the first 16 bytes of SHA-256.
-void truncated_hash(uint8_t out[kHashBytes], const Part* parts, size_t n);
-void truncated_hash(uint8_t out[kHashBytes], const uint8_t* p, size_t len);
-void hmac_sha256(uint8_t out[32], const uint8_t* key, size_t key_len,
-                 const Part* parts, size_t n);
+bool truncated_hash(uint8_t out[kHashBytes], const Part* parts, size_t n);
+bool truncated_hash(uint8_t out[kHashBytes], const uint8_t* p, size_t len);
+// HMAC-SHA256 over up to four parts, with no allocation.
+[[nodiscard]] bool hmac_sha256(uint8_t out[32], const uint8_t* key,
+                               size_t key_len, const Part* parts, size_t n);
 
 // HKDF-SHA256 (RFC 5869) into out (len <= 255 * 32); an empty salt is the
 // RFC's string of zeros.
-void hkdf(uint8_t* out, size_t len, const uint8_t* ikm, size_t ikm_len,
-          const uint8_t* salt, size_t salt_len, const uint8_t* info = nullptr,
-          size_t info_len = 0);
+[[nodiscard]] bool hkdf(uint8_t* out, size_t len, const uint8_t* ikm,
+                        size_t ikm_len, const uint8_t* salt, size_t salt_len,
+                        const uint8_t* info = nullptr, size_t info_len = 0);
 
 // The token's length for `len` bytes of plaintext.
 constexpr size_t token_len(size_t len) {
   return kTokenOverhead + (len / 16 + 1) * 16;
 }
 // A token for `plain` under a 64-byte key into out (token_len(len) bytes);
-// `iv` only for test vectors, else random. Its length.
+// `iv` only for test vectors, else random. Its length, or 0 when the
+// cipher or the MAC failed.
 size_t token_encrypt(const uint8_t key[64], const uint8_t* plain, size_t len,
                      uint8_t* out, const uint8_t* iv = nullptr);
 // The plaintext into out (room for len - kTokenOverhead bytes: the padding
