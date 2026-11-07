@@ -115,7 +115,7 @@ The core mirrors crew-radio's `Packet.kt`, `Hello.kt`, `ChannelCrypto.kt`,
   what came in, within this node's own hop limit.
 
 `tests/vectors/vector.json` and `rns.vector.json` are copies of crew-radio's
-`sk-plugin/test/` files (crew-radio commit `472f624`), the same files the
+`sk-plugin/test/` files (crew-radio commit `3ad26c4`), the same files the
 app's `CrossLanguageVectorTest` and the plugin's tests read. **When the
 crew-radio wire changes, copy them again and make these tests pass in the
 same change**: the wire has no legacy mode, so a node on the old format is

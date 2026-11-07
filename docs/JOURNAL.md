@@ -1214,3 +1214,19 @@ plugin before it was fixed.
   - `sendto` from `cr-audio`.
 - Checks: radio host tests 176 (OPUS off), gauge tests 73, the preview at
   480 and 720 (two new scenes), `pio run -e p4`.
+
+## 2026-11-07 — The relayed vector from crew-radio
+
+- crew-radio #67 (merged as `3ad26c4`) added a `relayed` entry to
+  `sk-plugin/test/vector.json`: the vector packet as it arrives two relays
+  on, ttl 2, hops 4. In the original packet ttl == hops, so a parser that
+  swapped the two bytes passed on every side.
+- `tests/vectors/vector.json` is copied again (`rns.vector.json` is
+  unchanged). The README points at the new commit.
+- New test `vector_relayed_packet_opens_with_its_ttl_left_out_of_the_aad`
+  checks four things:
+  - the packet parses to ttl 2, hops 4;
+  - it opens with the AAD this node builds;
+  - an AAD that zeroes the hops byte instead does not open it;
+  - `set_ttl(2)` on the sender's packet gives these exact bytes.
+- Checks: radio host tests 178 (OPUS off).

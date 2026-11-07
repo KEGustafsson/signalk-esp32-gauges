@@ -86,6 +86,54 @@ TEST(vector_non_ascii_channel_key_is_its_utf8_bytes) {
   check_packet(v);
 }
 
+// The first packet as it arrives two relays on: ttl rewritten from 4 to 2,
+// hops still 4, nothing resealed. ttl == hops in the packet above hides a
+// parser that swaps the two bytes; here they differ. It must open, since a
+// relay's rewrite is left out of the AAD, and it must be what this node's own
+// relay rewrite (set_ttl) makes of the sender's packet.
+TEST(vector_relayed_packet_opens_with_its_ttl_left_out_of_the_aad) {
+  const JsonDocument doc = load("vector.json");
+  JsonVariantConst v = doc["relayed"];
+  CHECK(v["header"]["ttl"].as<int>() == 2 && v["header"]["hops"].as<int>() == 4);
+  const std::string channel_key = doc["channelKey"].as<std::string>();
+  uint8_t key[32];
+  CHECK(ChannelCrypto::derive((const uint8_t*)channel_key.data(),
+                              channel_key.size(), key));
+  const std::vector<uint8_t> relayed = unhex(v["packetHex"].as<std::string>());
+  const std::vector<uint8_t> plain = unhex(v["plainHex"].as<std::string>());
+
+  Header parsed;
+  CHECK(packet::parse(relayed.data(), relayed.size(), &parsed));
+  CHECK(parsed.ttl == 2 && parsed.hops == 4);
+  CHECK(parsed.sender_id == (int32_t)v["header"]["senderId"].as<int64_t>());
+  CHECK(parsed.seq == v["header"]["seq"].as<int32_t>());
+  CHECK(parsed.time == v["header"]["time"].as<uint32_t>());
+  CHECK(parsed.codec == (Codec)v["header"]["codec"].as<int>());
+
+  uint8_t aad[packet::kHeader];
+  packet::aad_of(relayed.data(), aad);
+  ChannelCrypto crypto(key);
+  CHECK(crypto.ok());
+  std::vector<uint8_t> out(relayed.size());
+  const int n = crypto.open(aad, sizeof(aad), relayed.data() + packet::kHeader,
+                            relayed.size() - packet::kHeader, out.data());
+  CHECK(n == (int)plain.size());
+  CHECK(memcmp(out.data(), plain.data(), plain.size()) == 0);
+
+  // An AAD that zeroed the hops byte instead does not open it.
+  uint8_t wrong[packet::kHeader];
+  memcpy(wrong, relayed.data(), sizeof(wrong));
+  wrong[5] = 0;
+  CHECK(crypto.open(wrong, sizeof(wrong), relayed.data() + packet::kHeader,
+                    relayed.size() - packet::kHeader, out.data()) < 0);
+
+  // The sender's packet with only byte 4 changed, as set_ttl makes it.
+  std::vector<uint8_t> sent = unhex(doc["packetHex"].as<std::string>());
+  CHECK(sent.size() == relayed.size());
+  packet::set_ttl(sent.data(), 2);
+  CHECK(sent == relayed);
+}
+
 TEST(vector_hello_encodes_and_decodes_as_the_app) {
   const JsonDocument doc = load("vector.json");
   Hello hello;
