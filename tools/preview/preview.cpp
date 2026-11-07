@@ -225,6 +225,19 @@ static std::vector<RadioScene> radio_scenes() {
   v = sample_view();
   v.transmitting = true;
   s.push_back({"station_talking", "station", v});
+  // A full crew with a long name: each name cut to the room it has, none
+  // running into the next or through the title.
+  v = sample_view();
+  member(v, "MIKKO")->name = "MIKKO THE NAVIGATOR AT THE HELM";
+  for (const char* extra : {"GALAXY S25 FE", "NOKIA 7.2", "S20 FE", "ESA",
+                            "KAISA", "TIMO"}) {
+    v.members.push_back({extra, 3});
+  }
+  s.push_back({"crew_many", "crew", v});
+  // Running with a clock, but neither the WLAN nor Reticulum up.
+  v = sample_view();
+  v.state = RadioState::kNoNetwork;
+  s.push_back({"crew_no_network", "crew", v});
   return s;
 }
 

@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: EUPL-1.2
 #include "playout.h"
 
+#include "conceal.h"
+
 #include <string.h>
 
 namespace crewradio {
 
 void Playout::deliver(const Delivery& d, const uint8_t* payload,
                       int64_t now_ms) {
-  if (d.gap > 0) mixer_->conceal(d.sender, d.gap);
+  // A gap of up to conceal::kMaxFrames is concealed, as the app's engine
+  // does; a longer one is not (the burst simply goes on with this frame):
+  // reserving three slots for it would only delay the rest of the burst.
+  if (d.gap > 0 && d.gap <= conceal::kMaxFrames) {
+    mixer_->conceal(d.sender, d.gap);
+  }
   if (d.codec == (uint8_t)Codec::kPcm) {
     if (d.len != audio::kFrameBytes) {
       c_.decode_errors++;

@@ -505,7 +505,7 @@ int ReticulumNode::add_link(const Link& link, const uint8_t* peer,
     e.last_in = now;
     e.confirmed = false;
     e.proof_at = 0;
-    e.joiner = carry::Joiner();
+    e.joiner.reset();
     e.cut_id = 0;
     e.tokens_milli = (int64_t)kLinkBurst * 1000;
     e.refilled = now;

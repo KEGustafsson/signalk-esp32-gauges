@@ -41,7 +41,10 @@ class CrewPage {
   void build();
   static void draw_cb(lv_event_t* e);
   void draw(lv_layer_t* layer) const;
-  void draw_member(lv_layer_t* layer, const CrewMember& m, float angle) const;
+  // step_deg: the angle to its neighbours (0 when it is alone), which sets
+  // how wide its name may be.
+  void draw_member(lv_layer_t* layer, const CrewMember& m, float angle,
+                   float step_deg) const;
   void draw_volume(lv_layer_t* layer) const;
   void draw_disc(lv_layer_t* layer) const;
 

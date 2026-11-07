@@ -63,13 +63,16 @@ class Joiner {
   bool push(const uint8_t* payload, size_t len, const uint8_t** out,
             size_t* out_len);
 
- private:
+  // Forgets any packet half joined. In place: a new Joiner() assigned over
+  // one is a 1.3 KB temporary on cr-rns's stack.
   void reset() {
     count_ = 0;
     id_ = -1;
     next_ = 0;
     len_ = 0;
   }
+
+ private:
   int count_ = 0;
   int id_ = -1;
   int next_ = 0;

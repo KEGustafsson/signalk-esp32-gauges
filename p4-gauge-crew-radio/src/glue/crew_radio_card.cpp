@@ -140,8 +140,19 @@ class RadioCard : public sensesp::FileSystemSaveable {
       return false;
     }
     std::string new_hint = key_hint;
-    if (c["channel_key"].is<const char*>()) {
-      const std::string key = c["channel_key"].as<const char*>();
+    // Only from the web UI: to_json never writes the key, so one in the
+    // file at boot is a file someone else wrote, and its PBKDF2 would run in
+    // setup(), under the loop watchdog.
+    if (loaded_ && c["channel_key"].is<const char*>()) {
+      std::string key = c["channel_key"].as<const char*>();
+      // This copy wiped when done (ArduinoJson's and the web server's
+      // buffers are theirs to free).
+      struct Wipe {
+        std::string& s;
+        ~Wipe() {
+          if (!s.empty()) mbedtls_platform_zeroize(&s[0], s.size());
+        }
+      } wipe{key};
       if (!key.empty()) {
         if (!settings::valid_channel_key(key)) {
           ESP_LOGW(kTag, "Channel key refused: 12-64 printable ASCII, no "

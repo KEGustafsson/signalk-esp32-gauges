@@ -7,7 +7,6 @@
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_netif.h>
-#include <esp_random.h>
 #include <esp_sntp.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -16,6 +15,7 @@
 #include <freertos/task.h>
 #include <lwip/inet.h>
 #include <lwip/sockets.h>
+#include <mbedtls/platform_util.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
@@ -65,6 +65,8 @@ constexpr int kCore = 0;
 constexpr UBaseType_t kAudioPriority = 17;
 constexpr UBaseType_t kNetPriority = 16;
 constexpr UBaseType_t kBeatPriority = 3;
+// A touch sample older than this is a release (the loop samples every 20 ms).
+constexpr int64_t kTouchFreshMs = 150;
 
 enum Slot { kSlotNet = 0, kSlotAudio = 1 };
 
@@ -90,6 +92,11 @@ struct Shared {
   std::unique_ptr<FrameEncoder> encoder;
   std::unique_ptr<Transmitter> transmitter;
   std::atomic<bool> touch_held{false};
+  // When the loop task last sampled the touch (mono ms). The loop can sit in
+  // a WiFi call to the C6 for up to 5 s; a hold it sampled before that is
+  // not taken as still held, or the mic would stay open after the fingers
+  // left the glass.
+  std::atomic<int64_t> touch_at{0};
   Supervisor supervisor;
   std::atomic<bool> clock_ok{false};
   std::atomic<uint8_t> shed{0};
@@ -413,6 +420,18 @@ void audio_task(void* arg) {
   int level = 0;
   int64_t next_sweep = 0;
   const RadioConfig& c = g->config;
+  // The mic's DMA ran from begin() with nobody reading it, so its queue is
+  // full: emptied first, or the loop (one frame in per frame out) would keep
+  // it full, and a turn even slightly late would lose a mic frame with no
+  // sequence gap for the crew to conceal.
+  if (g->rx != nullptr) {
+    size_t moved = 0;
+    while (i2s_channel_read(g->rx, stereo, sizeof(stereo), &moved, 0) ==
+               ESP_OK &&
+           moved > 0) {
+      moved = 0;
+    }
+  }
   g->supervisor.arm(kSlotAudio, mono_ms());
   while (g->generation.load() == gen) {
     const int64_t now = mono_ms();
@@ -433,7 +452,8 @@ void audio_task(void* arg) {
     // The talk key, once a frame.
     const bool button = c.talk_gpio >= 0 &&
                         gpio_get_level((gpio_num_t)c.talk_gpio) == 0;
-    const bool touch = c.touch_talk && g->touch_held.load();
+    const bool touch = c.touch_talk && g->touch_held.load() &&
+                       now - g->touch_at.load() < kTouchFreshMs;
     const bool may_talk = g->mic_ok && g->clock_ok.load() &&
                           g->shed.load() < (uint8_t)Shed::kTransmit;
     switch (key.sample(button, touch, may_talk, now)) {
@@ -668,6 +688,22 @@ void beat_task(void*) {
 
 // ---- audio --------------------------------------------------------------
 
+// Undoes what start_audio() set up when a later step of it fails: the I2S
+// DMA is not left running into nothing, and the amplifier stays off.
+void stop_audio() {
+  gpio_set_level(kAmpEnable, 0);
+  if (g->tx != nullptr) {
+    i2s_channel_disable(g->tx);  // An error when never enabled: harmless
+    i2s_del_channel(g->tx);
+    g->tx = nullptr;
+  }
+  if (g->rx != nullptr) {
+    i2s_channel_disable(g->rx);
+    i2s_del_channel(g->rx);
+    g->rx = nullptr;
+  }
+}
+
 bool start_audio(int volume, float mic_gain_db) {
   gpio_config_t amp = {};
   amp.pin_bit_mask = 1ULL << kAmpEnable;
@@ -697,10 +733,14 @@ bool start_audio(int volume, float mic_gain_db) {
       i2s_channel_init_std_mode(g->rx, &std) != ESP_OK ||
       i2s_channel_enable(g->tx) != ESP_OK ||
       i2s_channel_enable(g->rx) != ESP_OK) {
+    stop_audio();
     return false;
   }
   // MCLK runs now: the codecs can lock to it.
-  if (!es8311_start() || !es8311_set_volume(volume)) return false;
+  if (!es8311_start() || !es8311_set_volume(volume)) {
+    stop_audio();
+    return false;
+  }
   // Without the mic the unit still listens.
   g->mic_ok = es7210_start(mic_gain_db);
   if (!g->mic_ok) ESP_LOGW(kTag, "No microphone: listening only");
@@ -727,7 +767,7 @@ void start_reticulum(const RadioConfig& config) {
   };
   rc.stopped = []() { return g->lifecycle->stopped(); };
   reticulum::start(rc);
-  memset(rc.confirm_key, 0, sizeof(rc.confirm_key));
+  mbedtls_platform_zeroize(rc.confirm_key, sizeof(rc.confirm_key));
 }
 
 }  // namespace
@@ -775,6 +815,13 @@ void begin(const RadioConfig& config) {
   g->status.volume = config.volume;
   g->status_lock = xSemaphoreCreateMutex();
   g->gnss = xQueueCreate(4, sizeof(int64_t));
+  if (g->status_lock == nullptr || g->gnss == nullptr) {
+    // No tasks start, so status() reads it without the lock (which it
+    // checks for): a null handle would assert, and take the gauge down.
+    g->status.state = RadioState::kStopped;
+    ESP_LOGE(kTag, "No memory for the radio's lock or queue: it stays off");
+    return;
+  }
   if (!config.enabled) {
     g->status.state = RadioState::kOff;
     return;
@@ -850,7 +897,10 @@ void begin(const RadioConfig& config) {
 }
 
 void set_touch_talk(bool held) {
-  if (g != nullptr) g->touch_held.store(held);
+  if (g != nullptr) {
+    g->touch_at.store(mono_ms());
+    g->touch_held.store(held);
+  }
 }
 
 void note_gnss_time(int64_t epoch_s) {
@@ -860,6 +910,7 @@ void note_gnss_time(int64_t epoch_s) {
 RadioStatus status() {
   RadioStatus s;
   if (g == nullptr) return s;
+  if (g->status_lock == nullptr) return g->status;  // begin() stopped early
   xSemaphoreTake(g->status_lock, portMAX_DELAY);
   s = g->status;
   xSemaphoreGive(g->status_lock);
