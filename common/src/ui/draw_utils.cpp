@@ -1,4 +1,7 @@
 #include "draw_utils.h"
+// lv_image_cache_drop(): LVGL 9.3's lvgl.h reaches it through lv_cache.h,
+// 9.5's no longer does; the header is at this path in both.
+#include <src/misc/cache/instance/lv_image_cache.h>
 
 #include <math.h>
 #include <stdlib.h>

@@ -1414,3 +1414,24 @@ then echo cancelling, since the board has an echo reference.
   restarted; the Status page's Radio mic line ends with the mic in use
   (`using both (averaged)`).
 - Checks: radio host tests 191, `pio run -e p4`, both 4" units flashed.
+
+## 2026-11-07 — LVGL 9.5 and the P4's PPA tried on the 4": no gain, back on 9.3
+
+- Asked for: would LVGL 9.5 be of use. Nothing in 9.5 itself is (blur
+  and shadows, OpenGL, Wayland, 3D, RISC-V vector code the P4 cannot
+  run); the candidate was 9.4's draw unit for the P4's PPA (its 2D
+  accelerator: solid fills and plain image copies).
+- Measured on the starboard 4" with a boot-time bench (now removed): each
+  page shown and redrawn whole (fastest of 3), then its value swung over
+  30 frames (median), as `tools/preview`'s bench does. Sums over the 7
+  pages, full / step: 9.3 582 / 222 ms; 9.5 607 / 235 ms; 9.5 with the
+  PPA (fills and RGB565 image copies, `LV_DRAW_BUF_ALIGN` 64) 566 / 228
+  ms. The step is the anti-aliased needle and, most of all, the compass
+  card turned in software (92-99 ms a step), neither of which the PPA
+  draws. Not worth the upgrade, nor the 2.1"'s panel checks it would take.
+- What 9.5 needs, for a later try: `lv_image_cache_drop()` is no longer
+  reached through `lvgl.h` (`draw_utils.cpp` now includes its header,
+  at the same path in 9.3); the PPA unit checks ESP-IDF's Kconfig name
+  `CONFIG_LV_DRAW_BUF_ALIGN`, which lv_conf.h must define (64, the P4's
+  cache line) in an Arduino build.
+- Where a faster 4" would come from: the compass card's turn.
