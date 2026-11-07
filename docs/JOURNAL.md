@@ -1160,3 +1160,57 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
 - `parse_host_port`: an IPv6 node must be an IPv6 address (RFC 4291's text
   forms), stricter than the app.
 - Checks: radio host tests 159, `pio run -e p4`.
+
+## 2026-11-07 — The crew branch: a self-review in six parts
+
+Six independent reviews of everything on `crew` (Reticulum primitives;
+the Reticulum node and its socket task; the wire and the receive
+pipeline; the audio path and the codecs; the ESP runtime and the card;
+the gauge side), each finding checked against the code, the app and the
+plugin before it was fixed.
+
+- Security:
+  - One ingress budget per WLAN source address, as the app's
+    `SourceLimiter`: one host with no key could take the whole global
+    budget and silence the crew.
+  - HMAC is now written over SHA-256 with no allocation, and every
+    mbedTLS failure is refused. Before, an allocation failure left the MAC
+    as stack garbage, which a token check then compared against.
+  - On the P4, randomness comes from an HMAC-DRBG seeded with the ADC
+    entropy source on (the P4 has no radio of its own).
+  - The talk GPIO no longer accepts the C6's SDIO pins, which could take
+    the WiFi down for good.
+  - Peers are learned only from direct copies that move the sequence on.
+- Behaviour, now as the app:
+  - The roster's bars before a member's first hello.
+  - Decoder take-over only after 2 s of silence.
+  - No concealment of gaps over three frames.
+  - Opus at constant bitrate.
+- Robustness:
+  - The talk lock-out survives a moment when talking is not allowed, and
+    a stale touch sample counts as a release.
+  - `cr-rns` runs below the guard. A trickling uplink, a shed connection
+    attempt and an oversized packet are each handled.
+  - The radio's lock and queue are checked, and the I2S DMA is stopped
+    when the audio start fails.
+  - A `recvfrom` error waits before the socket is reopened.
+  - The mic queue is emptied at start.
+- Screen:
+  - New `No network` state.
+  - A radio whose status is more than 5 s stale is shown as stopped.
+  - The halo follows the talk at once, only redraws its own band and pip,
+    and skips arcs the refresh cannot touch. A lit dashed halo had made
+    each needle frame about 5x dearer.
+  - The halo's glyphs are in PSRAM on the 4".
+  - The weakest-link bars show only on channel.
+  - The Crew page cuts names to fit.
+  - A single "no new data" read from the GT911 is not a release.
+  - The Crew style's card offers only what it uses.
+- Not changed, recorded:
+  - libopus's assertions. They are in codec-opus's `config.h`; none trips
+    at the fixed 24 kbit/s.
+  - The ES7210 gain rounding at 33 dB, and the ES8311's unused ADC output.
+    Neither can be checked here.
+  - `sendto` from `cr-audio`.
+- Checks: radio host tests 176 (OPUS off), gauge tests 73, the preview at
+  480 and 720 (two new scenes), `pio run -e p4`.

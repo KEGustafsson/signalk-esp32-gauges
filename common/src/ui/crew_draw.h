@@ -1,6 +1,6 @@
 #pragma once
 
-// Drawing pieces shared by the radio halo and the Crew page (MOCK-UP; see
+// Drawing pieces shared by the radio halo and the Crew page (see
 // crew_view.h).
 
 #include <lvgl.h>

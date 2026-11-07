@@ -20,6 +20,9 @@
 #include "sensesp_base_app.h"
 #include "signalk_gauges.h"
 #include "ui/crew_draw.h"
+// lv_draw_buf_handlers_t is a complete type only here in LVGL 9.3; the UI
+// code itself only ever passes a pointer to one.
+#include "src/draw/lv_draw_buf_private.h"
 
 using esp_panel::board::Board;
 

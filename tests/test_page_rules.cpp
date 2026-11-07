@@ -55,8 +55,18 @@ TEST(a_page_switched_to_crew_radio_has_no_path_and_saves) {
   CHECK(next.sk_path.empty());  // Nothing to subscribe to
   CHECK(next.title.empty());
   CHECK(next.min < next.max);
-  CHECK(page_schema(GaugeKind::kCrew, 6).find("Crew radio") !=
-        std::string::npos);
+  // Its card offers only what it uses: no title, path, decimals or timeout
+  // (every schema lists "Crew radio" among the styles, so that says nothing).
+  const std::string crew = page_schema(GaugeKind::kCrew, 6);
+  for (const char* field : {"\"title\":{", "\"sk_path\"", "\"decimals\"",
+                            "\"timeout_s\"", "\"unit\""}) {
+    CHECK(crew.find(field) == std::string::npos);
+  }
+  CHECK(crew.find("\"style\"") != std::string::npos);
+  CHECK(crew.find("\"swap_with\"") != std::string::npos);
+  const std::string dial = page_schema(GaugeKind::kRadial, 6);
+  CHECK(dial.find("\"sk_path\"") != std::string::npos);
+  CHECK(dial.find("\"timeout_s\"") != std::string::npos);
 }
 
 TEST(style_change_resets_untouched_fields) {
@@ -198,6 +208,18 @@ TEST(schema_is_valid_json_with_the_style_fields) {
       CHECK(props["unit"]["items"]["enum"].size() > 10);
     }
   }
+}
+
+TEST(schema_of_the_crew_style_is_valid_json_without_the_dial_fields) {
+  JsonDocument doc;
+  CHECK(deserializeJson(doc, page_schema(GaugeKind::kCrew, 7)) ==
+        DeserializationError::Ok);
+  JsonObjectConst props = doc["properties"];
+  CHECK(props["style"]["items"]["enum"].size() == 4);
+  CHECK(!props["sk_path"].is<JsonObjectConst>());
+  CHECK(!props["title"].is<JsonObjectConst>());
+  CHECK(!props["timeout_s"].is<JsonObjectConst>());
+  CHECK(props["swap_with"]["maximum"] == 7);
 }
 
 TEST(save_actions) {

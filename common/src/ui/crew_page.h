@@ -1,6 +1,6 @@
 #pragma once
 
-// The Crew page (MOCK-UP; see crew_view.h): the channel's roster as a
+// The Crew page (see crew_view.h): the channel's roster as a
 // compass, in the classic steel style. Each member is a pip on a ring at an
 // evenly spaced bearing with their name and signal bars; the talker's pip
 // glows. The centre holds the channel name, the head count in the gauges'

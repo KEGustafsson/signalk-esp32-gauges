@@ -1,8 +1,8 @@
 #pragma once
 
-// What the Crew Radio shows on a gauge: the snapshot the radio would publish
-// for the UI (p4-gauge-crew-radio/README.md: `cr-beat` swaps it in, the UI
-// reads it without locks) and the drawing code reads. No LVGL, no radio code.
+// What the Crew Radio shows on a gauge: a copy of the radio's status, taken
+// under its lock (briefly) by the view source on the 4" and read by the
+// drawing code without one. No LVGL, no radio code.
 //
 // On the 4" the radio fills it (the firmware registers a CrewViewSource);
 // elsewhere, and in the preview without one, read_crew_view() says the
