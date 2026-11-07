@@ -247,7 +247,9 @@ void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
   }
   if (g->shed.load() >= (uint8_t)Shed::kTransmit) return;  // Nothing goes out
   if (relay.to_reticulum) reticulum::send(relay.data, relay.len);
-  if (relay.to_lan) send_lan(node, sock, relay.data, relay.len, relay.hello, now);
+  if (relay.to_lan && sock.fd >= 0) {
+    send_lan(node, sock, relay.data, relay.len, relay.hello, now);
+  }
 }
 
 void net_task(void* arg) {
@@ -261,54 +263,67 @@ void net_task(void* arg) {
   // waits at most that long in its ring.
   const int timeout_ms = g->config.reticulum ? 20 : 100;
   int64_t next_beat = 0;
+  int64_t retry_at = 0;  // A socket that could not be opened: tried again
   g->supervisor.arm(kSlotNet, mono_ms());
   while (g->generation.load() == gen) {
     g->supervisor.checkin(kSlotNet, mono_ms());
-    if (!sock.ensure(g->config.group, g->config.port, timeout_ms)) {
-      g->peers.publish(PeerView());  // No address: no voice goes out
-      vTaskDelay(pdMS_TO_TICKS(500));
-      continue;
+    // The WLAN socket, opened again at most twice a second when it cannot be
+    // (no address yet, a port in use). Without it the rest of the turn still
+    // runs: what came over Reticulum, the hello there, the roster's expiry
+    // and the status, so nobody stays on the screen after leaving.
+    bool lan = false;
+    if (sock.fd >= 0 || mono_ms() >= retry_at) {
+      lan = sock.ensure(g->config.group, g->config.port, timeout_ms);
+      if (!lan) retry_at = mono_ms() + 500;
     }
-    sockaddr_in from = {};
-    socklen_t from_len = sizeof(from);
-    const int n = recvfrom(sock.fd, buf, sizeof(buf), 0, (sockaddr*)&from,
-                           &from_len);
-    const int64_t now = mono_ms();
     const bool on_air =
         g->clock_ok.load() && g->shed.load() < (uint8_t)Shed::kPaused;
-    if (n > 0 && on_air) {
-      take(node, sock, buf, (size_t)n, NetNode::Via::kLan,
-           ntohl(from.sin_addr.s_addr), now);
-    } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-      sock.close_it();  // Reopened on the next turn
-      continue;
+    if (lan) {
+      sockaddr_in from = {};
+      socklen_t from_len = sizeof(from);
+      const int n = recvfrom(sock.fd, buf, sizeof(buf), 0, (sockaddr*)&from,
+                             &from_len);
+      if (n > 0 && on_air) {
+        take(node, sock, buf, (size_t)n, NetNode::Via::kLan,
+             ntohl(from.sin_addr.s_addr), mono_ms());
+      } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        sock.close_it();  // Reopened on the next turn
+      }
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(timeout_ms));
     }
+    const int64_t now = mono_ms();
     // What came over Reticulum meanwhile, through the same pipeline.
     size_t m;
     while ((m = reticulum::receive(from_rns, sizeof(from_rns))) > 0) {
       if (on_air) take(node, sock, from_rns, m, NetNode::Via::kReticulum, 0, now);
     }
-    {
+    if (sock.fd >= 0) {
       // Where this node's voice goes, for cr-audio.
       PeerView v;
       v.ip = sock.ip;
       v.broadcast = sock.broadcast;
       v.count = node.peers().live_addrs(now, v.addrs);
       g->peers.publish(v);
+    } else {
+      g->peers.publish(PeerView());  // No socket: no voice on the WLAN
     }
     if (now >= next_beat) {
       next_beat = now + 1000;
       // The hello: one a second, while the clock is trusted and the memory
       // guard lets us send. Hellos always keep their group copies.
       if (on_air && g->shed.load() < (uint8_t)Shed::kTransmit) {
-        // What this node is on now: the WLAN (the socket is open), and
-        // Reticulum while connected to its transport node.
-        node.set_transports((uint8_t)(Hello::kLan | (reticulum::connected()
-                                                         ? Hello::kReticulum
-                                                         : 0)));
-        const size_t len = node.build_hello((int64_t)time(nullptr), hello);
+        // What this node is on now: the WLAN while its socket is open, and
+        // Reticulum while connected to its transport node (on Reticulum
+        // alone it keeps the channel, as the plugin does).
+        const uint8_t on =
+            (uint8_t)((sock.fd >= 0 ? Hello::kLan : 0) |
+                      (reticulum::connected() ? Hello::kReticulum : 0));
+        node.set_transports(on);
+        const size_t len =
+            on != 0 ? node.build_hello((int64_t)time(nullptr), hello) : 0;
         if (len > 0) {
-          send_lan(node, sock, hello, len, /*hello=*/true, now);
+          if (sock.fd >= 0) send_lan(node, sock, hello, len, /*hello=*/true, now);
           reticulum::send(hello, len);
         }
       }

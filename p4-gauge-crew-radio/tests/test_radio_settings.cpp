@@ -66,3 +66,21 @@ TEST(settings_a_reticulum_node_as_the_app_takes_it) {
     CHECK(!parse_host_port(bad, &host, &port));
   }
 }
+
+TEST(settings_an_ipv6_node_must_be_an_ipv6_address) {
+  std::string host;
+  int port = 0;
+  for (const char* good : {"::1", "::", "fe80::1", "2001:db8::7",
+                           "2001:db8:0:0:0:0:0:1", "1:2:3:4:5:6:7:8",
+                           "::ffff:192.168.1.9", "64:ff9b::10.0.0.1",
+                           "[fe80::1]:37428", "1::", "[1:2:3:4:5:6:7::]"}) {
+    CHECK(parse_host_port(good, &host, &port));
+  }
+  for (const char* bad : {"1.2.3.4:5:6", "::::", ":::", "1:::2", "1::2::3",
+                          ":1:2:3:4:5:6:7", "1:2:3:4:5:6:7:", "1:2:3:4:5:6:7:8:9",
+                          "1:2:3:4:5:6:7::8", "12345::1", "::1.2.3",
+                          "::256.1.1.1", "::1.2.3.4:5", "1.2.3.4::",
+                          "[1.2.3.4:5:6]", "[::::]:4242", "[fe80::1%eth0]"}) {
+    CHECK(!parse_host_port(bad, &host, &port));
+  }
+}

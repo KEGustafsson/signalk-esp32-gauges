@@ -50,12 +50,17 @@ struct Shared {
   SemaphoreHandle_t lock = nullptr;
   ReticulumStatus status;
 };
+// cr-rns's own, set before the task is created.
 Shared* g = nullptr;
+// The other tasks' view: published only once the whole of it exists (its
+// lock first of all), so no reader ever takes a lock that is not there.
+std::atomic<Shared*> g_ready{nullptr};
+Shared* ready() { return g_ready.load(std::memory_order_acquire); }
 
 void set_state(ReticulumStatus::State state, const std::string& note) {
   xSemaphoreTake(g->lock, portMAX_DELAY);
   g->status.state = state;
-  if (!note.empty()) g->status.note = note;
+  g->status.note = note;  // Each state says why afresh, or nothing
   xSemaphoreGive(g->lock);
 }
 
@@ -313,63 +318,83 @@ void task(void*) {
 
 bool start(const Config& config) {
   if (g != nullptr) return false;
-  g = new Shared();
-  g->config = config;
-  g->lock = xSemaphoreCreateMutex();
-  g->status.where = config.host.find(':') != std::string::npos
+  // Built whole before any other task can see it: cr-net reads the status
+  // from its first turn, which may come before this.
+  Shared* s = new Shared();
+  s->config = config;
+  s->lock = xSemaphoreCreateMutex();
+  if (s->lock == nullptr) {
+    ESP_LOGE(kTag, "Reticulum could not start (no lock): the WLAN alone");
+    delete s;
+    return false;  // status() stays Off
+  }
+  s->status.where = config.host.find(':') != std::string::npos
                         ? "[" + config.host + "]:" + std::to_string(config.port)
                         : config.host + ":" + std::to_string(config.port);
-  g->to_rns = xRingbufferCreateWithCaps(kRingBytes, RINGBUF_TYPE_NOSPLIT,
+  s->to_rns = xRingbufferCreateWithCaps(kRingBytes, RINGBUF_TYPE_NOSPLIT,
                                         MALLOC_CAP_SPIRAM);
-  g->from_rns = xRingbufferCreateWithCaps(kRingBytes, RINGBUF_TYPE_NOSPLIT,
+  s->from_rns = xRingbufferCreateWithCaps(kRingBytes, RINGBUF_TYPE_NOSPLIT,
                                           MALLOC_CAP_SPIRAM);
-  if (g->lock == nullptr || g->to_rns == nullptr || g->from_rns == nullptr ||
-      xTaskCreatePinnedToCore(task, "cr-rns", kStack, nullptr, kPriority,
-                              nullptr, kCore) != pdPASS) {
+  s->status.state = ReticulumStatus::State::kWaiting;
+  g = s;  // cr-rns's, from its first line
+  bool ok = s->to_rns != nullptr && s->from_rns != nullptr &&
+            xTaskCreatePinnedToCore(task, "cr-rns", kStack, nullptr, kPriority,
+                                    nullptr, kCore) == pdPASS;
+  if (!ok) {
     ESP_LOGE(kTag, "Reticulum could not start: the WLAN alone");
-    g->status.state = ReticulumStatus::State::kOff;
-    g->status.note = "could not start";
-    // Nothing is handed over from now on.
-    if (g->to_rns != nullptr) vRingbufferDeleteWithCaps(g->to_rns);
-    if (g->from_rns != nullptr) vRingbufferDeleteWithCaps(g->from_rns);
-    g->to_rns = g->from_rns = nullptr;
-    return false;
+    // Nothing is handed over: the other tasks only ever see no rings.
+    if (s->to_rns != nullptr) vRingbufferDeleteWithCaps(s->to_rns);
+    if (s->from_rns != nullptr) vRingbufferDeleteWithCaps(s->from_rns);
+    s->to_rns = s->from_rns = nullptr;
+    s->status.state = ReticulumStatus::State::kOff;
+    s->status.note = "could not start";
+  } else {
+    ESP_LOGI(kTag, "Reticulum via %s", s->status.where.c_str());
   }
-  g->status.state = ReticulumStatus::State::kWaiting;
-  ESP_LOGI(kTag, "Reticulum via %s", g->status.where.c_str());
-  return true;
+  g_ready.store(s, std::memory_order_release);
+  return ok;
 }
 
 bool send(const uint8_t* packet, size_t len) {
-  if (g == nullptr || g->to_rns == nullptr || !g->linked.load()) return false;
-  if (xRingbufferSend(g->to_rns, packet, len, 0) != pdTRUE) {
-    g->dropped_out++;
+  Shared* s = ready();
+  if (s == nullptr || s->to_rns == nullptr || !s->linked.load()) return false;
+  if (xRingbufferSend(s->to_rns, packet, len, 0) != pdTRUE) {
+    s->dropped_out++;
     return false;
   }
   return true;
 }
 
 size_t receive(uint8_t* out, size_t cap) {
-  if (g == nullptr || g->from_rns == nullptr) return 0;
+  Shared* s = ready();
+  if (s == nullptr || s->from_rns == nullptr) return 0;
   size_t len = 0;
-  void* item = xRingbufferReceive(g->from_rns, &len, 0);
+  void* item = xRingbufferReceive(s->from_rns, &len, 0);
   if (item == nullptr) return 0;
   const size_t n = len <= cap ? len : 0;  // Larger than any channel packet
   if (n > 0) memcpy(out, item, n);
-  vRingbufferReturnItem(g->from_rns, item);
+  vRingbufferReturnItem(s->from_rns, item);
   return n;
 }
 
-bool connected() { return g != nullptr && g->connected.load(); }
-bool linked() { return g != nullptr && g->linked.load(); }
+bool connected() {
+  Shared* s = ready();
+  return s != nullptr && s->connected.load();
+}
+
+bool linked() {
+  Shared* s = ready();
+  return s != nullptr && s->linked.load();
+}
 
 ReticulumStatus status() {
-  ReticulumStatus s;
-  if (g == nullptr) return s;
-  xSemaphoreTake(g->lock, portMAX_DELAY);
-  s = g->status;
-  xSemaphoreGive(g->lock);
-  return s;
+  ReticulumStatus out;
+  Shared* s = ready();
+  if (s == nullptr) return out;  // Not started: Off
+  xSemaphoreTake(s->lock, portMAX_DELAY);
+  out = s->status;
+  xSemaphoreGive(s->lock);
+  return out;
 }
 
 }  // namespace reticulum
