@@ -52,13 +52,17 @@ class Roster {
   void snapshot(int64_t now_ms, std::vector<Member>* out) const;
   int size() const;
   bool anyone_talking(int64_t now_ms) const;
+  // How many are talking now: the screen's halo follows this at once rather
+  // than at the once-a-second roster copy.
+  int talking_count(int64_t now_ms) const;
 
  private:
   struct Node {
     Member m;
     int64_t last_seen_ms = 0;
     int64_t last_audio_ms = INT64_MIN / 2;
-    int64_t last_hello_ms = 0;  // Before any hello: the first packet
+    int64_t last_hello_ms = 0;
+    bool has_hello = false;  // Before one, it is measured from last_seen_ms
     LinkQuality link;
     bool used = false;
   };

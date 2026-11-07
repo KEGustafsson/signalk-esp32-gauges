@@ -71,6 +71,12 @@ TEST(clock_parses_signal_k_datetime) {
   CHECK(parse_iso8601_utc("2000-02-29T12:00:00Z", &t) && t == 951825600);
   CHECK(!parse_iso8601_utc("2026-09-07T00:00:00", &t));   // No zone: not UTC
   CHECK(!parse_iso8601_utc("2026-13-07T00:00:00Z", &t));
+  CHECK(!parse_iso8601_utc("2026-02-31T00:00:00Z", &t));  // Not March 3rd
+  CHECK(!parse_iso8601_utc("2026-04-31T00:00:00Z", &t));
+  CHECK(!parse_iso8601_utc("2026-02-29T00:00:00Z", &t));  // Not a leap year
+  CHECK(!parse_iso8601_utc("1900-02-29T00:00:00Z", &t));  // Nor a century
+  CHECK(parse_iso8601_utc("2028-02-29T00:00:00Z", &t));
+  CHECK(parse_iso8601_utc("2026-12-31T23:59:59Z", &t));
   CHECK(!parse_iso8601_utc("2026-09-07 00:00:00Z", &t));
   CHECK(!parse_iso8601_utc("2026-09-07T25:00:00Z", &t));
   CHECK(!parse_iso8601_utc("", &t));

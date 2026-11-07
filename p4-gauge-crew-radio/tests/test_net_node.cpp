@@ -23,12 +23,12 @@ NetNode::Config config(const char* name) {
 // An audio packet from `sender`, sealed under `key`.
 std::vector<uint8_t> sealed_audio(const uint8_t* key, int32_t sender, int32_t seq,
                            Codec codec = Codec::kOpus, size_t len = 40,
-                           int64_t time = kNow) {
+                           int64_t time = kNow, uint8_t ttl = 4) {
   Header h;
   h.sender_id = sender;
   h.seq = seq;
   h.codec = codec;
-  h.ttl = 4;
+  h.ttl = ttl;
   h.hops = 4;
   h.time = (uint32_t)time;
   std::vector<uint8_t> plain(len, 0x55);
@@ -199,4 +199,80 @@ TEST(net_a_missed_fresh_packet_replayed_from_spoofed_addresses_moves_one_entry) 
   bool six = false;
   for (int i = 0; i < n; i++) six = six || addrs[i] == 0x0A000006;
   CHECK(n == 2 && six);  // Sender 6 kept; sender 5's one entry moved
+}
+
+// A host with no key that sends faster than the crew spends its own budget,
+// not the crew's: the crew's next frames still play (the app's
+// SourceLimiter; before it, 2000 junk packets took the whole global burst).
+TEST(net_a_keyless_flood_from_one_host_does_not_silence_the_crew) {
+  NetNode b(kKey, 2, config("Phone"));
+  NetNode::Audio au;
+  const uint8_t other[32] = {9};
+  for (int i = 0; i < 5000; i++) {
+    auto junk = sealed_audio(other, 77, i);
+    b.on_datagram(junk.data(), junk.size(), 0x0A000063, 0, kNow, &au);
+  }
+  CHECK(b.counters().flooded == 4000);  // Past its burst of 1000
+  int played = 0;
+  for (int32_t seq = 1; seq <= 50; seq++) {
+    auto p = sealed_audio(kKey, 5, seq);
+    played += b.on_datagram(p.data(), p.size(), 0x0A000005, 0, kNow, &au) ? 1 : 0;
+  }
+  CHECK(played == 50);
+}
+
+// A copy a bridging phone relayed (ttl below the sender's hops) teaches
+// nothing about where the sender is: it came from the relay's address.
+TEST(net_a_relayed_first_copy_does_not_move_its_senders_address) {
+  NetNode b(kKey, 2, config("Phone"));
+  NetNode::Audio au;
+  auto p = sealed_audio(kKey, 5, 1);
+  CHECK(b.on_datagram(p.data(), p.size(), 0x0A000005, 0, kNow, &au));
+  p = sealed_audio(kKey, 5, 2, Codec::kOpus, 40, kNow, /*ttl=*/3);
+  CHECK(b.on_datagram(p.data(), p.size(), 0x0A0000AA, 20, kNow, &au));  // Played
+  uint32_t addrs[LanPeers::kMax];
+  CHECK(b.peers().live_addrs(20, addrs) == 1 && addrs[0] == 0x0A000005);
+}
+
+// A late frame (its slot concealed already) replayed from elsewhere is
+// refused before it can re-point the sender's copies.
+TEST(net_a_late_frame_teaches_no_address) {
+  NetNode b(kKey, 2, config("Phone"));
+  NetNode::Audio au;
+  auto p = sealed_audio(kKey, 5, 1);
+  b.on_datagram(p.data(), p.size(), 0x0A000005, 0, kNow, &au);
+  p = sealed_audio(kKey, 5, 3);
+  b.on_datagram(p.data(), p.size(), 0x0A000005, 20, kNow, &au);
+  p = sealed_audio(kKey, 5, 2);  // Missed, now late
+  CHECK(!b.on_datagram(p.data(), p.size(), 0x0B000001, 40, kNow, &au));
+  CHECK(b.counters().late == 1);
+  uint32_t addrs[LanPeers::kMax];
+  CHECK(b.peers().live_addrs(40, addrs) == 1 && addrs[0] == 0x0A000005);
+}
+
+// A hello that opens but does not decode says nothing about its sender: no
+// roster entry (the app ignores it too).
+TEST(net_a_hello_that_does_not_decode_makes_no_member) {
+  NetNode b(kKey, 2, config("Phone"));
+  NetNode::Audio au;
+  auto p = sealed_audio(kKey, 5, 1, Codec::kHello, 3);  // Not a hello body
+  CHECK(!b.on_datagram(p.data(), p.size(), 0x0A000005, 0, kNow, &au));
+  CHECK(b.counters().hellos == 1);
+  std::vector<Member> m;
+  b.roster().snapshot(0, &m);
+  CHECK(m.empty());
+}
+
+// A member heard only by audio, talking cleanly, keeps its bars (measured
+// from its last packet until it says hello, as the app does).
+TEST(net_an_audio_only_member_talking_cleanly_keeps_its_bars) {
+  NetNode b(kKey, 2, config("Phone"));
+  NetNode::Audio au;
+  for (int32_t seq = 1; seq <= 250; seq++) {  // 5 s of talk
+    auto p = sealed_audio(kKey, 5, seq);
+    b.on_datagram(p.data(), p.size(), 0x0A000005, seq * 20, kNow, &au);
+  }
+  std::vector<Member> m;
+  b.roster().snapshot(5000, &m);
+  CHECK(m.size() == 1 && m[0].bars == 4);
 }

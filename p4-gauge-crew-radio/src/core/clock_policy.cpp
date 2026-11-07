@@ -36,9 +36,14 @@ bool parse_iso8601_utc(const char* t, int64_t* epoch_s) {
       t[16] != ':' || !digits(t + 17, 2, &s)) {
     return false;
   }
-  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 60) {
+  if (mo < 1 || mo > 12 || d < 1 || h > 23 || mi > 59 || s > 60) {
     return false;
   }
+  // The month's own length: 2026-02-31 is not a date, and must not become
+  // the 3rd of March.
+  static const int kDays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  const bool leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+  if (d > kDays[mo - 1] + (mo == 2 && leap ? 1 : 0)) return false;
   const char* p = t + 19;
   if (*p == '.') {
     p++;

@@ -71,6 +71,7 @@ add_executable(crew_radio_tests
   test_net_node.cpp
   test_playout.cpp
   test_radio_settings.cpp
+  test_source_limiter.cpp
   test_talk.cpp
   test_radio_state.cpp
   test_lifecycle.cpp
@@ -93,6 +94,7 @@ add_executable(crew_radio_tests
   ${SRC}/core/self_test.cpp
   ${SRC}/core/playout.cpp
   ${SRC}/core/net_node.cpp
+  ${SRC}/core/source_limiter.cpp
   ${SRC}/core/radio_settings.cpp
   ${SRC}/core/talk_key.cpp
   ${SRC}/core/transmitter.cpp

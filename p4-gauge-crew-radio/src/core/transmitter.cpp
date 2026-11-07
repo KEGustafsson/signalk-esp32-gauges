@@ -13,7 +13,7 @@ size_t Transmitter::build(FrameEncoder* encoder,
   h.sender_id = self_;
   // The sequence moves even past a frame that fails to seal: the receivers
   // then count it as lost and conceal it, rather than see a gap close.
-  h.seq = seq_++;
+  h.seq = (int32_t)seq_++;
   h.codec = encoder->codec();
   h.ttl = hops_;
   h.hops = hops_;

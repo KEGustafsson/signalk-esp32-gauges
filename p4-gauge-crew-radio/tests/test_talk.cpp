@@ -25,39 +25,39 @@ const uint8_t kKey[32] = {3};
 
 TEST(talk_key_debounces_press_and_release) {
   TalkKey k;
-  CHECK(k.sample(true, false, 0) == TalkKey::Event::kNone);  // One sample: a bounce
-  CHECK(k.sample(false, false, 20) == TalkKey::Event::kNone);
-  CHECK(k.sample(true, false, 40) == TalkKey::Event::kNone);
-  CHECK(k.sample(true, false, 60) == TalkKey::Event::kKeyed);
+  CHECK(k.sample(true, false, true, 0) == TalkKey::Event::kNone);  // One sample: a bounce
+  CHECK(k.sample(false, false, true, 20) == TalkKey::Event::kNone);
+  CHECK(k.sample(true, false, true, 40) == TalkKey::Event::kNone);
+  CHECK(k.sample(true, false, true, 60) == TalkKey::Event::kKeyed);
   CHECK(k.talking());
-  CHECK(k.sample(false, false, 80) == TalkKey::Event::kNone);  // A missed read
-  CHECK(k.sample(false, false, 100) == TalkKey::Event::kNone);
-  CHECK(k.sample(false, true, 120) == TalkKey::Event::kNone);  // Touch holds it
+  CHECK(k.sample(false, false, true, 80) == TalkKey::Event::kNone);  // A missed read
+  CHECK(k.sample(false, false, true, 100) == TalkKey::Event::kNone);
+  CHECK(k.sample(false, true, true, 120) == TalkKey::Event::kNone);  // Touch holds it
   CHECK(k.talking());
-  k.sample(false, false, 140);
-  k.sample(false, false, 160);
-  CHECK(k.sample(false, false, 180) == TalkKey::Event::kUnkeyed);
+  k.sample(false, false, true, 140);
+  k.sample(false, false, true, 160);
+  CHECK(k.sample(false, false, true, 180) == TalkKey::Event::kUnkeyed);
   CHECK(!k.talking());
 }
 
 TEST(talk_key_times_out_and_stays_off_until_released) {
   TalkKey k;
-  k.sample(true, false, 0);
-  k.sample(true, false, 20);
+  k.sample(true, false, true, 0);
+  k.sample(true, false, true, 20);
   CHECK(k.talking());
-  CHECK(k.sample(true, false, 20 + TalkKey::kTimeoutMs - 1) == TalkKey::Event::kNone);
-  CHECK(k.sample(true, false, 20 + TalkKey::kTimeoutMs) == TalkKey::Event::kTimedOut);
+  CHECK(k.sample(true, false, true, 20 + TalkKey::kTimeoutMs - 1) == TalkKey::Event::kNone);
+  CHECK(k.sample(true, false, true, 20 + TalkKey::kTimeoutMs) == TalkKey::Event::kTimedOut);
   CHECK(!k.talking() && k.locked_out());
   // Still held (a shorted button): never keys again by itself.
   for (int i = 0; i < 100; i++) {
-    CHECK(k.sample(true, true, 200000 + i * 20) == TalkKey::Event::kNone);
+    CHECK(k.sample(true, true, true, 200000 + i * 20) == TalkKey::Event::kNone);
   }
-  k.sample(false, false, 300000);
-  k.sample(false, false, 300020);
-  k.sample(false, false, 300040);
+  k.sample(false, false, true, 300000);
+  k.sample(false, false, true, 300020);
+  k.sample(false, false, true, 300040);
   CHECK(!k.locked_out());
-  k.sample(false, true, 300060);
-  CHECK(k.sample(false, true, 300080) == TalkKey::Event::kKeyed);
+  k.sample(false, true, true, 300060);
+  CHECK(k.sample(false, true, true, 300080) == TalkKey::Event::kKeyed);
 }
 
 TEST(transmitter_packets_open_as_this_nodes_voice_in_sequence) {
@@ -164,4 +164,39 @@ TEST(mic_channel_level_and_gain_code) {
   CHECK(mic::es7210_gain_code(37.5f) == 14);
   CHECK(mic::es7210_gain_code(99) == 14);
   CHECK(mic::es7210_gain_code(-5) == 0);
+}
+
+// A moment when talking is not allowed (the memory guard, the clock) un-keys
+// like a release, but a stuck input stays locked out: only letting go ends
+// the time-out.
+TEST(talk_a_lock_out_survives_a_moment_when_talking_is_not_allowed) {
+  TalkKey k;
+  int64_t t = 0;
+  k.sample(true, false, true, t);
+  CHECK(k.sample(true, false, true, t += 20) == TalkKey::Event::kKeyed);
+  CHECK(k.sample(true, false, true, t += TalkKey::kTimeoutMs) ==
+        TalkKey::Event::kTimedOut);
+  for (int i = 0; i < 10; i++) k.sample(true, false, false, t += 20);  // Not allowed
+  CHECK(k.locked_out());
+  for (int i = 0; i < 100; i++) {
+    CHECK(k.sample(true, false, true, t += 20) == TalkKey::Event::kNone);
+  }
+  CHECK(k.locked_out());
+  for (int i = 0; i < 3; i++) k.sample(false, false, true, t += 20);
+  CHECK(!k.locked_out());
+}
+
+// Talking not allowed while keyed un-keys after the release frames, and a
+// press while it is not allowed does not key.
+TEST(talk_not_allowed_unkeys_and_does_not_key) {
+  TalkKey k;
+  k.sample(true, false, true, 0);
+  CHECK(k.sample(true, false, true, 20) == TalkKey::Event::kKeyed);
+  k.sample(true, false, false, 40);
+  k.sample(true, false, false, 60);
+  CHECK(k.sample(true, false, false, 80) == TalkKey::Event::kUnkeyed);
+  for (int i = 0; i < 10; i++) {
+    CHECK(k.sample(true, true, false, 100 + i * 20) == TalkKey::Event::kNone);
+  }
+  CHECK(!k.talking());
 }

@@ -9,8 +9,11 @@
 // A time-out, as on a VHF set: kTimeoutMs of continuous talk un-keys the
 // mic and it stays un-keyed until every input has been released. A button
 // shorted by spray or a hand resting on the screen would otherwise hold
-// the channel for the whole crew, and nobody else could be heard. Pure;
-// owned by the audio task.
+// the channel for the whole crew, and nobody else could be heard. Only the
+// inputs themselves being let go ends the lock-out: a moment when talking
+// is not allowed (the memory guard, the clock) un-keys like a release but
+// does not, or a stuck button would key again after every such moment.
+// Pure; owned by the audio task.
 
 #include <stdint.h>
 
@@ -24,8 +27,9 @@ class TalkKey {
 
   enum class Event : uint8_t { kNone, kKeyed, kUnkeyed, kTimedOut };
 
-  // One sample of the inputs; the event this sample caused.
-  Event sample(bool button, bool touch, int64_t now_ms);
+  // One sample of the inputs as they are, and whether talking is allowed
+  // now; the event this sample caused.
+  Event sample(bool button, bool touch, bool may_talk, int64_t now_ms);
 
   bool talking() const { return talking_; }
   // True from a time-out until every input is released.
@@ -34,8 +38,11 @@ class TalkKey {
  private:
   bool talking_ = false;
   bool locked_ = false;
-  int down_ = 0;  // Consecutive samples with an input held
-  int up_ = 0;    // Consecutive samples with none
+  // Consecutive samples keying (held and allowed) and not keying; and with
+  // nothing held at all, for the lock-out. Saturating.
+  int down_ = 0;
+  int up_ = 0;
+  int released_ = 0;
   int64_t keyed_ms_ = 0;
 };
 
