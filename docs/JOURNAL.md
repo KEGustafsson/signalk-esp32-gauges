@@ -1490,5 +1490,5 @@ and redrawn whole (fastest of 3), then its value swung over 30 frames
 - Checks: gauge host tests 77, the preview at 480 and 720 (the 720 pages
   differ from before only inside the LCD panels: no needle left behind
   by the smaller invalid areas), `pio run -e p4`, `pio run -e s3`, both 4"
-  units flashed. The 2.1" panel to be looked at with this build (its
-  drawing changed: less of it).
+  units flashed; both 2.1" units flashed and their panels looked at: no
+  flicker or shift.
