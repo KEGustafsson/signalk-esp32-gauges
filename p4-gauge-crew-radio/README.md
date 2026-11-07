@@ -135,8 +135,8 @@ path takes no lock (`src/esp/radio_runtime.*`).
 |---|---|---|---|
 | `cr-audio` | 17 | the Opus decoders (8, made once), `Playout`, `Mixer`; the `TalkKey`, the encoder, the `Transmitter` and its own send socket; writes I2S to the speaker and reads I2S from the mic | `i2s_channel_write`/`read` blocking on the DMA: the I2S clock paces it |
 | `cr-net` | 16 | the receive socket and `NetNode`: receive, `Ingress`, peers, roster, the hello once a second, the bridge; publishes where this node's voice goes (`core/peer_snapshot.h`, a seqlock) | `recvfrom` with a 100 ms timeout (20 ms with Reticulum) |
-| `cr-rns` | 5 | the TCP connection to the Reticulum transport node and the `ReticulumNode` in it (announces, links, key proofs, `Carry`) | `select` with a 10 ms timeout; the node's tick once a second |
 | `cr-beat` | 3 | `ClockPolicy`, `MemoryGuard`, `Supervisor`, SNTP | once a second |
+| `cr-rns` | 2 | the TCP connection to the Reticulum transport node and the `ReticulumNode` in it (announces, links, key proofs, `Carry`) | `select` with a 10 ms timeout; the node's tick once a second |
 
 - `cr-net` -> `cr-audio`: a single-producer/single-consumer ring of
   admitted frames (`core/spsc_ring.h`), 32 slots; a full ring drops and

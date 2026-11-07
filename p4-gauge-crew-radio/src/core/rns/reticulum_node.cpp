@@ -188,11 +188,17 @@ bool ReticulumNode::send(const uint8_t* packet, size_t len) {
   for (Entry& e : entries_) {
     if (!e.used || !e.link.active() || !e.confirmed) continue;
     const size_t n = carry::cut(packet, len, e.cut_id++, parts_, lens);
+    size_t written = 0;
     for (size_t i = 0; i < n; i++) {
       const size_t m = e.link.data_packet(parts_[i], lens[i], out_);
-      if (m > 0) write(out_, m);
+      if (m > 0) {
+        write(out_, m);
+        written++;
+      }
     }
-    sent = sent || n > 0;
+    // Sent only when every part went out: a part that could not be sealed
+    // leaves the far end a packet it can never join.
+    sent = sent || (n > 0 && written == n);
   }
   if (sent) c_.tx++;
   return sent;
