@@ -1,7 +1,7 @@
 {
   "name": "P4GaugeCrewRadio",
   "version": "0.1.0",
-  "description": "P4 Gauge Crew Radio: a Crew Radio node (WLAN, later Reticulum) for the ESP32-P4 4-inch gauge. Wire-compatible with the crew-radio app (wire v4).",
+  "description": "P4 Gauge Crew Radio: a Crew Radio node (WLAN and Reticulum) for the ESP32-P4 4-inch gauge. Wire-compatible with the crew-radio app (wire v4).",
   "license": "EUPL-1.2",
   "frameworks": ["arduino"],
   "platforms": ["espressif32"],

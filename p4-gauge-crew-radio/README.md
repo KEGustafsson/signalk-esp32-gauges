@@ -5,7 +5,9 @@ gauge (Waveshare ESP32-P4-WIFI6-Touch-LCD-4C): the boat's intercom on the
 same board that shows the instruments, through its ES8311 codec and NS4150B
 speaker amplifier (and, from phase 2, its ES7210 microphone ADC). It speaks
 the crew-radio app's wire format (v4) unchanged, so the phones, the Signal K
-plugin and this node are one channel. Over WLAN; Reticulum later (phase 2b).
+plugin and this node are one channel. Over the boat's WLAN, and over
+Reticulum (phase 2b) for the crew ashore or on another boat, with the unit
+bridging the two.
 
 Nothing here commands a machine, and the radio is a guest on a gauge: it may
 never take the display down, cover a reading or keep the unit from
@@ -14,9 +16,9 @@ switched on in its card; a gauge that never switches it on runs as before.
 
 | | |
 |---|---|
-| **Status** | Phases 1 and 2 written: the 4" firmware listens to the channel, is listed on the phones' roster, and talks (two-finger hold or a button). Built for the board; not yet run on one (see "First power-up") |
+| **Status** | Phases 1, 2, 2b and 3 written: the 4" firmware listens to the channel, is listed on the phones' roster, talks (two-finger hold or a button), reaches the crew over Reticulum and bridges it to the WLAN, and shows the crew on the screen. Built for the board; not yet run on one (see "First power-up") |
 | **Licence** | EUPL-1.2, as the whole repository and crew-radio, from which the core is ported (`LICENSE` here too, for the library on its own) |
-| **Tests** | `tests/`: 112 host tests plus 3 with libopus, the app's own vectors included |
+| **Tests** | `tests/`: 153 host tests plus 3 with libopus, the app's own vectors (the channel's and Reticulum's) included |
 
 ## What runs where
 
@@ -67,6 +69,9 @@ In the unit's web UI, Configuration, **Crew radio**:
 | **Mic gain (dB)** | The ES7210's preamp, 0-37.5 (default 30) |
 | **Microphone** | MIC1 or MIC2 of the board's two |
 | **Key beeps** | A beep when the mic keys and un-keys; the time-out always beeps |
+| **Reticulum** | The channel through a Reticulum transport node as well (off by default), as the phones' Reticulum tile |
+| **Transport node** | `host`, `host:port`, `[v6]` or `[v6]:port` of the node's TCP server interface (the boat's rnsd, or a hub ashore; crew-radio's `docs/RETICULUM_HUB.md`); 4242 when no port is given |
+| **Relay** | With Reticulum on, bridge it and the WLAN (on by default): the phones on board hear the crew ashore, and back |
 
 Talking is push to talk: the mic is keyed while the fingers or the button
 are held (40 ms to key, 60 ms to let go), and the unit is half duplex: the
@@ -78,7 +83,9 @@ channel for the whole crew (`core/talk_key.h`).
 Save, then restart the unit. The Status page's **Crew radio** group shows
 the state (`On channel`, `No clock`, `No channel key`, `Self-test failed`,
 `No audio`, `Paused: memory`, `Stopped`), who is on the channel, the clock's
-source, packet and audio counters, and the free DMA RAM.
+source, packet and audio counters, the free DMA RAM and, with Reticulum on,
+where it stands (`Waiting for the clock`, the node and why it cannot be
+reached, or its links, peers, packets each way, relayed and reconnects).
 
 ## Wire compatibility
 
@@ -113,14 +120,15 @@ ESP-Hosted), the Aware secrets.
 
 ## The FreeRTOS design
 
-Three tasks on core 0, away from Arduino's loop task (core 1, where SensESP
+Three tasks on core 0 (four with Reticulum), away from Arduino's loop task (core 1, where SensESP
 can wait 5 s on the C6); each piece of state has one owner and the audio
 path takes no lock (`src/esp/radio_runtime.*`).
 
 | Task | Priority | Owns | Paced by |
 |---|---|---|---|
 | `cr-audio` | 17 | the Opus decoders (8, made once), `Playout`, `Mixer`; the `TalkKey`, the encoder, the `Transmitter` and its own send socket; writes I2S to the speaker and reads I2S from the mic | `i2s_channel_write`/`read` blocking on the DMA: the I2S clock paces it |
-| `cr-net` | 16 | the receive socket and `NetNode`: receive, `Ingress`, peers, roster, the hello once a second; publishes where this node's voice goes (`core/peer_snapshot.h`, a seqlock) | `recvfrom` with a 100 ms timeout |
+| `cr-net` | 16 | the receive socket and `NetNode`: receive, `Ingress`, peers, roster, the hello once a second, the bridge; publishes where this node's voice goes (`core/peer_snapshot.h`, a seqlock) | `recvfrom` with a 100 ms timeout (20 ms with Reticulum) |
+| `cr-rns` | 5 | the TCP connection to the Reticulum transport node and the `ReticulumNode` in it (announces, links, key proofs, `Carry`) | `select` with a 10 ms timeout; the node's tick once a second |
 | `cr-beat` | 3 | `ClockPolicy`, `MemoryGuard`, `Supervisor`, SNTP | once a second |
 
 - `cr-net` -> `cr-audio`: a single-producer/single-consumer ring of
@@ -130,8 +138,12 @@ path takes no lock (`src/esp/radio_runtime.*`).
   would race its reopen), unicast to every peer, the group and broadcast
   too for the first five frames of each burst (`BurstFloor`) or while no
   peer is known, as the app's LanTransport.
-- One receive task for the WLAN (and, in phase 2b, Reticulum): `Ingress`
-  and the roster need no locks, where the app has a thread per transport.
+- One receive pipeline for both transports: what comes over Reticulum is
+  handed to `cr-net` through a ring and goes through the same `Ingress`, so
+  it and the roster need no locks, where the app has a thread per
+  transport. `cr-rns` is a task of its own only because its signature work
+  (an announce or a link: some tens of milliseconds) must never hold up the
+  audio; it runs below `cr-net` and `cr-audio`.
 - The socket: bound to the port, joined to the group on the station
   interface, re-opened when the address changes; hellos go to the group,
   the subnet broadcast and every peer heard (`core/lan_peers.h`). Peers are
@@ -224,16 +236,40 @@ Mock-ups, drawn with the gauges' own LVGL code and rendered by the preview:
 
 ## Reticulum (phase 2b)
 
-The app's Reticulum design (`rns/`, mirrored by the plugin's `lib/rns/`)
-ports the same way: one TCP connection to a transport node with HDLC
-framing, links, the key proof (`0x80 | HMAC(confirm key, role | link id)`),
-the announce budget and the takeover rule, the channel's sealed packets
-carried behind `Carry`, all checked against `rns.vector.json`. mbedTLS has
-X25519 and the hashes; Ed25519 comes from a small C library (Monocypher)
-or a port of the app's `Curve25519.kt`, checked against RFC 8032 and the
-vector. With WLAN and Reticulum both on the node bridges them with the
-app's hop rule (hello transport flag 8). A PCM frame takes two Reticulum
-packets, so the station sends Opus from phase 2.
+The app's Reticulum design (`rns/`, mirrored by the plugin's `lib/rns/`),
+ported rule for rule into `src/core/rns/` and checked against the same
+`rns.vector.json` (made against RNS 1.5.4 itself):
+
+- **One TCP connection** to a transport node, HDLC framing, the packet
+  format without interface access codes (`rns_packet.h`). Reticulum's own
+  crypto: SHA-256, HKDF, the AES-256-CBC + HMAC token, its padding removed
+  only after the MAC (`rns_crypto.h`); identities, announces and their
+  signatures (`rns_identity.h`); links with their request, proof, RTT,
+  keep-alives and close (`rns_link.h`).
+- **The curves by hand** (`curve25519.h`): mbedTLS 3.6 has no Ed25519, so
+  X25519 and Ed25519 are ported from the app's `Curve25519.kt` (the
+  public-domain TweetNaCl design: constant-time ladders, the constants
+  checked against their definitions by the tests), against RFC 7748 and
+  RFC 8032's vectors. SHA-512 is mbedTLS's.
+- **The node** (`reticulum_node.h`): destination `crewradio.channel.<tag>`
+  from the packet key, a fresh identity every boot; announces within rnsd's
+  budget (`announce_budget.h`: on connect, and while alone every 5 min with
+  two to spare); the lower destination hash dials, the other takes over
+  after 5 s when a newcomer has not heard it; a link carries nothing until
+  the far end's key proof (`carry.h`) checks out; announce checks and link
+  requests are budgeted before their signature work, a full table evicts
+  only what has not proved the key and is past its grace. The plugin's two
+  dead-connection rules too (lwIP, like Node, has no `TCP_USER_TIMEOUT`):
+  every confirmed link silent 12 s with nothing from the node, or an
+  announce a connection that echoes them did not echo.
+- **The bridge** (`net_node.h`): a first copy, or one that reaches further,
+  goes on to the other transport with the app's hop rule
+  (`Ingress::relay_ttl`); never back where it came from. The hello says
+  Reticulum (flag 8) while connected; a member heard over Reticulum is
+  drawn dashed. Questions for the boat (the app's Ask boat data frames) are
+  the plugin's to answer and are dropped here.
+- **Opus over Reticulum.** A PCM frame is two link packets; the phones play
+  it, but Opus (the default) is one.
 
 ## Phases
 
@@ -242,7 +278,7 @@ packets, so the station sends Opus from phase 2.
 | **0. Core** (done) | The wire format, crypto, receive pipeline, mixer and concealment ported; host tests against the app's vectors; CI job | The vector packet byte for byte, under ASan/UBSan |
 | **1. Listen** (written, to be run) | ES8311 + amplifier, I2S, the WLAN socket, Opus decode, hello and roster, clock (SNTP, GNSS), self-test, supervisor, memory guard; the card and status lines in the 4" firmware | Phones list the unit; the plugin's announcements are heard clearly; the `heap` line steady for an hour with two talkers |
 | **2. Talk** (written, to be run) | ES7210 capture, two-finger and GPIO talk keys with the time-out, Opus or PCM, the burst floor, key beeps, half duplex | The phones' Status counters show no loss from the unit |
-| **2b. Reticulum** | The `rns` port, the bridge | A phone ashore and the unit talk through rnsd 1.5.4 |
+| **2b. Reticulum** (written, to be run) | The `rns` port (curves, crypto, packets, links, the node), `cr-rns`, the bridge, the card's Reticulum fields | A phone ashore and the unit talk through rnsd 1.5.4; a phone on board hears the phone ashore through the unit |
 | **3. On the screen** (written, to be run) | The halo on every page, the "Crew radio" page style, the radio's state on the info overlay, the roster's 1-4 bars (`core/link_quality.h`), a channel name in the card | Preview renders both; 24 h with no restart caused by the radio |
 | **3b. Station** | The talk disc (one-finger hold on the disc, which must not fight the page gestures), a mute on the screen, volume by dragging the arc | The station screen in use at the nav table |
 | **4. Extras** | Adaptive playout, two-mic wind gate | Measured against the fixed buffer and the one-mic gate in engine noise |
@@ -290,6 +326,27 @@ Then talking (phase 2):
     cut until released.
 15. **A button**, if fitted: the same with the GPIO set.
 
+Then Reticulum (phase 2b), with an rnsd 1.5.4 transport node (crew-radio's
+`docs/RETICULUM_HUB.md`) and a phone with its Reticulum tile on:
+
+16. **Connect:** `radio-rns: Connected to <host>:<port>`; Radio Reticulum
+    on the Status page says so. A wrong host: `can't connect (name not
+    found)` and a retry that backs off to 15 s.
+17. **Linked:** within seconds of the phone joining, `1 link, 1 peer`; the
+    phone lists the unit with its Reticulum mark, and the unit draws the
+    phone dashed.
+18. **Talk both ways** with the phone off the WLAN (mobile data); the Radio
+    talk and audio lines count, Reticulum `out` and `in` too.
+19. **The bridge:** a second phone on the boat's WLAN only hears the phone
+    ashore, and back; `relayed` counts. Relay off in the card: it does not.
+20. **A dead connection:** pull the hub's network cable; within about 15 s
+    the unit says `connection lost (silent)` and reconnects once it is back.
+21. **Memory:** the `heap` line with the link up and someone talking; at
+    the first floor the memory guard says `Reticulum off` and the
+    connection closes.
+22. **Timing:** a link comes up in a second or two (the signature work on
+    the P4); the log shows no audio underruns while a link is set up.
+
 ## Settings and the key
 
 The channel key is typed into the card, never put in `secrets.h` or the
@@ -322,11 +379,15 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 | `test_supervisor.cpp` | Stall detection across the 32-bit wrap, three restarts then off; the memory ladder with hysteresis |
 | `test_self_test.cpp` | The power-on test passes and its bytes are the vector file's |
 | `test_spsc_ring.cpp` | Capacity and order; 200 000 frames across two threads, none lost or reordered |
-| `test_net_node.cpp` | Two nodes with one key: hello onto the roster, audio handed on once with its gap; a stranger teaches nothing; a stale packet plays nothing and teaches no address, nor does a replayed copy; our own packets dropped unopened |
+| `test_net_node.cpp` | Two nodes with one key: hello onto the roster, audio handed on once with its gap; a stranger teaches nothing; a stale packet plays nothing and teaches no address, nor does a replayed copy; our own packets dropped unopened; the bridge (a first copy to the other transport with one hop spent, never back, the hop rule, off unless asked; a hello over Reticulum marks its member) |
 | `test_playout.cpp` | The decoder pool (own decoder per sender, the quietest taken over, idle released); PCM and Opus to the mixer with gaps concealed |
 | `test_radio_state.cpp` | What the radio reports while it runs: Stopped whenever a task is not running, whatever the clock or the memory guard say; then Paused, No clock, On channel |
-| `test_radio_settings.cpp` | The app's channel key rule, the multicast group and port, the key mask, the talk button's GPIO |
+| `test_radio_settings.cpp` | The app's channel key rule, the multicast group and port, the key mask, the talk button's GPIO, the transport node's `host[:port]` |
 | `test_talk.cpp` | The talk key's debounce and its 90 s time-out with the lock-out until release; the transmitter's packets open on another node as this node's voice, in sequence; the burst floor; the peer snapshot never read torn (two threads); the key tones; the mic channel, level and ES7210 gain codes |
+| `test_curve25519.cpp` | X25519 against RFC 7748, Ed25519 against RFC 8032; a tampered message or signature, another key, S + L and a point off the curve refused; random keys sign, verify and agree; the constants against their definitions |
+| `test_rns_primitives.cpp` | HKDF (RFC 5869), the token (tamper, wrong key, short), PKCS#7, packets and the hash that ignores the transport, HDLC framing with junk and oversized frames, announces (tampered, foreign, with a ratchet), links (an impostor's proof, data, keep-alive, close, MTU signalling, a low-order key), `Carry` whole and in parts with loss, rnsd's announce budget |
+| `test_rns_vectors.cpp` | `rns.vector.json`: the name hash, identity and destination; the announce byte for byte, framed and parsed; the link request, id, proof, key, token, data packet and RTT; each end's key proof; the PCM-sized cut |
+| `test_rns_node.cpp` | The app's ReticulumNodeTest on a fake medium: two nodes link, prove the key and carry the channel (PCM in two parts); a stranger with another key gets nothing, its reflected proof included; a lost proof is resent; another channel and an older announce; silence, redials, time-outs; full peer and link tables; flood budgets; a link's own rate budget; announces on connect and while alone; the takeover; a dropped connection; and the plugin's two dead-connection rules |
 | `test_opus.cpp` | libopus decodes the app's 20 ms frames at 16 kHz and refuses anything else; the encoder round-trips through it (with `CREW_RADIO_OPUS`, on by default) |
 
 mbedTLS 3.6.4 (the line ESP-IDF 5.5 ships) is downloaded by the build,

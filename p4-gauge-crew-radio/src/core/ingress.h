@@ -16,9 +16,10 @@
 //  7. The seen-cache write.
 //
 // The app holds a lock around 5-7 because a frame arrives on every
-// transport's thread at once. Here one receive task waits on every socket
-// (WLAN and Reticulum) and is the only caller, so the steps are atomic by
-// construction and the class has no locks. The caches and the sequence
+// transport's thread at once. Here one receive task (cr-net) is the only
+// caller: it reads the WLAN socket itself and takes what came over
+// Reticulum from cr-rns's ring, so the steps are atomic by construction and
+// the class has no locks. The caches and the sequence
 // marks live for the process, not the session: connect/disconnect must
 // never clear them, or a replay survives a reconnect.
 

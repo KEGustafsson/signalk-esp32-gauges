@@ -4,9 +4,10 @@
 // The radio's place in the gauge firmware, through SensESP: a "Crew radio"
 // card in the web UI's Configuration (on/off, name, channel key, group,
 // port, hop limit, volume, and for talking the button's GPIO, the
-// two-finger hold, Opus or PCM, mic gain and channel, key beeps; takes
-// effect at the next restart), its lines on
-// the Status page, and the boat's GNSS time from Signal K
+// two-finger hold, Opus or PCM, mic gain and channel, key beeps; for
+// Reticulum on/off, the transport node and the bridge; takes effect at the
+// next restart), its lines on the Status page, and the boat's GNSS time
+// from Signal K
 // (navigation.datetime) for the clock. Off by default: a gauge that never
 // has the radio switched on runs exactly as before.
 //

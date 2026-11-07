@@ -74,6 +74,10 @@ add_executable(crew_radio_tests
   test_talk.cpp
   test_radio_state.cpp
   test_lifecycle.cpp
+  test_curve25519.cpp
+  test_rns_primitives.cpp
+  test_rns_vectors.cpp
+  test_rns_node.cpp
   ${SRC}/core/packet.cpp
   ${SRC}/core/hello.cpp
   ${SRC}/core/channel_crypto.cpp
@@ -93,7 +97,14 @@ add_executable(crew_radio_tests
   ${SRC}/core/talk_key.cpp
   ${SRC}/core/transmitter.cpp
   ${SRC}/core/tones.cpp
-  ${SRC}/core/mic.cpp)
+  ${SRC}/core/mic.cpp
+  ${SRC}/core/rns/curve25519.cpp
+  ${SRC}/core/rns/rns_crypto.cpp
+  ${SRC}/core/rns/rns_packet.cpp
+  ${SRC}/core/rns/rns_identity.cpp
+  ${SRC}/core/rns/rns_link.cpp
+  ${SRC}/core/rns/carry.cpp
+  ${SRC}/core/rns/reticulum_node.cpp)
 target_include_directories(crew_radio_tests PRIVATE ${SRC} ${GAUGE_TESTS}
                            ${arduinojson_SOURCE_DIR}/src)
 target_compile_definitions(crew_radio_tests PRIVATE

@@ -27,6 +27,7 @@ struct Member {
   uint16_t version_code = 0;
   bool talking = false;
   int bars = LinkQuality::kBars;  // 1-4, link_quality.h
+  bool reticulum = false;  // Its last hello came to this node over Reticulum
 };
 
 class Roster {
@@ -37,9 +38,10 @@ class Roster {
 
   // Any accepted packet; false when the table is full and `id` is new.
   bool seen(int32_t id, int64_t now_ms);
-  // A hello, with the hellos missing before it (Ingress::hello_gap).
+  // A hello, with the hellos missing before it (Ingress::hello_gap), and
+  // whether it came over Reticulum.
   void hello(int32_t id, const Hello& hello, int hops, int64_t now_ms,
-             int gap = 0);
+             int gap = 0, bool reticulum = false);
   // An audio frame, with the frames missing before it (admit_audio).
   void audio(int32_t id, int64_t now_ms, int gap = 0);
 

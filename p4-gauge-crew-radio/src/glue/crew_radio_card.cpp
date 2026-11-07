@@ -74,6 +74,9 @@ class RadioCard : public sensesp::FileSystemSaveable {
     root["mic_gain"] = mic_gain;
     root["mic_channel"] = mic_channel == 1 ? "MIC2" : "MIC1";
     root["key_beeps"] = key_beeps;
+    root["reticulum"] = reticulum;
+    root["reticulum_node"] = reticulum_node.c_str();
+    root["relay"] = relay;
     return true;
   }
 
@@ -112,6 +115,20 @@ class RadioCard : public sensesp::FileSystemSaveable {
       }
     }
     const bool new_beeps = c["key_beeps"] | key_beeps;
+    const bool new_reticulum = c["reticulum"] | reticulum;
+    const std::string new_node = c["reticulum_node"].is<const char*>()
+                                     ? c["reticulum_node"].as<const char*>()
+                                     : reticulum_node;
+    const bool new_relay = c["relay"] | relay;
+    // A node is needed only with Reticulum on; one that is given must parse.
+    std::string node_host;
+    int node_port = 0;
+    if ((new_reticulum || !new_node.empty()) &&
+        !settings::parse_host_port(new_node, &node_host, &node_port)) {
+      ESP_LOGW(kTag, "Crew radio card refused: the transport node is host, "
+                     "host:port, [v6] or [v6]:port");
+      return false;
+    }
     uint32_t group_addr;
     if (!settings::parse_group(new_group, &group_addr) ||
         !settings::valid_port(new_port) ||
@@ -166,6 +183,9 @@ class RadioCard : public sensesp::FileSystemSaveable {
     mic_gain = new_gain;
     mic_channel = new_mic;
     key_beeps = new_beeps;
+    reticulum = new_reticulum;
+    reticulum_node = new_node;
+    relay = new_relay;
     key_hint = new_hint;
     return true;
   }
@@ -187,6 +207,9 @@ class RadioCard : public sensesp::FileSystemSaveable {
   float mic_gain = 30.0f;
   int mic_channel = 0;
   bool key_beeps = false;
+  bool reticulum = false;
+  std::string reticulum_node;  // host[:port], 4242 when left out
+  bool relay = true;
 
  private:
   bool loaded_ = false;
@@ -214,6 +237,35 @@ std::string crew_list(const std::vector<Member>& members) {
   return s.empty() ? "-" : s;
 }
 
+// Where Reticulum stands, in one line for the Status page.
+std::string reticulum_line(const esp::RadioStatus& s) {
+  const esp::ReticulumStatus& r = s.reticulum;
+  char buf[200];
+  switch (r.state) {
+    case esp::ReticulumStatus::State::kOff:
+      snprintf(buf, sizeof(buf), "Off%s%s", r.note.empty() ? "" : ": ",
+               r.note.c_str());
+      break;
+    case esp::ReticulumStatus::State::kWaiting:
+      snprintf(buf, sizeof(buf), "Waiting for the clock (or memory)");
+      break;
+    case esp::ReticulumStatus::State::kConnecting:
+      snprintf(buf, sizeof(buf), "%s: %s", r.where.c_str(),
+               r.note.empty() ? "connecting" : r.note.c_str());
+      break;
+    case esp::ReticulumStatus::State::kConnected:
+      snprintf(buf, sizeof(buf),
+               "%s: %d link%s, %d peer%s; %lu out, %lu in, %llu relayed; "
+               "%lu reconnects",
+               r.where.c_str(), r.links, r.links == 1 ? "" : "s", r.peers,
+               r.peers == 1 ? "" : "s", (unsigned long)r.tx,
+               (unsigned long)r.rx, (unsigned long long)s.relayed,
+               (unsigned long)r.reconnects);
+      break;
+  }
+  return buf;
+}
+
 }  // namespace
 
 void begin(int (*finger_count)()) {
@@ -229,7 +281,10 @@ void begin(int (*finger_count)()) {
           "it is released. Channel key: the crew's key, as set on the "
           "phones; type it to set or change it (the save takes a few "
           "seconds), leave it empty to keep the one saved. Group and port: "
-          "as on the phones. Takes effect when the unit restarts.")
+          "as on the phones. Reticulum: the channel through a transport "
+          "node (the boat's rnsd, or a hub ashore), for a phone off the "
+          "boat's WLAN; with Relay on, this unit bridges the two. Takes "
+          "effect when the unit restarts.")
       ->set_requires_restart(true)
       ->set_sort_order(97);
 
@@ -250,6 +305,13 @@ void begin(int (*finger_count)()) {
   config.mic_gain_db = card->mic_gain;
   config.mic_channel = card->mic_channel;
   config.key_beeps = card->key_beeps;
+  int node_port = settings::kDefaultReticulumPort;
+  config.reticulum =
+      card->reticulum && settings::parse_host_port(card->reticulum_node,
+                                                   &config.reticulum_host,
+                                                   &node_port);
+  config.reticulum_port = (uint16_t)node_port;
+  config.relay = card->relay;
   esp::begin(config);
   mbedtls_platform_zeroize(config.key, sizeof(config.key));
   if (!card->enabled) return;
@@ -284,6 +346,10 @@ void begin(int (*finger_count)()) {
       "Radio memory", "-", "Crew radio", 2050);
   static auto* talk = new sensesp::StatusPageItem<String>(
       "Radio talk", "-", "Crew radio", 2045);
+  static auto* rns = card->reticulum
+                         ? new sensesp::StatusPageItem<String>(
+                               "Radio Reticulum", "-", "Crew radio", 2047)
+                         : nullptr;
   sensesp::event_loop()->onRepeat(1000, []() {
     const esp::RadioStatus s = esp::status();
     state->set(esp::state_text(s.state));
@@ -309,6 +375,7 @@ void begin(int (*finger_count)()) {
              s.talking ? "Talking" : "Listening", (unsigned long long)s.sent,
              s.mic_level, s.timeouts, s.mic_ok ? "" : "; no microphone");
     talk->set(buf);
+    if (rns != nullptr) rns->set(reticulum_line(s).c_str());
     snprintf(buf, sizeof(buf), "%u bytes of DMA RAM free; %s; %d restarts",
              (unsigned)s.free_dma, esp::shed_text(s.shed), s.restarts);
     memory->set(buf);
@@ -336,7 +403,10 @@ const String ConfigSchema(const crewradio::glue::RadioCard&) {
          R"J("opus":{"title":"Opus","type":"boolean","description":"Send Opus (about 60 bytes a frame); off sends PCM (640). The phones play either."},)J"
          R"J("mic_gain":{"title":"Mic gain (dB)","type":"number","minimum":0,"maximum":37.5,"description":"The ES7210's preamp: 3 dB steps to 30, then 34.5, 36, 37.5."},)J"
          R"J("mic_channel":{"title":"Microphone","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["MIC1","MIC2"]},"description":"Which of the board's two microphones is used."},)J"
-         R"J("key_beeps":{"title":"Key beeps","type":"boolean","description":"A beep when the mic keys and un-keys (the time-out always beeps)."})J"
+         R"J("key_beeps":{"title":"Key beeps","type":"boolean","description":"A beep when the mic keys and un-keys (the time-out always beeps)."},)J"
+         R"J("reticulum":{"title":"Reticulum","type":"boolean","description":"The channel through a Reticulum transport node as well, for the crew off the boat's WLAN (the phones' Reticulum tile)."},)J"
+         R"J("reticulum_node":{"title":"Transport node","type":"string","description":"host, host:port, [v6] or [v6]:port of the node's TCP server interface; 4242 when no port is given. As on the phones."},)J"
+         R"J("relay":{"title":"Relay","type":"boolean","description":"With Reticulum on, bridge it and the WLAN, so the phones on board hear the crew ashore and back."})J"
          R"J(}})J";
 }
 

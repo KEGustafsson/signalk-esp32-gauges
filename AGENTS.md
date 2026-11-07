@@ -122,6 +122,11 @@ If a task would require breaking one of these, stop and flag it.
   decoders, stays in the `cr-audio` task. Its talk keys: a GPIO button, and
   a two-finger hold that `common/src/lvgl_port.cpp` reports
   (`touch_fingers()`) and hides from LVGL so it never swipes a page.
+  Reticulum (`src/core/rns/`, the app's `rns/` ported, its curves by hand
+  in `curve25519.*`) runs in its own `cr-rns` task below the audio, because
+  its signature work takes tens of milliseconds; its packets reach `cr-net`
+  through a ring, so `Ingress` keeps a single caller. Copy
+  `rns.vector.json` again when crew-radio's Reticulum wire changes.
 - **`docs/`** -- `PAGES.md` (end-user guide to the pages), `BRINGUP.md`
   (first power-up of a device), `ADDING_GAUGES.md` (another page, another
   unit, a new page style, a new board: what to change), `JOURNAL.md`.

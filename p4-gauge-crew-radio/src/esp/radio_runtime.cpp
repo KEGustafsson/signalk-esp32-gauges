@@ -23,6 +23,7 @@
 #include <atomic>
 #include <memory>
 
+#include "core/channel_crypto.h"
 #include "core/decoder_pool.h"
 #include "core/frame_encoder.h"
 #include "core/lifecycle.h"
@@ -41,6 +42,7 @@
 #include "core/transmitter.h"
 #include "es7210.h"
 #include "es8311.h"
+#include "reticulum_link.h"
 
 namespace crewradio {
 namespace esp {
@@ -134,7 +136,7 @@ struct Socket {
 
   // (Re)opens when there is none or the address changed: the stack forgets
   // the group membership when the link goes down.
-  bool ensure(uint32_t group, uint16_t port) {
+  bool ensure(uint32_t group, uint16_t port, int timeout_ms) {
     uint32_t now_ip = 0, now_bcast = 0;
     if (!address(&now_ip, &now_bcast)) {
       close_it();
@@ -151,7 +153,8 @@ struct Socket {
     uint8_t ttl = 1, loop = 0;
     setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
     setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
-    timeval tv = {0, 100 * 1000};  // 100 ms: the task checks in between
+    // The task checks in between, and looks for what came over Reticulum.
+    timeval tv = {0, timeout_ms * 1000};
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     sockaddr_in bind_to = {};
     bind_to.sin_family = AF_INET;
@@ -201,7 +204,52 @@ void publish(NetNode& node, const Socket& sock, int64_t now) {
   g->status.audio = c.audio;
   g->status.ring_drops = g->ring_drops.load();
   g->status.socket_open = sock.fd >= 0;
+  g->status.relayed = c.relayed;
+  g->status.reticulum = reticulum::status();
   xSemaphoreGive(g->status_lock);
+}
+
+// A packet for the WLAN: the unicasts LanPeers plans and, when it plans them,
+// the group copies (a relayed talker's first frames, any hello), which the
+// memory guard sheds for audio first.
+void send_lan(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
+              bool hello, int64_t now) {
+  const LanPeers::Plan plan = node.peers().plan(p, len, now);
+  if (plan.group &&
+      (hello || g->shed.load() < (uint8_t)Shed::kGroupCopies)) {
+    sock.send_to(p, len, g->config.group, g->config.port);
+    sock.send_to(p, len, sock.broadcast, g->config.port);
+  }
+  for (int i = 0; i < plan.count; i++) {
+    sock.send_to(p, len, plan.addrs[i], g->config.port);
+  }
+}
+
+// One packet from either transport through the pipeline: audio to cr-audio,
+// a copy for the other transport where the bridge says so.
+void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
+          NetNode::Via via, uint32_t from, int64_t now) {
+  NetNode::Audio au;
+  NetNode::Relay relay;
+  if (node.on_packet(p, len, via, from, now, (int64_t)time(nullptr), &au,
+                     &relay)) {
+    uint8_t* slot = g->ring->write_slot();
+    if (slot == nullptr || au.len > audio::kFrameBytes) {
+      g->ring_drops++;
+    } else {
+      Delivery d{au.sender, (uint8_t)au.codec, 0,
+                 (int16_t)(au.gap > 32767 ? 32767 : au.gap),
+                 (uint16_t)au.len, 0};
+      memcpy(slot, &d, sizeof(d));
+      memcpy(slot + sizeof(d), au.data, au.len);
+      g->ring->commit((uint16_t)(sizeof(d) + au.len));
+    }
+  }
+  if (g->shed.load() >= (uint8_t)Shed::kTransmit) return;  // Nothing goes out
+  if (relay.to_reticulum) reticulum::send(relay.data, relay.len);
+  if (relay.to_lan && sock.fd >= 0) {
+    send_lan(node, sock, relay.data, relay.len, relay.hello, now);
+  }
 }
 
 void net_task(void* arg) {
@@ -209,65 +257,74 @@ void net_task(void* arg) {
   NetNode& node = *g->node;
   Socket sock;
   static uint8_t buf[packet::kMaxSize + 1];  // One net task at a time
+  static uint8_t from_rns[packet::kMaxSize];
   uint8_t hello[NetNode::kMaxHello];
+  // With Reticulum on, the socket's wait is short: what came over Reticulum
+  // waits at most that long in its ring.
+  const int timeout_ms = g->config.reticulum ? 20 : 100;
   int64_t next_beat = 0;
+  int64_t retry_at = 0;  // A socket that could not be opened: tried again
   g->supervisor.arm(kSlotNet, mono_ms());
   while (g->generation.load() == gen) {
     g->supervisor.checkin(kSlotNet, mono_ms());
-    if (!sock.ensure(g->config.group, g->config.port)) {
-      g->peers.publish(PeerView());  // No address: no voice goes out
-      vTaskDelay(pdMS_TO_TICKS(500));
-      continue;
+    // The WLAN socket, opened again at most twice a second when it cannot be
+    // (no address yet, a port in use). Without it the rest of the turn still
+    // runs: what came over Reticulum, the hello there, the roster's expiry
+    // and the status, so nobody stays on the screen after leaving.
+    bool lan = false;
+    if (sock.fd >= 0 || mono_ms() >= retry_at) {
+      lan = sock.ensure(g->config.group, g->config.port, timeout_ms);
+      if (!lan) retry_at = mono_ms() + 500;
     }
-    sockaddr_in from = {};
-    socklen_t from_len = sizeof(from);
-    const int n = recvfrom(sock.fd, buf, sizeof(buf), 0, (sockaddr*)&from,
-                           &from_len);
-    const int64_t now = mono_ms();
     const bool on_air =
         g->clock_ok.load() && g->shed.load() < (uint8_t)Shed::kPaused;
-    if (n > 0 && on_air) {
-      NetNode::Audio au;
-      if (node.on_datagram(buf, (size_t)n, ntohl(from.sin_addr.s_addr), now,
-                           (int64_t)time(nullptr), &au)) {
-        uint8_t* slot = g->ring->write_slot();
-        if (slot == nullptr || au.len > audio::kFrameBytes) {
-          g->ring_drops++;
-        } else {
-          Delivery d{au.sender, (uint8_t)au.codec, 0,
-                     (int16_t)(au.gap > 32767 ? 32767 : au.gap),
-                     (uint16_t)au.len, 0};
-          memcpy(slot, &d, sizeof(d));
-          memcpy(slot + sizeof(d), au.data, au.len);
-          g->ring->commit((uint16_t)(sizeof(d) + au.len));
-        }
+    if (lan) {
+      sockaddr_in from = {};
+      socklen_t from_len = sizeof(from);
+      const int n = recvfrom(sock.fd, buf, sizeof(buf), 0, (sockaddr*)&from,
+                             &from_len);
+      if (n > 0 && on_air) {
+        take(node, sock, buf, (size_t)n, NetNode::Via::kLan,
+             ntohl(from.sin_addr.s_addr), mono_ms());
+      } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        sock.close_it();  // Reopened on the next turn
       }
-    } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-      sock.close_it();  // Reopened on the next turn
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(timeout_ms));
     }
-    {
+    const int64_t now = mono_ms();
+    // What came over Reticulum meanwhile, through the same pipeline.
+    size_t m;
+    while ((m = reticulum::receive(from_rns, sizeof(from_rns))) > 0) {
+      if (on_air) take(node, sock, from_rns, m, NetNode::Via::kReticulum, 0, now);
+    }
+    if (sock.fd >= 0) {
       // Where this node's voice goes, for cr-audio.
       PeerView v;
       v.ip = sock.ip;
       v.broadcast = sock.broadcast;
       v.count = node.peers().live_addrs(now, v.addrs);
       g->peers.publish(v);
+    } else {
+      g->peers.publish(PeerView());  // No socket: no voice on the WLAN
     }
     if (now >= next_beat) {
       next_beat = now + 1000;
       // The hello: one a second, while the clock is trusted and the memory
       // guard lets us send. Hellos always keep their group copies.
       if (on_air && g->shed.load() < (uint8_t)Shed::kTransmit) {
-        const size_t len = node.build_hello((int64_t)time(nullptr), hello);
+        // What this node is on now: the WLAN while its socket is open, and
+        // Reticulum while connected to its transport node (on Reticulum
+        // alone it keeps the channel, as the plugin does).
+        const uint8_t on =
+            (uint8_t)((sock.fd >= 0 ? Hello::kLan : 0) |
+                      (reticulum::connected() ? Hello::kReticulum : 0));
+        node.set_transports(on);
+        const size_t len =
+            on != 0 ? node.build_hello((int64_t)time(nullptr), hello) : 0;
         if (len > 0) {
-          const LanPeers::Plan plan = node.peers().plan(hello, len, now);
-          if (plan.group) {
-            sock.send_to(hello, len, g->config.group, g->config.port);
-            sock.send_to(hello, len, sock.broadcast, g->config.port);
-          }
-          for (int i = 0; i < plan.count; i++) {
-            sock.send_to(hello, len, plan.addrs[i], g->config.port);
-          }
+          if (sock.fd >= 0) send_lan(node, sock, hello, len, /*hello=*/true, now);
+          reticulum::send(hello, len);
         }
       }
       node.roster().expire(now);
@@ -427,6 +484,8 @@ void audio_task(void* arg) {
         }
         for (int i = 0; i < v.count; i++) tx.send_to(pkt, n, v.addrs[i], c.port);
       }
+      // And on every Reticulum link (nothing while there is none).
+      if (n > 0) reticulum::send(pkt, n);
     }
 
     if (now >= next_sweep) {
@@ -631,6 +690,28 @@ bool start_audio(int volume, float mic_gain_db) {
   return true;
 }
 
+// The channel's Reticulum destination and link key proofs come from the
+// packet key, so only the crew can find this node or link with it.
+void start_reticulum(const RadioConfig& config) {
+  reticulum::Config rc;
+  rc.host = config.reticulum_host;
+  rc.port = config.reticulum_port;
+  ChannelCrypto crypto(config.key);
+  if (!crypto.reticulum_tag(rc.tag) ||
+      !crypto.reticulum_confirm_key(rc.confirm_key)) {
+    ESP_LOGE(kTag, "Reticulum: the channel's keys could not be derived");
+    return;
+  }
+  // Connect only while the clock is trusted (a packet with a wrong time is
+  // stale to everyone) and the memory guard leaves Reticulum on.
+  rc.may_connect = []() {
+    return g->clock_ok.load() && g->shed.load() < (uint8_t)Shed::kReticulum;
+  };
+  rc.stopped = []() { return g->lifecycle->stopped(); };
+  reticulum::start(rc);
+  memset(rc.confirm_key, 0, sizeof(rc.confirm_key));
+}
+
 }  // namespace
 
 const char* state_text(RadioState s) {
@@ -702,6 +783,8 @@ void begin(const RadioConfig& config) {
   NetNode::Config net;
   net.name = config.name;
   net.max_hops = config.max_hops;
+  // The bridge only where there are two transports to bridge.
+  net.relay = config.reticulum && config.relay;
   // The large tables (the seen-caches, ~0.7 MB; the mixer) are allocated
   // here, once, and go to PSRAM (Arduino-ESP32 puts allocations over 4 KB
   // there).
@@ -741,7 +824,8 @@ void begin(const RadioConfig& config) {
   // Stopped (core/lifecycle.h).
   g->port.reset(new EspTaskPort());
   g->lifecycle.reset(new Lifecycle(g->port.get()));
-  g->lifecycle->start();
+  if (!g->lifecycle->start()) return;
+  if (config.reticulum) start_reticulum(config);
 }
 
 void set_touch_talk(bool held) {
