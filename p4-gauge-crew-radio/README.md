@@ -18,7 +18,7 @@ switched on in its card; a gauge that never switches it on runs as before.
 |---|---|
 | **Status** | Phases 1, 2, 2b and 3 written and running on both 4" units (2026-11-07): the firmware listens to the channel, is listed on the phones' roster, talks (two-finger hold or a button), reaches the crew over Reticulum and bridges it to the WLAN, cleans up its mic (echo cancelling, noise suppression) and shows the crew on the screen. The mic needs a board fix (the 4" README). Not yet checked: the hour's memory run, 24 h without a restart, a voice against the mic gain |
 | **Licence** | EUPL-1.2, as the whole repository and crew-radio, from which the core is ported (`LICENSE` here too, for the library on its own) |
-| **Tests** | `tests/`: 191 host tests (libopus's included), the app's own vectors (the channel's and Reticulum's) included |
+| **Tests** | `tests/`: 192 host tests (libopus's included), the app's own vectors (the channel's and Reticulum's) included |
 
 ## What runs where
 
