@@ -137,9 +137,12 @@ Then:
 2. Preview at both sizes and **look at the images**:
    `cmake --build build/preview -j && build/preview/preview 480 && build/preview/preview 720`
    (`out/`). `preview <size> bench` times a redraw in the boards' strip
-   heights. A part the preview leaves behind when it moves (a needle's
-   ghost) is an invalid area too small: each page's value moves for 60
-   frames before its image is saved.
+   heights. The saved images test movement only where the page starts
+   away from its sample: a dial's needle swings in from its rest over the
+   60 frames, so a ghost of it there is an invalid area too small, but a
+   compass card starts at its heading and does not move. Check the moving
+   part of a new style moving, on a live board (or with a value swept in
+   the preview), for anything left behind.
 3. Build both boards (`pio run -e p4`, `pio run -e s3`), flash one unit of
    each, and watch the page live, on the 2.1" in particular: its panel
    shares the PSRAM bus with drawing, and memory-heavy drawing shifts the

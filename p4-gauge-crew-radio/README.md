@@ -49,8 +49,11 @@ p4-gauge-crew-radio/
 
 There is no separate station firmware: this repository builds one firmware
 per board (a second env compiles everything again, and what a unit is lives
-in its cards, `AGENTS.md`). A 4" switched to the radio with only the Crew
-page on it (phase 3) is the station. The display side is in
+in its cards, `AGENTS.md`). A 4" with the radio on and only the Crew page
+is the nearest to a station today. The station's own screen, with its talk
+disc in the middle, is phase 3b: drawn by `crew_page.*` with `station` set,
+it is shown only by the preview (the firmware's Crew page has it off). The
+display side is in
 `common/src/ui` (`radio_halo.*`, `crew_page.*`, `crew_view.h`), fed by the
 4"'s `src/crew_view_source.cpp`, and rendered on a PC by `tools/preview`
 from sample crews (`out/radio*`).

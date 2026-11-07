@@ -1510,3 +1510,9 @@ what is in the tree. Fixed:
   the preview as the sign of one too small, and the 4"'s drawing being
   bound by PSRAM too.
 - README and AGENTS.md: CI runs the Crew Radio's host tests too.
+- CodeRabbit's review of #14: the preview's images test movement only
+  where a page starts away from its sample (a dial's needle; a compass
+  card starts at its heading), so a new style's moving part is checked
+  moving too; and the station's talk-disc screen (phase 3b) is preview
+  only, the firmware's Crew page has it off (the radio's README said a 4"
+  with only the Crew page was the station).
