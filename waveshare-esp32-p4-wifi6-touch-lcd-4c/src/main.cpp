@@ -13,6 +13,9 @@
 #include <esp_display_panel.hpp>
 
 #include "board_start.h"
+#include "crew_view_source.h"
+#include "lvgl_port.h"
+#include "glue/crew_radio_card.h"
 #include "sensesp_base_app.h"
 #include "signalk_gauges.h"
 
@@ -36,6 +39,9 @@ void setup() {
   sensesp::SetupLogging(ESP_LOG_INFO);
 
   board = skgauges::start_board(kGt911BackupAddress);
+  // The Crew Radio's view for the screen (halo, Crew page), set before the
+  // UI is built so the halo is made; off until the radio is on in its card.
+  skgauges::ui::set_crew_view_source(skgauges::crew_view_from_radio);
   skgauges::lvgl_port_init(board, kBufferLines, true);
 
   // One firmware for both sides: the unit's saved hostname says which it is
@@ -53,6 +59,12 @@ void setup() {
         }
       },
   });
+
+  // The Crew Radio on this board's speaker and mic (p4-gauge-crew-radio):
+  // off until switched on in its card. After the board, whose touch setup
+  // installs the I2C driver the codecs are set up through; a two-finger
+  // hold on the screen is one of its talk keys.
+  crewradio::glue::begin(skgauges::touch_fingers);
 }
 
 void loop() { skgauges::gauge_app_loop(); }

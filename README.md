@@ -36,6 +36,11 @@ every unit of that board:
 | 4" | `waveshare-esp32-p4-wifi6-touch-lcd-4c` | `p4` |
 | 2.1" | `waveshare-esp32-s3-touch-lcd-2.1` | `s3` |
 
+In development: [`p4-gauge-crew-radio/`](p4-gauge-crew-radio/README.md), the
+[Crew Radio](https://github.com/KEGustafsson/crew-radio) intercom on the 4"'s own
+speaker and microphone: in the 4" firmware, off until switched on in its card;
+listening written, not yet run on a board.
+
 The **Unit** card in the web UI (Configuration) says what a unit is, and
 all of it can be changed there:
 
@@ -351,3 +356,25 @@ firmware change locally, one env per board.
 device, with the serial log to expect; the board-specific checks are in each
 board folder's README. Working rules for contributors (and AI agents) are in
 [AGENTS.md](AGENTS.md).
+
+## Licence and credits
+
+These gauges are free software under the **European Union Public Licence
+v. 1.2** (EUPL-1.2), the same as [Crew Radio](https://github.com/KEGustafsson/crew-radio);
+the text is in [LICENSE](LICENSE) and at
+[interoperable-europe.ec.europa.eu](https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12).
+You may use, copy, change and redistribute them, also commercially, under
+the EUPL's terms, its notices included: a changed version you distribute
+stays under the EUPL. Only a work that combines these with another work
+under one of the compatible licences the EUPL lists may be distributed
+under that licence (its Article 5).
+
+Built on, each under its own licence: [SensESP](https://github.com/SignalK/SensESP)
+(Apache-2.0), [LVGL](https://lvgl.io) (MIT),
+[ESP32_Display_Panel](https://github.com/esp-arduino-libs/ESP32_Display_Panel)
+and its companion libraries (Apache-2.0), [ArduinoJson](https://arduinojson.org)
+(MIT), Arduino-ESP32 (LGPL-2.1) and ESP-IDF (Apache-2.0) with mbedTLS
+(Apache-2.0), and, for the Crew Radio, libopus
+(BSD-3-Clause, as packaged by [codec-opus](https://github.com/pschatzmann/codec-opus));
+the ES8311 register values follow Espressif's esp_codec_dev (Apache-2.0).
+

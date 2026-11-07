@@ -898,3 +898,221 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
   from git and reinstalled the libraries (`pio pkg install -e p4` after
   removing the folder). Now in AGENTS.md: never `pio pkg update`; to take a
   new SensESP commit, delete `.pio/libdeps/<env>/SensESP` and build.
+
+## 2026-11-06 — Crew Radio on the 4": display mock-ups
+
+- Proposal (in conversation, not yet a document): a FreeRTOS Crew Radio
+  node for the ESP32-P4 board (ES8311 + NS4150B speaker, ES7210 mic), the
+  radio core in the crew-radio repo as a library this firmware would link.
+  Nothing in the firmware uses it yet.
+- Mock-ups of what it would show, drawn with LVGL in `common/src/ui` so
+  the preview renders them at 480 and 720 (`out/radio*`):
+  - **Halo** (`radio_halo.*`): over any gauge page, an opaque band over the
+    bezel (outside the face's 0.85 R, so no reading is covered) while
+    someone talks, the name set along the top arc glyph by glyph
+    (`ArcText`), green solid when heard directly, dashed through a relay or
+    over Reticulum, grey when muted, red with `TALKING` / `n LISTENING`
+    while this unit transmits. Otherwise only a radio pip left of the
+    status dot (green on channel, amber without a clock, slashed muted).
+  - **Crew page** (`crew_page.*`): the roster as a compass, pips on a ring
+    open at the bottom, name and the phones' 1-4 bars under each, the
+    talker glowing; channel name, head count in the gauges' LCD (dashes
+    when not on channel) and one status line in the middle; volume arc at
+    the bottom. Station variant: the talk disc in the middle and the
+    channel name engraved in the bezel's chrome.
+- Looked at both sizes: names moved under their pips (radially they hit the
+  side pips), the member span cut to +/-118 degrees (the lower bars hit the
+  volume's -/+), the engraved name moved out onto the bright chrome (dark ink
+  vanished on the bevel), the halo band made opaque (the engraving showed
+  through). At 480 the names are at the 12 px font floor; the radio is for
+  the 4" only.
+- Montserrat here has ASCII and LVGL's symbols only: a name with "a" with
+  umlaut, "·" or "●" would not render; the mock-ups avoid them, the
+  real one must map or substitute.
+
+## 2026-11-06 — P4 Gauge Crew Radio, phase 0: the core
+
+- New folder `p4-gauge-crew-radio/` (its own PlatformIO library,
+  `P4GaugeCrewRadio`, EUPL-1.2): a Crew Radio node for the 4", wire v4
+  compatible with the crew-radio app. Here rather than in the crew-radio
+  repo, by choice; the design, the FreeRTOS tasks, the safeguards, the
+  Reticulum plan and the phases are in its `README.md`.
+- Phase 0: `src/core` ports `Packet`, `Hello`, `ChannelCrypto` (PBKDF2 by
+  hand over mbedTLS HMAC, AES-GCM, the Reticulum tag and confirm key),
+  `RateLimiter` (integer thousandths of a token: the P4's FPU is single
+  precision, and the app's arithmetic is exact that way), the seen-cache
+  (fixed memory: linear probing, backward-shift deletion, an insertion-order
+  ring), `SeqTracker`, `Ingress`, `Conceal` and `Mixer`. No locks: on the
+  node one receive task owns the pipeline and the playout task owns the
+  mixer, where the app has a thread per transport.
+- 57 host tests (`-Werror`, ASan, UBSan), against the app's own
+  `vector.json`/`rns.vector.json` (copied from crew-radio `472f624`): the
+  derived keys, the hello and the sealed packet byte for byte, first run;
+  PBKDF2 also against Python's hashlib. A wrong salt fails the vector test
+  (checked). mbedTLS 3.6.4 downloaded by the build, pinned by SHA-256 (taken
+  from the downloaded release; mbedTLS's own published sum not compared).
+  CI job `crew-radio-tests`.
+- Not built for the board yet: nothing links the library; phase 1 (the
+  station) does.
+
+## 2026-11-06 — P4 Gauge Crew Radio, phase 1: listening, in the 4" firmware
+
+- No separate station firmware after all: one firmware per board is this
+  repo's rule (a second env compiles everything again). The radio is linked
+  into the 4"'s `p4` env (`platformio.ini`: the library by symlink, and
+  pschatzmann/codec-opus pinned to `c02de63`) and started from its
+  `main.cpp`; off until switched on in its "Crew radio" card. The station is
+  a 4" with the radio on and the Crew page (phase 3).
+- Core, host-tested (89 tests, +2 with libopus): `lan_peers` (the app's
+  unicast/group/burst-floor rule), `roster`, `clock_policy`, `supervisor`,
+  `memory_guard`, `self_test` (the vector packet compiled in), `spsc_ring`
+  (two-thread test), `decoder_pool`, `opus_decoder`, `playout`, `net_node`
+  (the whole receive side without sockets), `radio_settings` (the app's key
+  rule).
+- The GNSS clock: Signal K resends a path's last value on every subscribe
+  and keeps a dead receiver's last time for ever, so a reading counts only
+  when it advanced by the real time since the one before (within 2 s,
+  0.5-60 s apart). Noticed while wiring the listener; the first version would
+  have set the clock to the retained time.
+- Board side (`src/esp`, `src/glue`): ES8311 set up from esp_codec_dev's
+  register values (Apache-2.0) over I2C port 0 through the legacy driver,
+  the one ESP32_Display_Panel installs for touch (the new driver beside it
+  aborts at boot); I2S std, mono, 16 kHz, MCLK 256 fs, 3 DMA buffers of one
+  frame; amplifier enable after the codec (no pop). Tasks on core 0:
+  `cr-play` 17, `cr-net` 16, `cr-beat` 3. SNTP from the gateway, then
+  pool.ntp.org, started only if nobody started it. The card derives the
+  packet key at save (PBKDF2 in the web server's task, pausing every 2000
+  rounds for the idle task) and keeps it in NVS; never the channel key.
+- Built: `pio run -e p4` succeeds here (pioarduino 6.2.0), flash 2.97 ->
+  3.12 MB, static RAM +1.5 KB (libopus's 60 KB scratch is allocated at run
+  time, so PSRAM). Not run on a board: the first power-up checklist is in
+  the radio's README. Not built here: the 2.1" (its framework rebuild takes
+  over an hour); its only change is the mock-up UI code, which the preview
+  compiles.
+- Building libopus for the host tests was not allowed in this session's
+  sandbox (third-party code), so `CREW_RADIO_OPUS` (on by default, as in
+  CI) gates them; the other 89 ran here.
+
+## 2026-11-06 — The repository under EUPL-1.2
+
+- `LICENSE` at the root: EUPL-1.2, the same text as crew-radio's, for the
+  whole repository (it had none; `common/library.json` said MIT, now
+  EUPL-1.2). README "Licence and credits" names the dependencies and their
+  licences, all permissive and compatible; AGENTS.md says to keep it.
+
+## 2026-11-06 — P4 Gauge Crew Radio, phase 2: talking
+
+- Core, host-tested (97 tests, +3 with libopus): `talk_key` (40 ms to key,
+  60 ms to let go, and a 90 s time-out that keeps the mic cut until every
+  input is released, as a VHF set's: a shorted button or a resting hand
+  would otherwise hold the channel for the whole crew), `transmitter` (its
+  packets open on another NetNode as this node's voice, numbered), the
+  encoders (PCM, and Opus at 24 kbit/s VoIP, complexity 5), `BurstFloor`
+  (taken out of LanPeers so the audio task keeps its own), `peer_snapshot`
+  (a seqlock of atomics: cr-net publishes, cr-audio reads, nobody waits;
+  tested over two threads), `tones` (key beeps), `mic` (channel, level, the
+  ES7210 gain code as esp_codec_dev rounds it).
+- Two of the first test runs failed on the tests, not the code: the burst
+  gap arithmetic was a frame off, and the snapshot test read its own
+  deliberately mixed starting view before the writer thread ran.
+- Board side: the ES7210 from esp_codec_dev's register values (slave, MIC1 +
+  MIC2, 16-bit I2S); I2S full duplex on one controller with the same stereo
+  slots both ways; the playout task became `cr-audio` (play, capture, key,
+  encode, seal, send with its own socket; every libopus call there); half
+  duplex (the mixer's gain to 0 while keyed). Without an ES7210 the unit
+  still listens.
+- `common/src/lvgl_port.cpp` reads two touch points: while two are down
+  LVGL is told the screen is released (no swipe, no brightness hold) and
+  `touch_fingers()` says 2. The 2.1"'s touch reports one point, so nothing
+  changes there.
+- Card: two-finger talk, talk button GPIO (the board's own pins refused),
+  Opus, mic gain, microphone (MIC1/MIC2, an unknown one refused), key beeps;
+  a "Radio talk" status line.
+- `pio run -e p4` builds: flash 3.12 -> 3.24 MB. Not run on a board: the
+  radio's README has the talking checklist (items 9-15).
+- CodeRabbit's first review (of the first three commits), both fixed here:
+  a task that could not be created went unnoticed (the supervisor never saw
+  its slot, and the status could say "On channel"): now both start or
+  neither, and the radio shows "Stopped"; and the arc text's last glyph
+  skipped the width check, so a long name could run past its arc: now the
+  whole width is checked first and a name that does not fit is cut with
+  "..", no space before them (a new preview scene, `long_name`).
+- Asked for the exact boundary (the prefix and ".." fit, the prefix and the
+  last glyph do not), the arc rule moved into `common/src/arc_fit.h`, free
+  of LVGL, with `tests/test_arc_fit.cpp`: whole when it fits, cut at that
+  boundary, never past the arc for any length and last width, no space
+  before the dots. The sweep found one more edge: a text exactly as long
+  as its arc was cut by float rounding (px -> degrees); a thousandth of a
+  degree of slack fixed it.
+- CodeRabbit's follow-up on the task fix: a cr-beat that could not be
+  created left the status at "No clock" (only cr-beat ever wrote Stopped),
+  and a task that did not stop within 2 s went unsaid. Now every start
+  failure, cr-beat's included, stops the tasks and reports Stopped at once,
+  and a task that does not stop is logged (it is never restarted). The
+  state rule (`running_state`: Stopped whenever a task is not running) is in
+  `core/radio_state.h`, tested; FreeRTOS task creation itself cannot fail on
+  demand on the host, so the paths around it are checked by the build.
+
+## 2026-11-06 — The Crew Radio work split in two PRs
+
+- One PR had reached 118 files; CodeRabbit reviews at most 100. Split by
+  area, as the maintainer chose: the radio library `p4-gauge-crew-radio/`
+  with its CI job (94 files, PR #9), and stacked on it the gauge side (this
+  entry's PR): the display mock-ups and `arc_fit.h`, the two-finger touch in
+  `lvgl_port`, the 4" firmware hookup (`platformio.ini`, `main.cpp`), the
+  EUPL-1.2 licence for the repository, and the docs. Together they are the
+  same tree that was tested (host tests, preview, `pio run -e p4`).
+
+## 2026-11-06 — P4 Gauge Crew Radio, phase 3: on the screen
+
+- The radio library (PR #9's branch): `core/link_quality.h`, the app's
+  LinkQuality rule for rule (missing hellos of the last ten, lost audio of
+  the last five seconds of talk, the worse; an overdue hello counts as
+  missing; the gap before an entry's first packet does not). The roster
+  keeps one per node and its members carry their bars: the Crew page shows
+  measured bars only, never made-up ones. A Channel name in the card.
+- The gauge side: a fourth page style, **Crew radio** (`GaugeKind::kCrew`,
+  no path, nothing subscribed), built by `create_page()` as
+  `CrewGaugePage`, which draws the Crew page into the gauge page's own root
+  and canvas and polls the radio's view four times a second, redrawing only
+  on a change. The halo sits on the top layer under the status dot, made
+  only where a radio is registered (`set_crew_view_source()`, set in the
+  4"'s `main.cpp` before the UI is built; `src/crew_view_source.cpp` maps
+  the radio's status to the UI's view, the one place that knows both). The
+  info box gains a Radio line. Without a source the page says RADIO OFF.
+- Not faked: no mute (the radio has none yet), no "speaker" pip (nothing on
+  the wire tells the plugin from a person), "over Reticulum" only for a
+  relayed member whose hello says so.
+- Checks: gauge tests 68 (the new style's rules), radio 112, preview at
+  both sizes (the Crew page now through the page system), `pio run -e p4`
+  (flash 3.26 MB). Not run on a board.
+- Next: the station's talk disc, mute and volume drag (3b); Reticulum (2b)
+  in its own PR (the library PR is at 95 files).
+
+## 2026-11-06 — The radio library: CodeRabbit's full review
+
+- Peer learning (security): an address is learned only from a fresh first
+  copy Ingress accepted, never from a copy or a stale packet, and the
+  table holds one address per authenticated sender id, so a replayed
+  packet, even a fresh one this unit missed, can move only its own
+  sender's entry until that sender's next hello. Both stricter than the
+  app.
+- The mixer no longer reserves again the slots it already concealed on a
+  dry queue when a later frame reports them lost (the app's Mixer does,
+  holding that frame back by as many slots). The supervisor reads a
+  slot's armed flag before its time. `library.json`: Arduino only.
+- Checks: radio host tests 117 on the library branch, 158 with Reticulum;
+  `pio run -e p4` after the first round.
+
+## 2026-11-07 — The gauge side: CodeRabbit's review
+
+- Touch: after a two-finger hold LVGL sees a release until every finger
+  is off, so lifting one of the two no longer swipes or taps with the
+  other. `touch_fingers()` still follows every read.
+- Names: Montserrat has ASCII only, and "Mäkelä" drew as "Mkel".
+  `text_fold.h` (host-safe, tested) spells names in ASCII (Makela, ß ss,
+  Æ AE, anything else '?'); `crew_view_source` folds the members' and the
+  channel's names.
+- README: the EUPL's compatible-licence option as Article 5 states it.
+- Checks: gauge tests 72, preview built, `pio run -e p4`. The 2.1" shares
+  the `lvgl_port` change and was not built.
