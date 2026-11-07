@@ -216,6 +216,29 @@ jobs:
         run: timeout 120 build/tests/gauge_tests
 
   # ---------------------------------------------------------------------------
+  # P4 Gauge Crew Radio's core on the host, with the same sanitizers: the wire
+  # format against the crew-radio app's own vectors, the channel crypto, the
+  # receive pipeline and the mixer (p4-gauge-crew-radio/tests/).
+  # ---------------------------------------------------------------------------
+  crew-radio-tests:
+    name: Crew radio core (host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build/crew-radio-tests -j
+
+      - name: Run
+        run: timeout 120 build/crew-radio-tests/crew_radio_tests
+
+  # ---------------------------------------------------------------------------
   # The scripts and the credential rules. ota_auth.py only runs at upload time,
   # so a syntax error in it would otherwise first show up on the boat.
   # ---------------------------------------------------------------------------
