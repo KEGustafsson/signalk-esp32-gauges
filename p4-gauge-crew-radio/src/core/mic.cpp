@@ -20,6 +20,14 @@ void unpack_tdm(const int32_t* words,
 
 void take_channel(const int16_t* stereo, int channel,
                   int16_t mono[audio::kFrameSamples]) {
+  if (channel == kBoth) {
+    for (size_t i = 0; i < audio::kFrameSamples; i++) {
+      // Rounded half away from zero: the average of a and -a is 0.
+      const int sum = stereo[2 * i] + stereo[2 * i + 1];
+      mono[i] = (int16_t)(sum >= 0 ? (sum + 1) / 2 : (sum - 1) / 2);
+    }
+    return;
+  }
   const int c = channel == 1 ? 1 : 0;
   for (size_t i = 0; i < audio::kFrameSamples; i++) mono[i] = stereo[2 * i + c];
 }

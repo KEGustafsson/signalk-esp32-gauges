@@ -1099,6 +1099,7 @@ RadioStatus status() {
   }
   s.volume = g->volume.load();
   s.mic_gain_db = g->mic_gain_tenths.load() / 10.0f;
+  s.mic_channel = g->config.mic_channel;
   s.echo_cancel = g->echo_cancel.load();
   s.noise_suppress_db = g->noise_db.load();
   s.full_duplex = g->full_duplex.load();

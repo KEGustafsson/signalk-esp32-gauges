@@ -71,7 +71,7 @@ page):
 | **Talk button GPIO** | A push button from this GPIO on the 40-pin header to ground (internal pull-up); -1 for none. The pins the board already uses are refused |
 | **Opus** | Send Opus (about 60 bytes a frame, the default) or PCM (640); the phones play either |
 | **Mic gain (dB)** | The ES7210's preamp, 0-37.5 (default 30). Also on the Crew page; a save here sets it at once |
-| **Microphone** | MIC1 or MIC2 of the board's two |
+| **Microphone** | **Both** (default): the average of the board's two mics. A voice reaches them alike and keeps its level; each one's own noise averages down (1-2 dB less noise measured, up to 3 dB), and a finger over one does not silence the unit. **MIC1** or **MIC2**: one alone, for a damaged mic |
 | **Key beeps** | A beep when the mic keys and un-keys; the time-out always beeps |
 | **Echo cancelling** | Takes what the unit's own speaker plays out of the mic (on by default; below). A save here sets it at once |
 | **Noise suppression (dB)** | How far steady noise (an engine, a fan, preamp hiss) is turned down in the mic, 0-30; 0 is off, default 15. A save here sets it at once |
@@ -405,8 +405,8 @@ Then talking (phase 2):
 10. **Two fingers on the screen:** `Talking` in the log, the phones show the
     unit talking and hear it; the page does not swipe or change brightness.
     Lift them: `Listening`.
-11. **Which mic:** try MIC1 and MIC2 in the card; keep the one that sounds
-    closer and cleaner (the board's layout decides).
+11. **Which mic:** Both (the default) unless one is damaged: then try MIC1
+    and MIC2 in the card and keep the one that sounds cleaner.
 12. **Gain:** at 30 dB a voice at arm's length should reach the phones at
     about the level a phone sends; raise or lower it in the card.
 13. **Opus:** the Radio talk line counts frames sent; the phones' Status

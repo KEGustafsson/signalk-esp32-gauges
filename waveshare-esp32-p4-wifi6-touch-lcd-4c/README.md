@@ -114,7 +114,10 @@ examples.
 The ES7210 reads the board in TDM, four slots a frame: MIC1 and MIC2 are
 the two microphones, MIC3 is the ES8311's output wired back (the echo
 reference the Crew Radio's echo canceller works from) and MIC4 is not
-connected. So the Crew radio card offers MIC1 and MIC2 only.
+connected. So the Crew radio card offers MIC1, MIC2 and **Both** (their
+average, the default: on the starboard unit 0.8-2.2 dB less noise than
+one mic, the speaker's tone 0.7 dB below the mics' mean (MIC2 hears it one
+sample, 0.06 ms, before MIC1), and the echo cancelled as well: 33 dB).
 
 As delivered, the mics are very quiet whatever the gain: MIC1 and MIC2
 are differential inputs, and their N legs (MIC1N, MIC2N), behind their

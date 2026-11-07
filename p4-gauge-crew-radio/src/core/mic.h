@@ -25,7 +25,11 @@ constexpr float kMaxGainDb = 37.5f;
 constexpr int kTdmSlots = 4;
 void unpack_tdm(const int32_t* words, int16_t slots[kTdmSlots][audio::kFrameSamples]);
 
-// channel 0 or 1 of `stereo` (kFrameSamples pairs) into `mono`.
+// The mic the radio uses: channel 0 (MIC1) or 1 (MIC2) of `stereo`
+// (kFrameSamples pairs), or kBoth: their average. A voice reaches the two
+// alike and keeps its level; each one's own noise (the preamp's hiss) is
+// independent of the other's and averages down, by up to 3 dB.
+constexpr int kBoth = 2;
 void take_channel(const int16_t* stereo, int channel,
                   int16_t mono[audio::kFrameSamples]);
 

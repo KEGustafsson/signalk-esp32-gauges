@@ -155,6 +155,17 @@ TEST(mic_channel_level_and_gain_code) {
   CHECK(mono[0] == 100 && mono[N - 1] == 100 && mic::rms(mono) == 100);
   mic::take_channel(stereo, 1, mono);
   CHECK(mono[5] == -300 && mic::rms(mono) == 300);
+  mic::take_channel(stereo, mic::kBoth, mono);
+  CHECK(mono[0] == -100 && mono[N - 1] == -100);
+  // Full scale both ways: no overflow, the same value out.
+  stereo[0] = stereo[1] = 32767;
+  stereo[2] = stereo[3] = -32768;
+  stereo[4] = 3;
+  stereo[5] = -3;
+  stereo[6] = 1;
+  stereo[7] = 2;
+  mic::take_channel(stereo, mic::kBoth, mono);
+  CHECK(mono[0] == 32767 && mono[1] == -32768 && mono[2] == 0 && mono[3] == 2);
   CHECK(mic::es7210_gain_code(0) == 0);
   CHECK(mic::es7210_gain_code(3) == 1);
   CHECK(mic::es7210_gain_code(30) == 10);

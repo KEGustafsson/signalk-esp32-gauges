@@ -66,7 +66,7 @@ struct RadioConfig {
   bool touch_talk = true;  // A two-finger hold keys the mic
   bool opus = true;      // Opus (else PCM16)
   float mic_gain_db = 30.0f;
-  int mic_channel = 0;   // 0 = MIC1, 1 = MIC2
+  int mic_channel = 2;   // 0 = MIC1, 1 = MIC2, 2 = both averaged (mic::kBoth)
   bool key_beeps = false;
   // The mic's cleanup (core/voice.h) and whether the crew is played while
   // this unit talks; all three also live (set_voice).
@@ -123,6 +123,7 @@ struct RadioStatus {
   // set_mic_gain), not a reading of the codecs.
   int volume = 0;           // 0..100
   float mic_gain_db = 0.0f;  // 0..37.5, as the card has it
+  int mic_channel = 0;       // The mic in use (RadioConfig's, from begin())
   bool echo_cancel = false;
   int noise_suppress_db = 0;
   bool full_duplex = false;

@@ -1390,3 +1390,27 @@ then echo cancelling, since the board has an echo reference.
   to check. The 4" README has the mic's board fix ("The microphone: a
   board fix") and why the card offers only MIC1 and MIC2.
 - Checks: the preview at 480 and 720, looked at; `pio run -e p4`.
+
+## 2026-11-07 — Both mics at once
+
+- Asked for: use MIC1 and MIC2 together, so neither has to be chosen.
+  `mic::take_channel` takes `kBoth`: the two averaged (rounded, no
+  overflow; host-tested). The card's Microphone is **Both** by default,
+  MIC1 or MIC2 kept for a damaged mic. Averaging, not adding: a sum would
+  be 6 dB louder, but the unit's own speaker at full volume would clip it
+  (about 50 000), and a clipped echo cannot be cancelled.
+- Measured on the starboard unit with a boot-time probe (now removed):
+  silent, MIC1 19-30, MIC2 20-29, both 16-27 RMS: 0.8-2.2 dB less noise
+  (the two mics' noise correlates 0.2-0.6: the room's sound is common to
+  both and does not average down, the preamps' hiss does). White noise
+  from the speaker: MIC2 hears it one sample (0.06 ms) before MIC1, 3.8 dB
+  louder. The 1 kHz tone: both 0.7 dB below the mics' mean. The canceller:
+  MIC1 33.3 dB, MIC2 31.4, both 33.3.
+- The first version of the probe ran three cancellers in one frame:
+  cr-audio (priority 17) kept core 0 busy enough that the task watchdog
+  fired 22 s after every boot, too soon for an OTA upload, so the unit
+  was flashed over USB. The radio's own path runs one canceller a frame.
+- Both units' cards set to Both (they had MIC1, the old default) and
+  restarted; the Status page's Radio mic line ends with the mic in use
+  (`using both (averaged)`).
+- Checks: radio host tests 191, `pio run -e p4`, both 4" units flashed.

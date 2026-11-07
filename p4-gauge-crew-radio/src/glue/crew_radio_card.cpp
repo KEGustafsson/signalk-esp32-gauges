@@ -76,7 +76,8 @@ class RadioCard : public sensesp::FileSystemSaveable {
     root["touch_talk"] = touch_talk;
     root["opus"] = opus;
     root["mic_gain"] = mic_gain;
-    root["mic_channel"] = mic_channel == 1 ? "MIC2" : "MIC1";
+    root["mic_channel"] =
+        mic_channel == 0 ? "MIC1" : mic_channel == 1 ? "MIC2" : "Both";
     root["key_beeps"] = key_beeps;
     root["echo_cancel"] = echo_cancel;
     root["noise_suppress"] = noise_suppress;
@@ -116,7 +117,9 @@ class RadioCard : public sensesp::FileSystemSaveable {
     int new_mic = mic_channel;
     if (c["mic_channel"].is<const char*>()) {
       const char* m = c["mic_channel"].as<const char*>();
-      if (strcmp(m, "MIC1") == 0) {
+      if (strcmp(m, "Both") == 0) {
+        new_mic = 2;  // mic::kBoth: their average
+      } else if (strcmp(m, "MIC1") == 0) {
         new_mic = 0;
       } else if (strcmp(m, "MIC2") == 0) {
         new_mic = 1;
@@ -260,7 +263,7 @@ class RadioCard : public sensesp::FileSystemSaveable {
   bool touch_talk = true;
   bool opus = true;
   float mic_gain = 30.0f;
-  int mic_channel = 0;
+  int mic_channel = 2;  // 0 MIC1, 1 MIC2, 2 both (mic::kBoth)
   bool key_beeps = false;
   bool echo_cancel = true;
   int noise_suppress = voice::kDefaultNoiseSuppressDb;  // dB, 0 = off
@@ -481,7 +484,7 @@ void begin(int (*finger_count)()) {
     crew->set(String((int)s.members.size()) + ": " +
               crew_list(s.members).c_str());
     clock->set(esp::clock_text(s.clock));
-    char buf[200];
+    char buf[256];  // The mic line is the longest, about 200
     snprintf(buf, sizeof(buf),
              "%llu in, %llu rejected, %llu stale, %llu copies, %llu late",
              (unsigned long long)s.received, (unsigned long long)s.rejected,
@@ -503,12 +506,15 @@ void begin(int (*finger_count)()) {
     snprintf(buf, sizeof(buf),
              "MIC1 rms %d peak %d; MIC2 rms %d peak %d; TDM slots rms "
              "%d/%d/%d/%d (MIC1/ref/MIC2/MIC4); raw %04x %04x|%04x %04x|"
-             "%04x %04x|%04x %04x; gain %.1f dB",
+             "%04x %04x|%04x %04x; gain %.1f dB; using %s",
              s.mic_stats[0].ac_rms, s.mic_stats[0].peak, s.mic_stats[1].ac_rms,
              s.mic_stats[1].peak, s.mic_slot_rms[0], s.mic_slot_rms[1],
              s.mic_slot_rms[2], s.mic_slot_rms[3], s.mic_raw[0], s.mic_raw[1],
              s.mic_raw[2], s.mic_raw[3], s.mic_raw[4], s.mic_raw[5],
-             s.mic_raw[6], s.mic_raw[7], s.mic_gain_db);
+             s.mic_raw[6], s.mic_raw[7], s.mic_gain_db,
+             s.mic_channel == 0   ? "MIC1"
+             : s.mic_channel == 1 ? "MIC2"
+                                  : "both (averaged)");
     mic_line->set(buf);
     if (!s.mic_ok) {
       voice_line->set("No microphone");
@@ -558,7 +564,7 @@ const String ConfigSchema(const crewradio::glue::RadioCard&) {
          R"J("talk_gpio":{"title":"Talk button GPIO","type":"integer","minimum":-1,"maximum":54,"description":"A push button from this GPIO on the 40-pin header to ground; -1 for none. Pins the board already uses are refused."},)J"
          R"J("opus":{"title":"Opus","type":"boolean","description":"Send Opus (about 60 bytes a frame); off sends PCM (640). The phones play either."},)J"
          R"J("mic_gain":{"title":"Mic gain (dB)","type":"number","minimum":0,"maximum":37.5,"description":"The ES7210's preamp: 3 dB steps to 30, then 34.5, 36, 37.5."},)J"
-         R"J("mic_channel":{"title":"Microphone","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["MIC1","MIC2"]},"description":"Which of the board's two microphones is used."},)J"
+         R"J("mic_channel":{"title":"Microphone","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["Both","MIC1","MIC2"]},"description":"Both: the average of the board's two microphones (a voice keeps its level, their own noise drops by up to 3 dB, and a finger over one does not silence the unit). MIC1 or MIC2: one alone, for a mic that is damaged."},)J"
          R"J("key_beeps":{"title":"Key beeps","type":"boolean","description":"A beep when the mic keys and un-keys (the time-out always beeps)."},)J"
          R"J("echo_cancel":{"title":"Echo cancelling","type":"boolean","description":"Takes what this unit's own speaker plays out of the mic, from the board's echo reference (speexdsp). Needed for full duplex; on a half-duplex unit it takes out the key beeps."},)J"
          R"J("noise_suppress":{"title":"Noise suppression (dB)","type":"integer","minimum":0,"maximum":30,"description":"How far steady noise (an engine, a fan, wind hiss) is turned down in the mic; 0 is off. 15 is a moderate setting; more can make the voice sound watery."},)J"
