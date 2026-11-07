@@ -1147,3 +1147,16 @@ what applies to these gauges (SensESP, Arduino-ESP32 3.3.11):
 - README: the EUPL's compatible-licence option as Article 5 states it.
 - Checks: gauge tests 72, preview built, `pio run -e p4`. The 2.1" shares
   the `lvgl_port` change and was not built.
+
+## 2026-11-07 — Reticulum: CodeRabbit's review
+
+- `reticulum_link`: the shared state is published to the other tasks only
+  once whole (an atomic pointer, its lock first): `cr-net`'s first status
+  read could otherwise take a lock not yet made. The status note is set
+  with each state, so an old failure never lingers.
+- `cr-net` without the WLAN socket keeps its turn: Reticulum taken, the
+  hello there without the LAN flag, the roster expired and published, the
+  socket retried twice a second at most.
+- `parse_host_port`: an IPv6 node must be an IPv6 address (RFC 4291's text
+  forms), stricter than the app.
+- Checks: radio host tests 159, `pio run -e p4`.
