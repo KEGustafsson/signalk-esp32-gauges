@@ -166,6 +166,43 @@ TEST(mic_channel_level_and_gain_code) {
   CHECK(mic::es7210_gain_code(-5) == 0);
 }
 
+TEST(mic_tdm_words_unpack_into_four_slots) {
+  int32_t words[2 * N];
+  for (size_t i = 0; i < N; i++) {
+    // Slot 0 = i, slot 1 = -i, slot 2 = 1000 + i, slot 3 = -1.
+    words[2 * i] = (int32_t)(((uint32_t)(uint16_t)(int16_t)i << 16) |
+                             (uint16_t)(int16_t)(-(int)i));
+    words[2 * i + 1] =
+        (int32_t)(((uint32_t)(uint16_t)(int16_t)(1000 + i) << 16) | 0xFFFFu);
+  }
+  int16_t slots[mic::kTdmSlots][N];
+  mic::unpack_tdm(words, slots);
+  CHECK(slots[0][5] == 5 && slots[1][5] == -5);
+  CHECK(slots[2][7] == 1007 && slots[3][7] == -1);
+  CHECK(slots[0][N - 1] == (int16_t)(N - 1) && slots[3][0] == -1);
+}
+
+TEST(mic_channel_stats_tell_a_stuck_line_from_a_signal) {
+  int16_t stereo[2 * N];
+  // Left: a line stuck high (every sample all ones, -1); right: a square
+  // wave of +-1000 around a DC of 200.
+  for (size_t i = 0; i < N; i++) {
+    stereo[2 * i] = -1;
+    stereo[2 * i + 1] = (int16_t)(200 + ((i & 1) ? 1000 : -1000));
+  }
+  const mic::ChannelStats l = mic::channel_stats(stereo, 0);
+  CHECK(l.dc == -1 && l.ac_rms == 0 && l.peak == 1);
+  const mic::ChannelStats r = mic::channel_stats(stereo, 1);
+  CHECK(r.dc == 200 && r.ac_rms == 1000 && r.peak == 1200);
+  // Silence is all zero.
+  for (size_t i = 0; i < 2 * N; i++) stereo[i] = 0;
+  const mic::ChannelStats z = mic::channel_stats(stereo, 1);
+  CHECK(z.dc == 0 && z.ac_rms == 0 && z.peak == 0);
+  CHECK_NEAR(mic::es7210_gain_db(14), 37.5, 1e-6);
+  CHECK_NEAR(mic::es7210_gain_db(10), 30.0, 1e-6);
+  CHECK_NEAR(mic::es7210_gain_db(0), 0.0, 1e-6);
+}
+
 // A moment when talking is not allowed (the memory guard, the clock) un-keys
 // like a release, but a stuck input stays locked out: only letting go ends
 // the time-out.

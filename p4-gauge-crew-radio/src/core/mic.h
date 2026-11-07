@@ -17,6 +17,14 @@ namespace mic {
 
 constexpr float kMaxGainDb = 37.5f;
 
+// The ES7210 in TDM mode as the P4 reads it: four 16-bit slots a frame,
+// [MIC1, MIC3, MIC2, MIC4] (its serial order; MIC3 is the board's echo
+// reference, the ES8311's output), clocked as standard stereo I2S with
+// 32-bit slots, so each 32-bit word holds two TDM slots, the first in its
+// upper half. `words`: kFrameSamples pairs as read; `slots[s]`: TDM slot s.
+constexpr int kTdmSlots = 4;
+void unpack_tdm(const int32_t* words, int16_t slots[kTdmSlots][audio::kFrameSamples]);
+
 // channel 0 or 1 of `stereo` (kFrameSamples pairs) into `mono`.
 void take_channel(const int16_t* stereo, int channel,
                   int16_t mono[audio::kFrameSamples]);
@@ -24,8 +32,21 @@ void take_channel(const int16_t* stereo, int channel,
 // RMS of one frame, 0..32767.
 int rms(const int16_t frame[audio::kFrameSamples]);
 
+// One channel of an interleaved stereo frame, for the Status page's mic
+// diagnostics: its mean (the DC a line stuck at one level shows: all ones
+// is -1), its RMS about that mean (the signal), and its largest |sample|.
+struct ChannelStats {
+  int dc = 0;
+  int ac_rms = 0;
+  int peak = 0;
+};
+ChannelStats channel_stats(const int16_t* stereo, int channel);
+
 // The ES7210 MICx_GAIN register's low nibble for `db`.
 uint8_t es7210_gain_code(float db);
+
+// The gain in dB that a code of es7210_gain_code's runs the PGA at.
+float es7210_gain_db(uint8_t code);
 
 }  // namespace mic
 }  // namespace crewradio

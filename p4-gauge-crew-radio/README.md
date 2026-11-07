@@ -62,23 +62,44 @@ In the unit's web UI, Configuration, **Crew radio**:
 | **On** | Listen to the crew's channel on this unit's speaker |
 | **Name on the roster** | How the phones list the unit; empty = its hostname |
 | **Channel name** | The boat's or crew's name on the Crew page, as the phones' Channel name; empty = CREW |
-| **New channel key** | The crew's key, exactly as on the phones (12-64 printable ASCII). Save takes a few seconds (the packet key is derived then); empty keeps the saved one. The key itself is never stored, only the packet key (NVS) and its last four characters (shown as **Saved key**) |
+| **New channel key** | The crew's key, exactly as on the phones (12-64 printable ASCII). Save takes about 20 s (the packet key is derived then: 22 s on the bench unit; the gauge's needles move in steps meanwhile); empty keeps the saved one. The key itself is never stored, only the packet key (NVS) and its last four characters (shown as **Saved key**) |
 | **Multicast group**, **UDP port** | As on the phones: 239.255.42.1 and 47474 unless the crew changed them |
 | **Hop limit** | 1-8, default 4 |
-| **Speaker volume** | 100 = the codec's 0 dB, 0.5 dB a step below, 0 = mute |
+| **Speaker volume** | 100 = the codec's 0 dB, 0.5 dB a step below, 0 = mute. Also on the Crew page (below); a save here sets it at once |
 | **Two-finger talk** | Hold two fingers on the screen to talk (on by default) |
 | **Talk button GPIO** | A push button from this GPIO on the 40-pin header to ground (internal pull-up); -1 for none. The pins the board already uses are refused |
 | **Opus** | Send Opus (about 60 bytes a frame, the default) or PCM (640); the phones play either |
-| **Mic gain (dB)** | The ES7210's preamp, 0-37.5 (default 30) |
+| **Mic gain (dB)** | The ES7210's preamp, 0-37.5 (default 30). Also on the Crew page; a save here sets it at once |
 | **Microphone** | MIC1 or MIC2 of the board's two |
 | **Key beeps** | A beep when the mic keys and un-keys; the time-out always beeps |
+| **Echo cancelling** | Takes what the unit's own speaker plays out of the mic (on by default; below). A save here sets it at once |
+| **Noise suppression (dB)** | How far steady noise (an engine, a fan, preamp hiss) is turned down in the mic, 0-30; 0 is off, default 15. A save here sets it at once |
+| **Full duplex** | Play the crew while this unit talks (off by default: the speaker is silent while talking). Only with echo cancelling on, or the crew hears itself. Taken at the next key |
 | **Reticulum** | The channel through a Reticulum transport node as well (off by default), as the phones' Reticulum tile |
 | **Transport node** | `host`, `host:port`, `[v6]` or `[v6]:port` of the node's TCP server interface (the boat's rnsd, or a hub ashore; crew-radio's `docs/RETICULUM_HUB.md`); 4242 when no port is given |
 | **Relay** | With Reticulum on, bridge it and the WLAN (on by default): the phones on board hear the crew ashore, and back |
 
+**On the screen**, the Crew page's volume arc is a control while the
+radio runs (the - and + drawn bright): tap anywhere in the bottom of the
+dial left of the label to lower, right of it to raise, one step a tap
+(the volume in steps of 5, 0 is mute; the mic gain one of the ES7210's
+steps: 3 dB to 30, then 34.5, 36, 37.5). Tap the label to switch the arc
+to the mic gain (`MIC 30 dB`, green) and back; it goes back to the volume
+10 s after the last tap. Each step is on the codec within a frame, shown
+for a moment in the middle, and written to the card a few seconds after
+the last tap (`core/levels.h`, `common/src/crew_tap.h`).
+
 Talking is push to talk: the mic is keyed while the fingers or the button
 are held (40 ms to key, 60 ms to let go), and the unit is half duplex: the
-crew is not played while it talks. **90 s of talk at once cuts the mic**,
+crew is not played while it talks, unless the card's Full duplex is on.
+Every mic frame is cleaned up first (`core/voice.h`): speexdsp's echo
+canceller takes out what the unit's own speaker played (from the board's
+echo reference: the ES8311's output wired back into the ES7210's MIC3,
+captured in the same frame as the mics), then its preprocessor takes out
+what was left of the echo and the steady noise. The Status page's
+**Radio voice** line shows what is on, how many dB of echo the canceller
+took out over the last second the speaker played, and what it costs:
+about 3.4 ms of each 20 ms frame on `cr-audio`. **90 s of talk at once cuts the mic**,
 with three low beeps, and it stays cut until everything is let go: a button
 shorted by spray or a hand resting on the screen would otherwise hold the
 channel for the whole crew (`core/talk_key.h`).
@@ -177,9 +198,46 @@ path takes no lock (`src/esp/radio_runtime.*`).
 - Decoders as the app's: one taken over only once its talker has been
   silent 2 s (else the newcomer's frame is dropped), a gap of up to three
   frames concealed and a longer one not.
-- I2S full duplex on one controller: out to the ES8311, in from the ES7210
-  (MIC1 left, MIC2 right), the same stereo 16-bit slots both ways, three DMA
-  buffers of one frame. The ES7210 is optional: without it the unit listens.
+- I2S full duplex on one controller: out to the ES8311, in from the ES7210,
+  standard stereo with 32-bit slots both ways (a 64 fs bit clock, which the
+  ES7210 needs for TDM: at 32 fs its inputs read about 1 LSB whatever the
+  gain), three DMA buffers of one frame. The ES7210 sends four 16-bit TDM
+  slots in each frame, MIC1, MIC3 (the echo reference), MIC2, MIC4
+  (`mic::unpack_tdm`), as Waveshare's own firmware for the board reads
+  them; MIC1/MIC2 at the card's gain, the reference at 0 dB. The ES8311
+  takes the first 16 bits of each slot. The ES7210 is optional: without it
+  the unit listens.
+- The mic's cleanup is speexdsp 1.2.1 (BSD-3-Clause), vendored unmodified
+  in `src/third_party/speexdsp` and compiled through `src/dsp/`, which sets
+  its configuration per file: floating point, smallft (the 640-point FFT),
+  and single precision throughout. Its float build calls the double
+  functions and writes double constants, and the P4's FPU is single
+  precision only: as released, every one of those was a soft-float call
+  and a frame took 10 ms of its 20 (5 ms with the float functions, 3.4 ms
+  at -O2 for those files; 3.1 ms with the 40 ms tail). The canceller
+  models 40 ms of echo path (`voice::kTailFrames`); its states go to
+  PSRAM. It runs on every frame, talking or not, so it has learned the
+  speaker's path by the time it matters. Measured on both 4" units with
+  their own speakers (2026-11-07, after the mic fix below): the direct
+  path 0.1-0.2 ms, nearly all of the response within 5 ms; 20-60 ms
+  tails cancel alike, 80 ms and more less (a longer filter learns
+  slower). The canceller takes out about 26 dB, 29-30 dB with the
+  preprocessor's residual suppression, 36-44 dB with the noise
+  suppression at 15 dB too; at full volume a little less (the speaker's
+  distortion). A voice talking here over the crew (full duplex) gets
+  through 1-2 dB down (4-7 dB with the noise suppression on), the echo
+  beside it 15-25 dB down. The preprocessor works in overlapping windows
+  and delays the mic by one frame (20 ms) whenever it runs, which is
+  whenever the canceller or the noise suppression is on.
+- The 4"'s MIC1 and MIC2 are differential inputs whose N legs came
+  without a path to ground on the board (30 pF): the PGA's gain was
+  compressed, 0 to 37.5 dB giving about +11.5 dB. With those caps
+  replaced by short circuits (the 1 µF DC blocks to the ES7210 stay) the
+  gain is linear: a 1 kHz tone from the speaker reads 8 at 0 dB and 632
+  at 37.5 dB (+38 dB). The room's noise at 37.5 dB is RMS 20-50, the
+  unit's own speaker at full volume peaks near 25000: no clipping even
+  in full duplex. MIC3 (the echo reference) and MIC4 (not connected) are
+  not microphones, and the card offers only MIC1 and MIC2.
 - Talk keys: the button's GPIO is read by `cr-audio` once a frame; the
   two-finger hold comes from the gauges' touch port (`common/src/lvgl_port`,
   which reads two points and shows LVGL a release while two are down, so a
@@ -249,7 +307,8 @@ Mock-ups, drawn with the gauges' own LVGL code and rendered by the preview:
   `n LISTENING` while this unit transmits.
 - **Crew page**, a page style: the roster as a compass, each member a pip
   with name and the phones' 1-4 bars, the talker glowing; channel name,
-  head count in the LCD, one status line, volume arc.
+  head count in the LCD, one status line, volume arc; tapped, the arc
+  sets the volume and the mic gain.
 - **Station**: the Crew page with a talk disc in the middle and the channel
   name engraved in the bezel.
 - **Talk keys**: a two-finger hold anywhere (swipe and one-finger hold are
@@ -299,10 +358,10 @@ ported rule for rule into `src/core/rns/` and checked against the same
 |---|---|---|
 | **0. Core** (done) | The wire format, crypto, receive pipeline, mixer and concealment ported; host tests against the app's vectors; CI job | The vector packet byte for byte, under ASan/UBSan |
 | **1. Listen** (written, to be run) | ES8311 + amplifier, I2S, the WLAN socket, Opus decode, hello and roster, clock (SNTP, GNSS), self-test, supervisor, memory guard; the card and status lines in the 4" firmware | Phones list the unit; the plugin's announcements are heard clearly; the `heap` line steady for an hour with two talkers |
-| **2. Talk** (written, to be run) | ES7210 capture, two-finger and GPIO talk keys with the time-out, Opus or PCM, the burst floor, key beeps, half duplex | The phones' Status counters show no loss from the unit |
+| **2. Talk** (written, to be run) | ES7210 capture (TDM, with the echo reference), two-finger and GPIO talk keys with the time-out, Opus or PCM, the burst floor, key beeps, half duplex (full duplex as an option), echo cancelling and noise suppression | The phones' Status counters show no loss from the unit |
 | **2b. Reticulum** (written, to be run) | The `rns` port (curves, crypto, packets, links, the node), `cr-rns`, the bridge, the card's Reticulum fields | A phone ashore and the unit talk through rnsd 1.5.4; a phone on board hears the phone ashore through the unit |
 | **3. On the screen** (written, to be run) | The halo on every page, the "Crew radio" page style, the radio's state on the info overlay, the roster's 1-4 bars (`core/link_quality.h`), a channel name in the card | Preview renders both; 24 h with no restart caused by the radio |
-| **3b. Station** | The talk disc (one-finger hold on the disc, which must not fight the page gestures), a mute on the screen, volume by dragging the arc | The station screen in use at the nav table |
+| **3b. Station** | The talk disc (one-finger hold on the disc, which must not fight the page gestures), a mute on the screen (the Crew page's volume and mic gain taps are done: dragging the arc would be a page swipe) | The station screen in use at the nav table |
 | **4. Extras** | Adaptive playout, two-mic wind gate | Measured against the fixed buffer and the one-mic gate in engine noise |
 
 ## First power-up (phase 1)
@@ -406,6 +465,7 @@ cmake -S p4-gauge-crew-radio/tests -B build/crew-radio-tests && cmake --build bu
 | `test_playout.cpp` | The decoder pool (own decoder per sender, the quietest taken over only once it has paused, a ninth talker never resetting a live one, idle released); PCM and Opus to the mixer with short gaps concealed and a long one not |
 | `test_radio_state.cpp` | What the radio reports while it runs: Stopped whenever a task is not running, whatever the clock or the memory guard say; then Paused, No clock, No network, On channel |
 | `test_radio_settings.cpp` | The app's channel key rule, the multicast group and port, the key mask, the talk button's GPIO (the board's own pins and the C6's SDIO refused), the transport node's `host[:port]` |
+| `test_levels.cpp` | The screen's level steps: the volume onto multiples of 5 between mute and full, the mic gain one ES7210 PGA step at a time from the gain the codec runs at, every step one the codec keeps |
 | `test_talk.cpp` | The talk key's debounce and its 90 s time-out with the lock-out until release, kept through a moment when talking is not allowed; the transmitter's packets open on another node as this node's voice, in sequence; the burst floor; the peer snapshot never read torn (two threads); the key tones; the mic channel, level and ES7210 gain codes |
 | `test_curve25519.cpp` | X25519 against RFC 7748, Ed25519 against RFC 8032; a tampered message or signature, another key, S + L and a point off the curve refused; random keys sign, verify and agree; the constants against their definitions |
 | `test_rns_primitives.cpp` | HMAC (RFC 4231, a refusal leaves no MAC), HKDF (RFC 5869), the token (tamper, wrong key, short), PKCS#7, packets and the hash that ignores the transport, HDLC framing with junk and oversized frames, announces (tampered, foreign, with a ratchet), links (an impostor's proof, data, keep-alive, close, MTU signalling, a low-order key), `Carry` whole and in parts with loss, rnsd's announce budget |

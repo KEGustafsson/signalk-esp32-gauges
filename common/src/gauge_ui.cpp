@@ -7,12 +7,14 @@
 #include <lvgl.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "sensesp_app.h"
 #include "sensesp_base_app.h"
 #include "gauge_settings.h"
 #include "gauge_version.h"
+#include "lvgl_port.h"
 #include "sk_data.h"
 #include "ui/crew_draw.h"
 #include "ui/crew_view.h"
@@ -275,6 +277,28 @@ void screen_event_cb(lv_event_t* e) {
   } else if (code == LV_EVENT_SHORT_CLICKED) {
     if (state->info_visible) {
       hide_overlay(nullptr);  // A tap only closes the info box
+      return;
+    }
+    // A second finger landing ends the first one's press as a release
+    // (lvgl_port.cpp): the start of a two-finger talk, not a tap.
+    if (touch_fingers() >= 2) {
+      return;
+    }
+    // Where the finger went down, if it stayed there: a finger that
+    // travelled was a slow swipe, as for the hold below.
+    lv_point_t point;
+    lv_indev_get_point(indev, &point);
+    const int32_t dx = point.x - state->press_point.x;
+    const int32_t dy = point.y - state->press_point.y;
+    const int32_t slop = state->geometry.px(kHoldSlop);
+    if (dx * dx + dy * dy > slop * slop || state->page == nullptr) {
+      return;
+    }
+    std::string toast;
+    if (state->page->tap(state->press_point.x, state->press_point.y, millis(),
+                         &toast) &&
+        !toast.empty()) {
+      show_overlay(toast.c_str(), kToastShowMs, false);
     }
   } else if (code == LV_EVENT_LONG_PRESSED) {
     // LVGL fires a long press after the hold time however far the finger

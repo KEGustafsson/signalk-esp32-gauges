@@ -9,5 +9,7 @@
 namespace skgauges {
 
 bool crew_view_from_radio(ui::CrewView* out);
+// The Crew page's - and + (ui::CrewAdjust): one step to the radio's card.
+bool crew_adjust_radio(ui::CrewLevel level, int dir);
 
 }  // namespace skgauges

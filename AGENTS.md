@@ -78,7 +78,8 @@ If a task would require breaking one of these, stop and flag it.
     boot, a save a power cut interrupted before it was done is undone, and
     one that was done is kept), `link_policy.h` (when a dead link restarts
     the unit), `arc_fit.h` (how much of a name fits along an arc),
-    `text_fold.h` (names in the fonts' ASCII: Mäkelä as Makela). Put new logic of this kind there, with a test, rather than in
+    `text_fold.h` (names in the fonts' ASCII: Mäkelä as Makela), `crew_tap.h`
+    (where a tap on the Crew page lands). Put new logic of this kind there, with a test, rather than in
     the Arduino glue.
   - `ui/` -- pure LVGL drawing. No Arduino, no SensESP: it must keep compiling
     on the host for `tools/preview`, which CI runs.
@@ -127,6 +128,12 @@ If a task would require breaking one of these, stop and flag it.
   its signature work takes tens of milliseconds; its packets reach `cr-net`
   through a ring, so `Ingress` keeps a single caller. Copy
   `rns.vector.json` again when crew-radio's Reticulum wire changes.
+  The mic's echo canceller and noise suppression (`src/core/voice.*`) are
+  speexdsp, vendored unmodified in `src/third_party/speexdsp` and compiled
+  only through `src/dsp/` (its configuration per file, no `-D` flag).
+  The P4's FPU is single precision only: a `double` (a constant, `sqrt`,
+  `exp`) in per-frame code is a soft-float call; `src/dsp/speex_config.h`
+  makes speexdsp single precision (it took 10 ms a frame without).
 - **`docs/`** -- `PAGES.md` (end-user guide to the pages), `BRINGUP.md`
   (first power-up of a device), `ADDING_GAUGES.md` (another page, another
   unit, a new page style, a new board: what to change), `JOURNAL.md`.

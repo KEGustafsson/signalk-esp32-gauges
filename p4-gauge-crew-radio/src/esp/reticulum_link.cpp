@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: EUPL-1.2
 #if defined(ESP_PLATFORM)
+#include "log_level.h"  // First: INFO and WARN not compiled out
 #include "reticulum_link.h"
 
 #include <errno.h>

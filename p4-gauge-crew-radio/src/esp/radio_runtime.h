@@ -13,7 +13,11 @@
 //            (both block on the DMA, so the I2S clock paces it), and while
 //            keyed sends the frame to the peers cr-net publishes. Every
 //            libopus call is made here (the build's scratch is one global
-//            buffer). Half duplex: the crew is not played while keyed.
+//            buffer). Half duplex unless set otherwise: the crew is not
+//            played while keyed. Every mic frame goes through the echo
+//            canceller and noise suppression (core/voice.h) against the
+//            board's echo reference. It also sets the codecs' levels
+//            (set_volume, set_mic_gain).
 //   cr-rns   (core 0, below both; phase 2b, when switched on) owns the
 //            TCP connection to a Reticulum transport node and the links in
 //            it (esp/reticulum_link.h); the channel's packets go to and from
@@ -39,6 +43,7 @@
 
 #include "core/clock_policy.h"
 #include "core/memory_guard.h"
+#include "core/mic.h"
 #include "core/radio_state.h"
 #include "core/roster.h"
 #include "esp/reticulum_link.h"
@@ -63,6 +68,11 @@ struct RadioConfig {
   float mic_gain_db = 30.0f;
   int mic_channel = 0;   // 0 = MIC1, 1 = MIC2
   bool key_beeps = false;
+  // The mic's cleanup (core/voice.h) and whether the crew is played while
+  // this unit talks; all three also live (set_voice).
+  bool echo_cancel = true;
+  int noise_suppress_db = 15;  // 0 = off
+  bool full_duplex = false;
   // Reticulum (phase 2b).
   bool reticulum = false;
   std::string reticulum_host;  // The transport node
@@ -90,6 +100,18 @@ struct RadioStatus {
   uint64_t sent = 0;
   int timeouts = 0;
   int mic_level = 0;  // RMS of the last frame heard by the mic
+  // Both ES7210 channels of that frame (MIC1 left, MIC2 right) and its
+  // first stereo samples as read, for the Status page's mic diagnostics.
+  mic::ChannelStats mic_stats[2];
+  uint16_t mic_raw[8] = {};  // Each TDM slot's first two samples
+  int mic_slot_rms[mic::kTdmSlots] = {};  // MIC1, echo ref, MIC2, MIC4
+  // The mic's cleanup: what the echo canceller took out over the last
+  // second the speaker played (dB; -1: it played nothing, or the canceller
+  // is off), and the longest it took over a frame (microseconds).
+  int echo_db = -1;
+  int voice_us = 0;
+  int voice_avg_us = 0;  // Its mean over that second
+  bool voice_ok = false;  // speexdsp's states allocated
   uint64_t relayed = 0;
   ReticulumStatus reticulum;
   // When cr-beat last wrote this (esp_timer ms): a screen that sees it old
@@ -97,7 +119,13 @@ struct RadioStatus {
   int64_t beat_ms = 0;
   // For the screen (the 4"'s Crew page and halo).
   std::string channel;
-  int volume = 0;  // 0..100, the card's
+  // The levels asked for (the card's, or set since: set_volume,
+  // set_mic_gain), not a reading of the codecs.
+  int volume = 0;           // 0..100
+  float mic_gain_db = 0.0f;  // 0..37.5, as the card has it
+  bool echo_cancel = false;
+  int noise_suppress_db = 0;
+  bool full_duplex = false;
 };
 
 // From setup(), after the board (and so the I2C driver) is up.
@@ -106,6 +134,15 @@ void begin(const RadioConfig& config);
 void note_gnss_time(int64_t epoch_s);
 // Two fingers on the screen, or not (from the loop task, every touch read).
 void set_touch_talk(bool held);
+// The speaker volume (0..100, 0 mutes) and the mic gain (dB, 0..37.5),
+// from any task: cr-audio, which owns the codecs, sets them within a frame
+// (20 ms); a radio that is not running takes them when its audio starts.
+void set_volume(int volume);
+void set_mic_gain(float db);
+// The mic's echo canceller, its noise suppression (dB, 0 = off) and full
+// duplex (the crew played while talking), from any task: cr-audio takes
+// them at its next frame; full duplex at the next key.
+void set_voice(bool echo_cancel, int noise_suppress_db, bool full_duplex);
 RadioStatus status();
 
 }  // namespace esp

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: EUPL-1.2
 #if defined(ESP_PLATFORM)
+#include "log_level.h"  // First: INFO and WARN not compiled out
 #include "radio_runtime.h"
 
 #include <driver/gpio.h>
@@ -15,6 +16,7 @@
 #include <freertos/task.h>
 #include <lwip/inet.h>
 #include <lwip/sockets.h>
+#include <math.h>
 #include <mbedtls/platform_util.h>
 #include <string.h>
 #include <sys/time.h>
@@ -22,6 +24,7 @@
 
 #include <atomic>
 #include <memory>
+#include <new>
 
 #include "core/channel_crypto.h"
 #include "core/decoder_pool.h"
@@ -40,6 +43,7 @@
 #include "core/talk_key.h"
 #include "core/tones.h"
 #include "core/transmitter.h"
+#include "core/voice.h"
 #include "port/random.h"
 #include "es7210.h"
 #include "es8311.h"
@@ -60,6 +64,12 @@ constexpr gpio_num_t kWs = GPIO_NUM_10;
 constexpr gpio_num_t kDout = GPIO_NUM_9;
 constexpr gpio_num_t kDin = GPIO_NUM_11;
 constexpr gpio_num_t kAmpEnable = GPIO_NUM_53;
+// The ES7210's TDM slots (core/mic.h): MIC1, MIC3 = the echo reference (the
+// ES8311's output, wired back on the board), MIC2, MIC4 (not connected), as
+// Waveshare's firmware for this board reads them.
+constexpr int kSlotMic1 = 0;
+constexpr int kSlotEchoRef = 1;
+constexpr int kSlotMic2 = 2;
 
 constexpr int kCore = 0;
 constexpr UBaseType_t kAudioPriority = 17;
@@ -106,6 +116,14 @@ struct Shared {
   std::atomic<bool> net_running{false};
   std::atomic<bool> audio_running{false};
   std::atomic<uint64_t> ring_drops{0};
+  // The levels asked for (set_volume, set_mic_gain); cr-audio applies them.
+  std::atomic<int> volume{70};
+  std::atomic<int> mic_gain_tenths{300};  // Tenths of a dB
+  // The mic's cleanup as asked for (set_voice); cr-audio applies it.
+  std::atomic<bool> echo_cancel{true};
+  std::atomic<int> noise_db{voice::kDefaultNoiseSuppressDb};
+  std::atomic<bool> full_duplex{false};
+  std::unique_ptr<voice::Processor> voice;  // cr-audio's alone
   QueueHandle_t gnss = nullptr;  // int64_t epoch seconds, from the loop task
   SemaphoreHandle_t status_lock = nullptr;
   RadioStatus status;
@@ -409,11 +427,32 @@ void cue(tones::Cue c) {
   }
 }
 
+// The I2S frames of one cr-audio task: 32-bit stereo words both ways (the
+// ES7210's four TDM slots in, the speaker's frame out), the slots unpacked,
+// and MIC1/MIC2 as an interleaved pair. 5 KB, on the heap rather than the
+// task's stack.
+struct AudioBuffers {
+  int32_t words[2 * audio::kFrameSamples];
+  int16_t slots[mic::kTdmSlots][audio::kFrameSamples];
+  int16_t pair[2 * audio::kFrameSamples];
+};
+
 void audio_task(void* arg) {
   const uint32_t gen = (uint32_t)(uintptr_t)arg;
   int16_t out[audio::kFrameSamples];
-  int16_t stereo[2 * audio::kFrameSamples];
   int16_t mono[audio::kFrameSamples];
+  std::unique_ptr<AudioBuffers> buf(new (std::nothrow) AudioBuffers());
+  if (!buf) {
+    // As a task that stopped: the supervisor sees no check-ins and tries
+    // again, and leaves the radio off after three tries.
+    ESP_LOGE(kTag, "No memory for the audio buffers");
+    g->audio_running.store(false);
+    vTaskDelete(nullptr);
+    return;
+  }
+  int32_t* words = buf->words;
+  int16_t* stereo = buf->pair;  // MIC1 left, MIC2 right
+  const size_t word_bytes = sizeof(buf->words);
   uint8_t pkt[Transmitter::kMaxPacket];
   TalkKey key;
   BurstFloor floor;
@@ -421,6 +460,16 @@ void audio_task(void* arg) {
   int timeouts = 0;
   int level = 0;
   int64_t next_sweep = 0;
+  // What this task last wrote to the codecs: none yet, so the first frame
+  // writes the levels asked for (start_audio wrote the card's, which may
+  // have changed while a stalled task was being restarted).
+  int applied_volume = -1;
+  int applied_gain = -1;
+  int voice_us = 0;  // The longest cleanup of a frame since the last sweep
+  int64_t voice_sum_us = 0;
+  int voice_frames = 0;
+  const int64_t started = mono_ms();
+  bool mic_logged = false;
   const RadioConfig& c = g->config;
   // The mic's DMA ran from begin() with nobody reading it, so its queue is
   // full: emptied first, or the loop (one frame in per frame out) would keep
@@ -428,7 +477,7 @@ void audio_task(void* arg) {
   // sequence gap for the crew to conceal.
   if (g->rx != nullptr) {
     size_t moved = 0;
-    while (i2s_channel_read(g->rx, stereo, sizeof(stereo), &moved, 0) ==
+    while (i2s_channel_read(g->rx, words, word_bytes, &moved, 0) ==
                ESP_OK &&
            moved > 0) {
       moved = 0;
@@ -438,6 +487,36 @@ void audio_task(void* arg) {
   while (g->generation.load() == gen) {
     const int64_t now = mono_ms();
     g->supervisor.checkin(kSlotAudio, now);
+
+    // The levels, when the screen or the card changed them: a few I2C
+    // bytes, here because this task owns the codecs. Taken as written
+    // whether or not the codec answered: a failing bus is not retried every
+    // frame at 50 ms a try.
+    const int want_volume = g->volume.load();
+    if (want_volume != applied_volume) {
+      if (!es8311_set_volume(want_volume)) {
+        ESP_LOGW(kTag, "Speaker volume %d not taken by the ES8311", want_volume);
+      }
+      applied_volume = want_volume;
+    }
+    const int want_gain = g->mic_gain_tenths.load();
+    if (g->mic_ok && want_gain != applied_gain) {
+      if (!es7210_set_gain(want_gain / 10.0f)) {
+        ESP_LOGW(kTag, "Mic gain %.1f dB not taken by the ES7210",
+                 want_gain / 10.0f);
+      }
+      applied_gain = want_gain;
+    }
+    voice::Processor* const vp = g->voice.get();
+    if (vp != nullptr) {
+      const bool want_echo = g->echo_cancel.load();
+      const int want_noise = g->noise_db.load();
+      if (want_echo != vp->echo_cancel() || want_noise != vp->noise_db()) {
+        vp->set(want_echo, want_noise);
+        ESP_LOGI(kTag, "Mic cleanup: echo cancelling %s, noise suppression %d dB",
+                 want_echo ? "on" : "off", vp->noise_db());
+      }
+    }
 
     // What came in: decoded and queued in the mixer.
     uint16_t len = 0;
@@ -461,7 +540,8 @@ void audio_task(void* arg) {
     switch (key.sample(button, touch, may_talk, now)) {
       case TalkKey::Event::kKeyed:
         g->encoder->reset();
-        g->mixer->set_gain(0.0f);  // Half duplex: the crew is not played
+        // Half duplex unless asked: the crew is not played while talking.
+        if (!g->full_duplex.load()) g->mixer->set_gain(0.0f);
         if (c.key_beeps) cue(tones::Cue::kKeyed);
         ESP_LOGI(kTag, "Talking");
         break;
@@ -483,20 +563,37 @@ void audio_task(void* arg) {
     // One frame out (blocks until the DMA has room: the clock of the loop)
     // and one frame in.
     g->mixer->tick(now, out);
+    // The speaker's 16-bit sample in the upper half of each 32-bit slot
+    // (the ES8311 takes the first 16 bits of a slot), both channels.
     for (size_t i = 0; i < audio::kFrameSamples; i++) {
-      stereo[2 * i] = stereo[2 * i + 1] = out[i];
+      words[2 * i] = words[2 * i + 1] = (int32_t)((uint32_t)(uint16_t)out[i] << 16);
     }
     size_t moved = 0;
-    i2s_channel_write(g->tx, stereo, sizeof(stereo), &moved, pdMS_TO_TICKS(200));
+    i2s_channel_write(g->tx, words, word_bytes, &moved, pdMS_TO_TICKS(200));
     bool heard = false;
     if (g->rx != nullptr) {
       moved = 0;
-      heard = i2s_channel_read(g->rx, stereo, sizeof(stereo), &moved,
+      heard = i2s_channel_read(g->rx, words, word_bytes, &moved,
                                pdMS_TO_TICKS(40)) == ESP_OK &&
-              moved == sizeof(stereo);
+              moved == word_bytes;
     }
     if (heard) {
+      mic::unpack_tdm(words, buf->slots);
+      for (size_t i = 0; i < audio::kFrameSamples; i++) {
+        stereo[2 * i] = buf->slots[kSlotMic1][i];
+        stereo[2 * i + 1] = buf->slots[kSlotMic2][i];
+      }
       mic::take_channel(stereo, c.mic_channel, mono);
+      // Every frame, talking or not: the canceller keeps learning the
+      // speaker's path while the crew is played.
+      if (vp != nullptr) {
+        const int64_t t0 = esp_timer_get_time();
+        vp->process(mono, buf->slots[kSlotEchoRef], mono);
+        const int us = (int)(esp_timer_get_time() - t0);
+        if (us > voice_us) voice_us = us;
+        voice_sum_us += us;
+        voice_frames++;
+      }
       level = mic::rms(mono);
     }
 
@@ -524,7 +621,38 @@ void audio_task(void* arg) {
     if (now >= next_sweep) {
       next_sweep = now + 1000;
       g->decoders->sweep(now);
+      // Both mic channels of this frame, as read (stereo holds the mic's
+      // frame only when one was heard).
+      mic::ChannelStats stats[2];
+      uint16_t raw[8];
+      int slot_rms[mic::kTdmSlots] = {};
+      if (heard) {
+        stats[0] = mic::channel_stats(stereo, 0);
+        stats[1] = mic::channel_stats(stereo, 1);
+        for (int s = 0; s < mic::kTdmSlots; s++) {
+          slot_rms[s] = mic::rms(buf->slots[s]);
+          raw[2 * s] = (uint16_t)buf->slots[s][0];
+          raw[2 * s + 1] = (uint16_t)buf->slots[s][1];
+        }
+        if (!mic_logged && now - started >= 2000) {
+          mic_logged = true;  // Once, the ADC settled: the boot log's view
+          ESP_LOGI(kTag,
+                   "Mic frame: MIC1 dc %d rms %d peak %d, MIC2 dc %d rms %d "
+                   "peak %d, ref rms %d; cleanup %d us; stack %u bytes spare",
+                   stats[0].dc, stats[0].ac_rms, stats[0].peak, stats[1].dc,
+                   stats[1].ac_rms, stats[1].peak, slot_rms[kSlotEchoRef],
+                   voice_us, (unsigned)uxTaskGetStackHighWaterMark(nullptr));
+        }
+      }
+      int echo_db = -1;
+      if (vp != nullptr && !vp->take_echo_db(&echo_db)) echo_db = -1;
       xSemaphoreTake(g->status_lock, portMAX_DELAY);
+      if (heard) {
+        g->status.mic_stats[0] = stats[0];
+        g->status.mic_stats[1] = stats[1];
+        memcpy(g->status.mic_raw, raw, sizeof(raw));
+        memcpy(g->status.mic_slot_rms, slot_rms, sizeof(slot_rms));
+      }
       g->status.frames = g->playout->counters().frames;
       g->status.decode_errors = g->playout->counters().decode_errors;
       g->status.concealed = g->mixer->concealed_frames();
@@ -533,7 +661,14 @@ void audio_task(void* arg) {
       g->status.timeouts = timeouts;
       g->status.mic_level = level;
       g->status.mic_ok = g->mic_ok;
+      g->status.echo_db = echo_db;
+      g->status.voice_us = voice_us;
+      g->status.voice_avg_us =
+          voice_frames > 0 ? (int)(voice_sum_us / voice_frames) : 0;
       xSemaphoreGive(g->status_lock);
+      voice_us = 0;
+      voice_sum_us = 0;
+      voice_frames = 0;
     }
   }
   tx.close_it();
@@ -718,13 +853,18 @@ bool start_audio(int volume, float mic_gain_db) {
   chan.dma_frame_num = audio::kFrameSamples;  // One 20 ms frame a descriptor
   chan.auto_clear = true;                     // Silence, not a loop, if late
   // Full duplex on one controller: out to the ES8311, in from the ES7210,
-  // one clock, the same stereo slots both ways (the ES7210 sends MIC1 left,
-  // MIC2 right; the speaker frame is sent on both).
+  // one clock, the same 32-bit stereo slots both ways (the ES7210 sends its
+  // four TDM slots in them, core/mic.h unpack_tdm; the speaker frame is sent
+  // on both).
   if (i2s_new_channel(&chan, &g->tx, &g->rx) != ESP_OK) return false;
   i2s_std_config_t std = {};
   std.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(audio::kSampleRate);
   std.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;  // 4.096 MHz
-  std.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+  // 32-bit slots: a 64 fs bit clock, as the ES7210 needs for its four TDM
+  // slots (Waveshare's firmware: 4 x 16 bits a frame). At 32 fs it ran, but
+  // its inputs read about 1 LSB whatever the gain. The ES8311 sees standard
+  // I2S with 32-bit slots and takes the first 16 bits of each.
+  std.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT,
                                                      I2S_SLOT_MODE_STEREO);
   std.gpio_cfg.mclk = kMclk;
   std.gpio_cfg.bclk = kBclk;
@@ -814,7 +954,9 @@ void begin(const RadioConfig& config) {
   g = new Shared();
   g->config = config;
   g->status.channel = config.channel;
-  g->status.volume = config.volume;
+  set_volume(config.volume);
+  set_mic_gain(config.mic_gain_db);
+  set_voice(config.echo_cancel, config.noise_suppress_db, config.full_duplex);
   g->status_lock = xSemaphoreCreateMutex();
   g->gnss = xQueueCreate(4, sizeof(int64_t));
   if (g->status_lock == nullptr || g->gnss == nullptr) {
@@ -842,6 +984,17 @@ void begin(const RadioConfig& config) {
     g->status.state = RadioState::kNoAudio;
     ESP_LOGE(kTag, "Audio did not start: the radio stays off");
     return;
+  }
+  // For the screen's mic control from the start, not only after cr-audio's
+  // first status write a second from now.
+  g->status.mic_ok = g->mic_ok;
+  if (g->mic_ok) {
+    // speexdsp's states (~0.1 MB, to PSRAM); without them the mic goes out
+    // as heard.
+    g->voice.reset(new (std::nothrow) voice::Processor());
+    if (g->voice && !g->voice->ok()) g->voice.reset();
+    if (!g->voice) ESP_LOGW(kTag, "No memory for the echo canceller: mic as heard");
+    g->status.voice_ok = g->voice != nullptr;
   }
   // A new sender id every boot: the phones remember each sender's last
   // sequence number for their whole run, so a node that came back with the
@@ -912,13 +1065,43 @@ void note_gnss_time(int64_t epoch_s) {
   if (g != nullptr && g->gnss != nullptr) xQueueSend(g->gnss, &epoch_s, 0);
 }
 
+void set_volume(int volume) {
+  if (g == nullptr) return;
+  g->volume.store(volume < 0 ? 0 : volume > 100 ? 100 : volume);
+}
+
+void set_mic_gain(float db) {
+  if (g == nullptr) return;
+  if (!(db >= 0.0f)) db = 0.0f;  // NaN too
+  if (db > mic::kMaxGainDb) db = mic::kMaxGainDb;
+  g->mic_gain_tenths.store((int)lroundf(db * 10.0f));
+}
+
+void set_voice(bool echo_cancel, int noise_suppress_db, bool full_duplex) {
+  if (g == nullptr) return;
+  g->echo_cancel.store(echo_cancel);
+  g->noise_db.store(noise_suppress_db < 0 ? 0
+                    : noise_suppress_db > voice::kMaxNoiseSuppressDb
+                        ? voice::kMaxNoiseSuppressDb
+                        : noise_suppress_db);
+  g->full_duplex.store(full_duplex);
+}
+
 RadioStatus status() {
   RadioStatus s;
   if (g == nullptr) return s;
-  if (g->status_lock == nullptr) return g->status;  // begin() stopped early
-  xSemaphoreTake(g->status_lock, portMAX_DELAY);
-  s = g->status;
-  xSemaphoreGive(g->status_lock);
+  if (g->status_lock == nullptr) {
+    s = g->status;  // begin() stopped early
+  } else {
+    xSemaphoreTake(g->status_lock, portMAX_DELAY);
+    s = g->status;
+    xSemaphoreGive(g->status_lock);
+  }
+  s.volume = g->volume.load();
+  s.mic_gain_db = g->mic_gain_tenths.load() / 10.0f;
+  s.echo_cancel = g->echo_cancel.load();
+  s.noise_suppress_db = g->noise_db.load();
+  s.full_duplex = g->full_duplex.load();
   return s;
 }
 

@@ -8,6 +8,6 @@
   "build": {
     "srcDir": "src",
     "includeDir": "src",
-    "srcFilter": ["+<core/>", "+<port/>", "+<esp/>", "+<glue/>"]
+    "srcFilter": ["+<core/>", "+<port/>", "+<esp/>", "+<glue/>", "+<dsp/>"]
   }
 }

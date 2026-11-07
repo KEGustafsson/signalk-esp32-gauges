@@ -2,9 +2,13 @@
 
 #include <esp_timer.h>
 
+#include <math.h>
+
 #include "core/hello.h"
+#include "core/mic.h"
 #include "text_fold.h"
 #include "esp/radio_runtime.h"
+#include "glue/crew_radio_card.h"
 
 namespace skgauges {
 
@@ -51,10 +55,20 @@ bool crew_view_from_radio(ui::CrewView* out) {
   // not as Mkel.
   out->channel = s.channel.empty() ? "CREW" : ascii_fold(s.channel);
   out->state = ui_state(s.state);
-  out->muted = false;  // The radio has no mute of its own yet
   out->transmitting = s.talking;
   out->volume = (uint8_t)(s.volume < 0 ? 0 : s.volume > 100 ? 100 : s.volume);
   out->volume_max = 100;
+  out->muted = out->volume == 0;  // The ES8311 mutes at 0 (es8311.cpp)
+  // The gain the ES7210 runs at for the card's value.
+  const float gain = crewradio::mic::es7210_gain_db(
+      crewradio::mic::es7210_gain_code(s.mic_gain_db));
+  out->mic_gain_tenths = (uint16_t)lroundf(gain * 10.0f);
+  out->mic_gain_max_tenths =
+      (uint16_t)lroundf(crewradio::mic::kMaxGainDb * 10.0f);
+  out->mic_ok = s.mic_ok;
+  // The levels can be set while the radio's audio runs (checked after the
+  // stale-beat rule above: a stopped radio shows no controls).
+  out->adjustable = running(s.state);
   out->members.clear();
   for (const crewradio::Member& m : s.members) {
     ui::CrewMember c;
@@ -70,6 +84,11 @@ bool crew_view_from_radio(ui::CrewView* out) {
     out->members.push_back(c);
   }
   return true;
+}
+
+bool crew_adjust_radio(ui::CrewLevel level, int dir) {
+  return level == ui::CrewLevel::kMicGain ? crewradio::glue::step_mic_gain(dir)
+                                          : crewradio::glue::step_volume(dir);
 }
 
 }  // namespace skgauges

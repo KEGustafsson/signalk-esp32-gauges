@@ -12,13 +12,22 @@
 // has the radio switched on runs exactly as before.
 //
 // The channel key itself is never stored: a save derives the packet key
-// (PBKDF2, a few seconds; the Save button waits) and keeps only that, in
+// (PBKDF2, 600 000 rounds: about 22 s on the P4; the Save button waits)
+// and keeps only that, in
 // NVS, and the card keeps the last four characters to show which key it is.
 
 #if defined(ESP_PLATFORM)
 
 namespace crewradio {
 namespace glue {
+
+// The screen's level controls (the Crew page's - and +), from the loop
+// task: one step of the speaker volume or the mic gain up (dir > 0) or down
+// (core/levels.h), on the codec within a frame and written to the card's
+// file a few seconds after the last step. False when the radio is not on in
+// the card.
+bool step_volume(int dir);
+bool step_mic_gain(int dir);
 
 // From setup(), after gauge_app_begin() (SensESP is up) and the board (the
 // I2C driver is installed). `finger_count` says how many fingers are on the

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: EUPL-1.2
 #if defined(ESP_PLATFORM)
+#include "log_level.h"  // First: INFO and WARN not compiled out
 #include "es8311.h"
 
 #include <driver/i2c.h>

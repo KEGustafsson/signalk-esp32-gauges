@@ -1230,3 +1230,140 @@ plugin before it was fixed.
   - an AAD that zeroes the hops byte instead does not open it;
   - `set_ttl(2)` on the sender's packet gives these exact bytes.
 - Checks: radio host tests 178 (OPUS off).
+
+## 2026-11-07 — The crew branch on the 4" starboard unit
+
+`pio run -e p4` (3.30 MB, 39.6 %), OTA to 192.168.0.33, watched over the
+UART log and the Status page.
+
+- Boot as before the radio: display, touch (0x14), C6 at 2.12.13, Signal
+  K, six pages with readings. The pin-255 / LEDC timer errors and the
+  ~20 s of `NO_AP_FOUND` (the first SSID in secrets.h is out of range) are
+  in every boot since 11-03; not the radio's.
+- Radio on: `cr-net`, `cr-audio`, `cr-beat` with stack to spare, about
+  210-235 KB of DMA RAM free, nothing shed. With the crew's key and
+  Reticulum through the hub: 2 on the roster, 2 links, packets in with
+  none rejected, 760 frames sent then back to listening, 148 frames
+  played (4 concealed, no decode errors).
+- A channel key save takes 22 s (PBKDF2, 600 000 rounds), and the loop
+  is held about 210 ms at a time while it runs. The card said "a few
+  seconds": now "about 20 s: wait for it" (card, its header, README).
+  Built, not yet flashed.
+
+## 2026-11-07 — Speaker volume and mic gain from the Crew page
+
+Asked for: both levels settable on the gauge, not only in the web card at
+the next restart.
+
+- The Crew page's volume arc is a control while the radio runs: a tap in
+  the bottom of the dial left of the label lowers, right of it raises; a
+  tap on the label switches the arc to the mic gain (green, `MIC 30 dB`)
+  and back, by itself after 10 s. A toast says the new level. Taps, not
+  dragging the arc (the plan for 3b): a sideways drag is a page swipe.
+- Steps (`core/levels.h`, host-tested): the volume in 5s, 0 mutes (the
+  Crew page and the halo show MUTED); the mic gain one ES7210 PGA step,
+  from the gain the codec runs at (a card's 32 dB runs at 30).
+- `esp::set_volume` / `set_mic_gain` store atomics; `cr-audio`, which
+  owns the codecs, writes them within a frame (`es7210_set_gain` is new).
+  A web UI save of the card now sets both at once too.
+- The card is written 3 s after the last tap. Its fields are under a
+  mutex now (the loop's steps and the web server's save); the key's
+  PBKDF2 runs without it, so a 22 s key save never holds the loop.
+- Taps ignore a release caused by a second finger landing (the start of
+  a two-finger talk) and a finger that travelled (a slow swipe).
+- The radio host tests' `random_host.cpp` reads `random_device` on native
+  Windows (MinGW has no /dev/urandom: a Reticulum test aborted).
+- Checks: radio host tests 183 (OPUS off), gauge tests 77, the preview at
+  480 and 720 (two new scenes: the mic gain, muted at 0), `pio run -e p4`,
+  `pio run -e s3`.
+
+## 2026-11-07 — The 4"'s quiet mic, and echo cancelling
+
+Asked for: why the mic is very low at its full gain (MIC1 and MIC2 both),
+then echo cancelling, since the board has an echo reference.
+
+- Capture is TDM now, as Waveshare's own firmware for the board (the
+  factory `SpecAnalyzer` app, the `10_Mic_Record` sketch) reads it: a 64 fs
+  bit clock (32-bit stereo slots), four 16-bit slots a frame, MIC1, MIC3 =
+  the echo reference (the ES8311's output wired back), MIC2, MIC4. At
+  32 fs the ES7210's inputs read about 1 LSB whatever the gain. The radio
+  takes MIC1 or MIC2 from it (`mic::unpack_tdm`, host-tested).
+- Found with a 1 kHz tone from the unit's own speaker, every PGA code in
+  turn: the reference's preamp is linear (707, 2955, 11141 at codes 0, 4,
+  8), MIC1's and MIC2's are not: 0 to 37.5 dB gives about +11.5 dB
+  (RMS 9, 15, 21, 26, 30, 32, 34 at codes 0-14), the acoustic path itself
+  linear (12 dB less speaker, 12 dB less mic). The same on the port unit,
+  and with Waveshare's sketch (speech peaks 46 at 0 dB, 49 at 37.5 dB). No
+  register changes it. The 4C schematic: the mics' outputs reach MIC1P/
+  MIC2P through DC blocks, and MIC1N/MIC2N, behind their own 1 uF blocks,
+  go to AGND only through 30 pF: the differential inputs' N legs float,
+  so the preamp's gain does not act on the signal. The fix is on the
+  board: the 30 pF on the far side of each N leg's 1 uF block shorted to
+  AGND (to be done and measured: the gain should then follow the codes as
+  the reference's does).
+- Echo cancelling and noise suppression (`core/voice.h`, host-tested):
+  speexdsp 1.2.1's MDF canceller (120 ms of echo path) against the echo
+  reference slot, which is sample-aligned with the mics, then its
+  preprocessor (the canceller's residue, and steady noise, 15 dB by
+  default). Every frame, talking or not, so it has learned the speaker's
+  path when it matters. New card fields, applied live: Echo cancelling,
+  Noise suppression (dB), Full duplex (the crew played while talking;
+  off by default: the unit stays half duplex, where the canceller takes
+  out the key beeps). The Status page's **Radio voice** line: what is on,
+  the dB of echo taken out over the last second the speaker played, the
+  cost a frame.
+- speexdsp vendored unmodified (`src/third_party/speexdsp`, BSD-3-Clause,
+  named in the README's credits), compiled through `src/dsp/` wrappers
+  with its configuration per file. First run: 10 ms of each 20 ms frame.
+  The P4's FPU is single precision and speexdsp's float build calls
+  `sqrt`/`exp`/`pow` and uses double constants: every one a soft-float
+  call. With the float functions and single-precision constants (in the
+  wrapper's config), 5 ms; with -O2 for those five files, 3.4 ms mean,
+  4.7 ms at most (on the host the canceller is 130 us, the preprocessor
+  95 us).
+- The boot-time mic probe (tone and gain sweep) is gone again;
+  `es7210_write` with it.
+- Checks: radio host tests 191 (the voice tests: 62 dB of echo taken out
+  of a synthetic room, a near voice through unchanged, steady noise cut
+  18 dB at a 20 dB setting), `pio run -e p4`; both 4" units flashed over
+  the air and running (`Radio voice` on both). Not yet heard: the
+  canceller against real crew audio, and the mic after the board fix.
+
+## 2026-11-07 — The 4"'s mic after the board fix; the canceller tuned on the units
+
+- Both 4" units modified: the 30 pF on MIC1N/MIC2N replaced by short
+  circuits (the 1 uF DC blocks to the ES7210 stay, so the N legs are AC
+  grounded and the pins keep their bias).
+- A boot-time probe (now removed) measured each unit with its own speaker,
+  one unit at a time:
+  - Gain: a 1 kHz tone, every PGA code. Linear on both units and both
+    mics: MIC1 7 -> 547 (starboard), 8 -> 632 (port) from 0 to 37.5 dB,
+    +38 dB; the reference (MIC3) steady at 708/718. The fix works.
+  - Echo path: white noise, the reference cross-correlated with the mic.
+    The direct path 0.12-0.19 ms (the speaker beside the mic), 88-89 % of
+    the response within 5 ms.
+  - Canceller tails, speech-band syllables at volume 70: 20, 40 and 60 ms
+    alike (ERLE 27-30 dB with the residual suppression, the canceller
+    alone 25-26 dB); 80 ms 22-29, 120 ms 24-26, 200 ms 22 (a longer filter
+    learns slower). `voice::kTailFrames` 6 -> 2 (40 ms): 3.1 ms a frame
+    instead of 3.7. With the noise suppression at 15 dB too: 36-44 dB.
+    Volume 100: 26.5-28 dB (the speaker's distortion); volume 50: 21-23
+    (the room's noise, RMS 20-30, is the floor of that figure).
+  - Double talk, a second voice mixed into the mic: it reaches the crew
+    1.3-2.4 dB down (4-7 dB with the noise suppression), the echo beside
+    it 15-26 dB down.
+  - The preprocessor delays its output by one frame: 20 ms more latency
+    whenever the canceller or the noise suppression runs (found when the
+    double-talk figure came out as nothing at zero lag).
+  - The room's noise, the speaker silent: noise suppression 15 dB takes
+    9-15 dB of it out, 30 dB 17-25 dB. A first run, during which something
+    in the room made a sound, showed 8 dB: each run now measures the room
+    first.
+- speexdsp's VAD is off by default; setting it printed a warning on every
+  processor's creation, so the call is gone.
+- The card offers MIC1 and MIC2 only, on purpose: MIC3 is the echo
+  reference (the ES8311's output) and MIC4 is not connected.
+- Checks: radio host tests 191, `pio run -e p4`, both 4" units flashed
+  over the air with the probe and again without it. Not yet heard: a
+  voice against the gain (the cards are at 37.5 dB; the card's default
+  is 30).

@@ -59,6 +59,7 @@ void setup() {
   // The Crew Radio's view for the screen (halo, Crew page), set before the
   // UI is built so the halo is made; off until the radio is on in its card.
   skgauges::ui::set_crew_view_source(skgauges::crew_view_from_radio);
+  skgauges::ui::set_crew_adjust(skgauges::crew_adjust_radio);
   skgauges::lvgl_port_init(board, kBufferLines, true);
   arc_text_handlers = *lv_draw_buf_get_handlers();
   arc_text_handlers.buf_malloc_cb = psram_buf_malloc;

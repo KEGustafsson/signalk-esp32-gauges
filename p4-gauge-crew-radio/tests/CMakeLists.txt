@@ -48,6 +48,15 @@ if(CREW_RADIO_OPUS)
 endif()
 
 set(SRC ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+# speexdsp (vendored, src/third_party/speexdsp), as the firmware builds it:
+# each file through its src/dsp wrapper. Third-party code: no sanitizers.
+add_library(speexdsp STATIC
+  ${SRC}/dsp/speex_mdf.c ${SRC}/dsp/speex_preprocess.c
+  ${SRC}/dsp/speex_fftwrap.c ${SRC}/dsp/speex_filterbank.c
+  ${SRC}/dsp/speex_smallft.c)
+target_compile_options(speexdsp PRIVATE -O2 -w)
+target_link_libraries(speexdsp PUBLIC m)
 set(GAUGE_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/../../tests)
 
 add_executable(crew_radio_tests
@@ -79,6 +88,8 @@ add_executable(crew_radio_tests
   test_rns_primitives.cpp
   test_rns_vectors.cpp
   test_rns_node.cpp
+  test_levels.cpp
+  test_voice.cpp
   ${SRC}/core/packet.cpp
   ${SRC}/core/hello.cpp
   ${SRC}/core/channel_crypto.cpp
@@ -100,6 +111,8 @@ add_executable(crew_radio_tests
   ${SRC}/core/transmitter.cpp
   ${SRC}/core/tones.cpp
   ${SRC}/core/mic.cpp
+  ${SRC}/core/levels.cpp
+  ${SRC}/core/voice.cpp
   ${SRC}/core/rns/curve25519.cpp
   ${SRC}/core/rns/rns_crypto.cpp
   ${SRC}/core/rns/rns_packet.cpp
@@ -111,7 +124,7 @@ target_include_directories(crew_radio_tests PRIVATE ${SRC} ${GAUGE_TESTS}
                            ${arduinojson_SOURCE_DIR}/src)
 target_compile_definitions(crew_radio_tests PRIVATE
                            VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/vectors")
-target_link_libraries(crew_radio_tests PRIVATE mbedcrypto pthread)
+target_link_libraries(crew_radio_tests PRIVATE mbedcrypto speexdsp pthread)
 if(CREW_RADIO_OPUS)
   target_sources(crew_radio_tests PRIVATE test_opus.cpp
                  ${SRC}/core/opus_decoder.cpp ${SRC}/core/opus_encoder.cpp)

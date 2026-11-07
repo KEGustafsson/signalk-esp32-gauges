@@ -11,13 +11,16 @@
 #include <string.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "core/channel_crypto.h"
 #include "core/clock_policy.h"
 #include "core/hello.h"
+#include "core/levels.h"
 #include "core/mic.h"
 #include "core/radio_settings.h"
+#include "core/voice.h"
 #include "esp/radio_runtime.h"
 #include "sensesp/signalk/signalk_value_listener.h"
 #include "sensesp/system/lambda_consumer.h"
@@ -59,6 +62,7 @@ class RadioCard : public sensesp::FileSystemSaveable {
   RadioCard() : sensesp::FileSystemSaveable("/crewradio") {}
 
   bool to_json(JsonObject& root) override {
+    std::lock_guard<std::mutex> lock(mutex_);
     root["enabled"] = enabled;
     root["name"] = name.c_str();
     root["channel"] = channel.c_str();
@@ -74,6 +78,9 @@ class RadioCard : public sensesp::FileSystemSaveable {
     root["mic_gain"] = mic_gain;
     root["mic_channel"] = mic_channel == 1 ? "MIC2" : "MIC1";
     root["key_beeps"] = key_beeps;
+    root["echo_cancel"] = echo_cancel;
+    root["noise_suppress"] = noise_suppress;
+    root["full_duplex"] = full_duplex;
     root["reticulum"] = reticulum;
     root["reticulum_node"] = reticulum_node.c_str();
     root["relay"] = relay;
@@ -84,6 +91,10 @@ class RadioCard : public sensesp::FileSystemSaveable {
   // changes; a new channel key is derived and stored before the save is
   // accepted, so a save that returns has its key in place.
   bool from_json(const JsonObject& c) override {
+    // The screen's level steps write the card from the loop task while the
+    // web server's task saves it (step_volume, step_mic_gain): every field
+    // under the lock, except while the key is derived (seconds).
+    std::unique_lock<std::mutex> lock(mutex_);
     const bool new_enabled = c["enabled"] | enabled;
     std::string new_name = c["name"].is<const char*>()
                                ? sanitise_name(c["name"].as<const char*>())
@@ -115,6 +126,9 @@ class RadioCard : public sensesp::FileSystemSaveable {
       }
     }
     const bool new_beeps = c["key_beeps"] | key_beeps;
+    const bool new_echo = c["echo_cancel"] | echo_cancel;
+    const int new_noise = c["noise_suppress"] | noise_suppress;
+    const bool new_duplex = c["full_duplex"] | full_duplex;
     const bool new_reticulum = c["reticulum"] | reticulum;
     const std::string new_node = c["reticulum_node"].is<const char*>()
                                      ? c["reticulum_node"].as<const char*>()
@@ -135,11 +149,13 @@ class RadioCard : public sensesp::FileSystemSaveable {
         new_hops < settings::kMaxHopsMin || new_hops > settings::kMaxHopsMax ||
         new_volume < 0 || new_volume > 100 ||
         !settings::valid_talk_gpio(new_gpio) || !(new_gain >= 0.0f) ||
-        new_gain > mic::kMaxGainDb) {
+        new_gain > mic::kMaxGainDb || new_noise < 0 ||
+        new_noise > voice::kMaxNoiseSuppressDb) {
       ESP_LOGW(kTag, "Crew radio card refused: a value is out of range");
       return false;
     }
     std::string new_hint = key_hint;
+    lock.unlock();  // The key's PBKDF2 must not hold the loop's level steps
     // Only from the web UI: to_json never writes the key, so one in the
     // file at boot is a file someone else wrote, and its PBKDF2 would run in
     // setup(), under the loop watchdog.
@@ -175,6 +191,7 @@ class RadioCard : public sensesp::FileSystemSaveable {
         ESP_LOGI(kTag, "Channel key saved (from the next restart)");
       }
     }
+    lock.lock();
     if (!loaded_ && c["key"].is<const char*>()) {
       // The boot load: the hint as it was saved ("Not set" means none). A
       // web UI save sends the read-only field back; it is not taken.
@@ -194,15 +211,42 @@ class RadioCard : public sensesp::FileSystemSaveable {
     mic_gain = new_gain;
     mic_channel = new_mic;
     key_beeps = new_beeps;
+    echo_cancel = new_echo;
+    noise_suppress = new_noise;
+    full_duplex = new_duplex;
     reticulum = new_reticulum;
     reticulum_node = new_node;
     relay = new_relay;
     key_hint = new_hint;
+    // A web UI save: the two levels and the mic's cleanup at once; the
+    // rest from the next restart.
+    if (loaded_) {
+      esp::set_volume(volume);
+      esp::set_mic_gain(mic_gain);
+      esp::set_voice(echo_cancel, noise_suppress, full_duplex);
+    }
     return true;
   }
 
   // After the boot load: from then on a save is the web UI's.
   void mark_loaded() { loaded_ = true; }
+
+  // One step of the speaker volume or the mic gain (core/levels.h), from
+  // the loop task: the new value, and whether it changed.
+  int step_volume(int dir, bool* changed) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const int v = levels::step_volume(volume, dir);
+    *changed = v != volume;
+    volume = v;
+    return v;
+  }
+  float step_mic_gain(int dir, bool* changed) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const float db = levels::step_mic_gain(mic_gain, dir);
+    *changed = db != mic_gain;
+    mic_gain = db;
+    return db;
+  }
 
   bool enabled = false;
   std::string name;
@@ -218,12 +262,16 @@ class RadioCard : public sensesp::FileSystemSaveable {
   float mic_gain = 30.0f;
   int mic_channel = 0;
   bool key_beeps = false;
+  bool echo_cancel = true;
+  int noise_suppress = voice::kDefaultNoiseSuppressDb;  // dB, 0 = off
+  bool full_duplex = false;
   bool reticulum = false;
   std::string reticulum_node;  // host[:port], 4242 when left out
   bool relay = true;
 
  private:
   bool loaded_ = false;
+  std::mutex mutex_;
 };
 
 }  // namespace glue
@@ -277,10 +325,50 @@ std::string reticulum_line(const esp::RadioStatus& s) {
   return buf;
 }
 
+// The card, for the screen's level steps as well as the web UI.
+std::shared_ptr<RadioCard> g_card;
+bool g_radio_on = false;  // The card said On at boot
+
+// A level the screen stepped is written to the card's file this long after
+// the last step, not on every tap: each save rewrites the file.
+constexpr uint32_t kLevelSaveDelayMs = 3000;
+bool g_level_dirty = false;
+uint32_t g_level_changed_ms = 0;
+
+void note_level_changed() {
+  g_level_dirty = true;
+  g_level_changed_ms = millis();
+}
+
 }  // namespace
 
+bool step_volume(int dir) {
+  if (!g_radio_on || g_card == nullptr) return false;
+  bool changed = false;
+  const int v = g_card->step_volume(dir, &changed);
+  esp::set_volume(v);
+  if (changed) {
+    note_level_changed();
+    ESP_LOGI(kTag, "Speaker volume %d (from the screen)", v);
+  }
+  return true;
+}
+
+bool step_mic_gain(int dir) {
+  if (!g_radio_on || g_card == nullptr) return false;
+  bool changed = false;
+  const float db = g_card->step_mic_gain(dir, &changed);
+  esp::set_mic_gain(db);
+  if (changed) {
+    note_level_changed();
+    ESP_LOGI(kTag, "Mic gain %.1f dB (from the screen)", db);
+  }
+  return true;
+}
+
 void begin(int (*finger_count)()) {
-  static std::shared_ptr<RadioCard> card = std::make_shared<RadioCard>();
+  g_card = std::make_shared<RadioCard>();
+  std::shared_ptr<RadioCard>& card = g_card;
   card->load();
   card->mark_loaded();
   sensesp::ConfigItem(card)
@@ -289,13 +377,16 @@ void begin(int (*finger_count)()) {
           "The Crew Radio intercom on this unit's speaker and microphone. "
           "Talk: hold two fingers on the screen, or a button on the 40-pin "
           "header (set its GPIO); 90 s of talk at once cuts the mic until "
-          "it is released. Channel key: the crew's key, as set on the "
-          "phones; type it to set or change it (the save takes a few "
-          "seconds), leave it empty to keep the one saved. Group and port: "
-          "as on the phones. Reticulum: the channel through a transport "
-          "node (the boat's rnsd, or a hub ashore), for a phone off the "
-          "boat's WLAN; with Relay on, this unit bridges the two. Takes "
-          "effect when the unit restarts.")
+          "it is released. Speaker volume and mic gain: also on the Crew "
+          "page (tap - or + under the arc, the label between them for the "
+          "mic); a save here sets both at once, and the echo cancelling, "
+          "noise suppression and full duplex too. Channel key: the crew's "
+          "key, as set on the phones; type it to set or change it (the save "
+          "takes about 20 s: wait for it), leave it empty to keep the one "
+          "saved. Group and port: as on the phones. Reticulum: the channel "
+          "through a transport node (the boat's rnsd, or a hub ashore), for "
+          "a phone off the boat's WLAN; with Relay on, this unit bridges "
+          "the two. The rest takes effect when the unit restarts.")
       ->set_requires_restart(true)
       ->set_sort_order(97);
 
@@ -316,6 +407,9 @@ void begin(int (*finger_count)()) {
   config.mic_gain_db = card->mic_gain;
   config.mic_channel = card->mic_channel;
   config.key_beeps = card->key_beeps;
+  config.echo_cancel = card->echo_cancel;
+  config.noise_suppress_db = card->noise_suppress;
+  config.full_duplex = card->full_duplex;
   int node_port = settings::kDefaultReticulumPort;
   config.reticulum =
       card->reticulum && settings::parse_host_port(card->reticulum_node,
@@ -326,6 +420,15 @@ void begin(int (*finger_count)()) {
   esp::begin(config);
   mbedtls_platform_zeroize(config.key, sizeof(config.key));
   if (!card->enabled) return;
+  g_radio_on = true;
+
+  // A level the screen stepped, into the card's file once the taps stop.
+  sensesp::event_loop()->onRepeat(500, []() {
+    if (g_level_dirty && millis() - g_level_changed_ms >= kLevelSaveDelayMs) {
+      g_level_dirty = false;
+      g_card->save();
+    }
+  });
 
   // The two-finger hold: the touch port is read on this (the loop) task.
   if (config.touch_talk) {
@@ -361,13 +464,22 @@ void begin(int (*finger_count)()) {
                          ? new sensesp::StatusPageItem<String>(
                                "Radio Reticulum", "-", "Crew radio", 2047)
                          : nullptr;
+  // Both of the ES7210's channels as read, whichever the card uses: their
+  // DC (a stuck line is -1 or 0 with no signal), signal RMS and peak, and
+  // the frame's first samples in hex, to tell a quiet mic from no data.
+  static auto* mic_line = new sensesp::StatusPageItem<String>(
+      "Radio mic", "-", "Crew radio", 2046);
+  // The mic's cleanup: what is on, what the echo canceller took out, and
+  // what it costs a frame (of the 20 ms each has).
+  static auto* voice_line = new sensesp::StatusPageItem<String>(
+      "Radio voice", "-", "Crew radio", 2048);
   sensesp::event_loop()->onRepeat(1000, []() {
     const esp::RadioStatus s = esp::status();
     state->set(esp::state_text(s.state));
     crew->set(String((int)s.members.size()) + ": " +
               crew_list(s.members).c_str());
     clock->set(esp::clock_text(s.clock));
-    char buf[160];
+    char buf[200];
     snprintf(buf, sizeof(buf),
              "%llu in, %llu rejected, %llu stale, %llu copies, %llu late",
              (unsigned long long)s.received, (unsigned long long)s.rejected,
@@ -386,6 +498,37 @@ void begin(int (*finger_count)()) {
              s.talking ? "Talking" : "Listening", (unsigned long long)s.sent,
              s.mic_level, s.timeouts, s.mic_ok ? "" : "; no microphone");
     talk->set(buf);
+    snprintf(buf, sizeof(buf),
+             "MIC1 rms %d peak %d; MIC2 rms %d peak %d; TDM slots rms "
+             "%d/%d/%d/%d (MIC1/ref/MIC2/MIC4); raw %04x %04x|%04x %04x|"
+             "%04x %04x|%04x %04x; gain %.1f dB",
+             s.mic_stats[0].ac_rms, s.mic_stats[0].peak, s.mic_stats[1].ac_rms,
+             s.mic_stats[1].peak, s.mic_slot_rms[0], s.mic_slot_rms[1],
+             s.mic_slot_rms[2], s.mic_slot_rms[3], s.mic_raw[0], s.mic_raw[1],
+             s.mic_raw[2], s.mic_raw[3], s.mic_raw[4], s.mic_raw[5],
+             s.mic_raw[6], s.mic_raw[7], s.mic_gain_db);
+    mic_line->set(buf);
+    if (!s.mic_ok) {
+      voice_line->set("No microphone");
+    } else if (!s.voice_ok) {
+      voice_line->set("Off: no memory for it (the mic goes out as heard)");
+    } else {
+      char echo[48];
+      if (!s.echo_cancel) {
+        snprintf(echo, sizeof(echo), "off");
+      } else if (s.echo_db < 0) {
+        snprintf(echo, sizeof(echo), "on (the speaker silent)");
+      } else {
+        snprintf(echo, sizeof(echo), "on, %d dB taken out", s.echo_db);
+      }
+      snprintf(buf, sizeof(buf),
+               "Echo cancelling %s; noise suppression %s%d dB; %s duplex; "
+               "%d us a frame (%d at most)",
+               echo, s.noise_suppress_db > 0 ? "" : "off, ",
+               s.noise_suppress_db, s.full_duplex ? "full" : "half",
+               s.voice_avg_us, s.voice_us);
+      voice_line->set(buf);
+    }
     if (rns != nullptr) rns->set(reticulum_line(s).c_str());
     snprintf(buf, sizeof(buf), "%u bytes of DMA RAM free; %s; %d restarts",
              (unsigned)s.free_dma, esp::shed_text(s.shed), s.restarts);
@@ -415,6 +558,9 @@ const String ConfigSchema(const crewradio::glue::RadioCard&) {
          R"J("mic_gain":{"title":"Mic gain (dB)","type":"number","minimum":0,"maximum":37.5,"description":"The ES7210's preamp: 3 dB steps to 30, then 34.5, 36, 37.5."},)J"
          R"J("mic_channel":{"title":"Microphone","type":"array","format":"select","uniqueItems":true,"items":{"type":"string","enum":["MIC1","MIC2"]},"description":"Which of the board's two microphones is used."},)J"
          R"J("key_beeps":{"title":"Key beeps","type":"boolean","description":"A beep when the mic keys and un-keys (the time-out always beeps)."},)J"
+         R"J("echo_cancel":{"title":"Echo cancelling","type":"boolean","description":"Takes what this unit's own speaker plays out of the mic, from the board's echo reference (speexdsp). Needed for full duplex; on a half-duplex unit it takes out the key beeps."},)J"
+         R"J("noise_suppress":{"title":"Noise suppression (dB)","type":"integer","minimum":0,"maximum":30,"description":"How far steady noise (an engine, a fan, wind hiss) is turned down in the mic; 0 is off. 15 is a moderate setting; more can make the voice sound watery."},)J"
+         R"J("full_duplex":{"title":"Full duplex","type":"boolean","description":"Play the crew while this unit talks, as a phone call. Use with echo cancelling on, or the crew hears itself. Off: the speaker is silent while talking."},)J"
          R"J("reticulum":{"title":"Reticulum","type":"boolean","description":"The channel through a Reticulum transport node as well, for the crew off the boat's WLAN (the phones' Reticulum tile)."},)J"
          R"J("reticulum_node":{"title":"Transport node","type":"string","description":"host, host:port, [v6] or [v6]:port of the node's TCP server interface; 4242 when no port is given. As on the phones."},)J"
          R"J("relay":{"title":"Relay","type":"boolean","description":"With Reticulum on, bridge it and the WLAN, so the phones on board hear the crew ashore and back."})J"

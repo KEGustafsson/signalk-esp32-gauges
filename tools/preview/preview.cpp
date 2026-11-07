@@ -150,6 +150,10 @@ static skgauges::ui::CrewView sample_view() {
   v.state = skgauges::ui::RadioState::kOnChannel;
   v.volume = 6;
   v.volume_max = 10;
+  v.mic_gain_tenths = 300;
+  v.mic_gain_max_tenths = 375;
+  v.mic_ok = true;
+  v.adjustable = true;  // A running radio: the arc's - and + are buttons
   CrewMember anna{"ANNA", 4};
   CrewMember juha{"JUHA", 3};
   CrewMember lisa{"LISA", 2};
@@ -175,6 +179,8 @@ struct RadioScene {
   const char* id;
   const char* page;  // A preview page id, or "crew" / "station"
   skgauges::ui::CrewView view;
+  // Crew page only: the arc's label tapped, so it shows the mic gain.
+  bool mic_shown = false;
 };
 
 static std::vector<RadioScene> radio_scenes() {
@@ -238,6 +244,15 @@ static std::vector<RadioScene> radio_scenes() {
   v = sample_view();
   v.state = RadioState::kNoNetwork;
   s.push_back({"crew_no_network", "crew", v});
+  // The arc switched to the mic gain (a tap on its label), at 34.5 dB.
+  v = sample_view();
+  v.mic_gain_tenths = 345;
+  s.push_back({"crew_mic_gain", "crew", v, true});
+  // Muted from the screen (the volume stepped down to 0).
+  v = sample_view();
+  v.volume = 0;
+  v.muted = true;
+  s.push_back({"crew_volume_zero", "crew", v});
   return s;
 }
 
@@ -302,6 +317,13 @@ static bool render_radio_mockups(lv_display_t* d, lv_obj_t* scr,
       if (page) {
         v.updated_ms = now_ms();
         page->update(v, now_ms());
+        // The label's tap, once the page has its first view.
+        if (k == 0 && sc.mic_shown &&
+            !page->tap(g.cx, g.cy + g.px(0.635f), now_ms(), nullptr)) {
+          fprintf(stderr, "radio scene %s: the label's tap was refused\n",
+                  sc.id);
+          return false;
+        }
       }
       lv_refr_now(d);
     }

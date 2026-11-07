@@ -202,9 +202,16 @@ void draw_radio_pip(lv_layer_t* layer, const Geometry& g,
 
 namespace {
 CrewViewSource g_crew_source = nullptr;
+CrewAdjust g_crew_adjust = nullptr;
 }  // namespace
 
 void set_crew_view_source(CrewViewSource source) { g_crew_source = source; }
+
+void set_crew_adjust(CrewAdjust adjust) { g_crew_adjust = adjust; }
+
+bool crew_adjust(CrewLevel level, int dir) {
+  return g_crew_adjust != nullptr && g_crew_adjust(level, dir);
+}
 
 bool crew_view_available() { return g_crew_source != nullptr; }
 

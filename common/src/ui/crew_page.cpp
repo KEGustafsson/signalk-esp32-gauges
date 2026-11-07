@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include "../crew_tap.h"
+
 namespace skgauges {
 namespace ui {
 
@@ -107,6 +109,7 @@ CrewGaugePage::CrewGaugePage(lv_obj_t* parent, const GaugeDef& def,
       page_(root_, face_, geometry, false) {}
 
 void CrewGaugePage::update(const GaugeValue&, uint32_t now_ms) {
+  page_.tick(now_ms);
   if (!first_ && (uint32_t)(now_ms - polled_ms_) < kPollMs) return;
   polled_ms_ = now_ms;
   const CrewView v = read_crew_view();
@@ -117,12 +120,26 @@ void CrewGaugePage::update(const GaugeValue&, uint32_t now_ms) {
   }
 }
 
+bool CrewGaugePage::tap(int32_t x, int32_t y, uint32_t now_ms,
+                        std::string* toast) {
+  if (!page_.tap(x, y, now_ms)) return false;
+  // The step at once, not on the next poll.
+  const CrewView v = read_crew_view();
+  page_.set(v);
+  last_ = v;
+  polled_ms_ = now_ms;
+  first_ = false;
+  if (toast != nullptr) *toast = page_.level_text();
+  return true;
+}
+
 void CrewPage::set(const CrewView& view) {
   if (station_ && (title_.empty() || view.channel != view_.channel)) {
     title_ = ArcText(view.channel, font_for_px(g_.px(kEngraveFont)),
                      kEngraveInk, g_.pxf(kEngraveRadius), 100.0f);
   }
   view_ = view;
+  if (!view.adjustable || !view.mic_ok) shown_ = CrewLevel::kVolume;
   if (lcd_) {
     if (view.state == RadioState::kOnChannel) {
       lcd_->set_value((float)view.members.size(), 0);
@@ -131,6 +148,59 @@ void CrewPage::set(const CrewView& view) {
     }
   }
   lv_obj_invalidate(dynamic_);
+}
+
+bool CrewPage::showing_mic() const {
+  return shown_ == CrewLevel::kMicGain && view_.adjustable && view_.mic_ok;
+}
+
+bool CrewPage::tap(int32_t x, int32_t y, uint32_t now_ms) {
+  if (!view_.adjustable) return false;  // Nothing running to set
+  const CrewTap t =
+      crew_tap((float)(x - g_.cx) / (float)g_.r, (float)(y - g_.cy) / (float)g_.r);
+  if (t == CrewTap::kNone) return false;
+  if (t == CrewTap::kSwitch) {
+    // To the mic and back; with no mic the arc stays on the volume.
+    if (shown_ == CrewLevel::kVolume && !view_.mic_ok) return false;
+    shown_ = shown_ == CrewLevel::kVolume ? CrewLevel::kMicGain
+                                          : CrewLevel::kVolume;
+    tapped_ms_ = now_ms;
+    lv_obj_invalidate(dynamic_);
+    return true;
+  }
+  if (!crew_adjust(shown_, t == CrewTap::kUp ? 1 : -1)) return false;
+  tapped_ms_ = now_ms;
+  return true;
+}
+
+void CrewPage::tick(uint32_t now_ms) {
+  if (shown_ == CrewLevel::kMicGain &&
+      (uint32_t)(now_ms - tapped_ms_) >= kMicShownMs) {
+    shown_ = CrewLevel::kVolume;
+    lv_obj_invalidate(dynamic_);
+  }
+}
+
+namespace {
+
+// "30" or "34.5".
+std::string db_text(uint16_t tenths) {
+  char buf[16];
+  if (tenths % 10 == 0) {
+    snprintf(buf, sizeof(buf), "%u", (unsigned)(tenths / 10));
+  } else {
+    snprintf(buf, sizeof(buf), "%u.%u", (unsigned)(tenths / 10),
+             (unsigned)(tenths % 10));
+  }
+  return buf;
+}
+
+}  // namespace
+
+std::string CrewPage::level_text() const {
+  if (showing_mic()) return "Mic gain " + db_text(view_.mic_gain_tenths) + " dB";
+  if (view_.muted) return "Speaker muted";
+  return "Speaker volume " + std::to_string((unsigned)view_.volume);
 }
 
 void CrewPage::draw_cb(lv_event_t* e) {
@@ -223,32 +293,47 @@ void CrewPage::draw_member(lv_layer_t* layer, const CrewMember& m,
 
 void CrewPage::draw_volume(lv_layer_t* layer) const {
   const bool on = view_.state == RadioState::kOnChannel;
+  const bool mic = showing_mic();
   draw_arc_band(layer, g_, kVolRadius, kVolWidth, 0x18181B, LV_OPA_COVER,
                 kVolFrom, kVolTo);
-  if (view_.volume_max > 0 && view_.volume > 0) {
-    const float t = (float)view_.volume / view_.volume_max;
-    const uint32_t c =
-        view_.muted || !on ? crew_color::kUnlit : color::kMarking;
+  // The fill: the volume, or the mic gain of its top.
+  float t = 0.0f;
+  if (mic) {
+    if (view_.mic_gain_max_tenths > 0) {
+      t = (float)view_.mic_gain_tenths / view_.mic_gain_max_tenths;
+    }
+  } else if (view_.volume_max > 0) {
+    t = (float)view_.volume / view_.volume_max;
+  }
+  if (t > 1.0f) t = 1.0f;
+  if (t > 0.0f) {
+    const uint32_t c = !on || (!mic && view_.muted) ? crew_color::kUnlit
+                       : mic ? crew_color::kTalk
+                             : color::kMarking;
     // Fills from the left (212 degrees) towards the right (148).
     draw_arc_band(layer, g_, kVolRadius, kVolWidth, c, LV_OPA_COVER,
                   kVolTo - t * (kVolTo - kVolFrom), kVolTo);
   }
+  // - and +: brighter while they are buttons (the radio runs).
+  const uint32_t ends = view_.adjustable ? color::kMarking : crew_color::kQuiet;
   const lv_font_t* small = font_for_px(g_.px(kVolFont));
   float x, y;
   dial_point(g_, kVolTo + 7.0f, kVolRadius - kVolWidth / 2, &x, &y);
-  draw_text(layer, LV_SYMBOL_MINUS, small, crew_color::kQuiet, (int32_t)x,
-            (int32_t)y);
+  draw_text(layer, LV_SYMBOL_MINUS, small, ends, (int32_t)x, (int32_t)y);
   dial_point(g_, kVolFrom - 7.0f, kVolRadius - kVolWidth / 2, &x, &y);
-  draw_text(layer, LV_SYMBOL_PLUS, small, crew_color::kQuiet, (int32_t)x,
-            (int32_t)y);
-  char label[32];
-  if (view_.muted) {
-    snprintf(label, sizeof(label), LV_SYMBOL_MUTE " MUTED");
+  draw_text(layer, LV_SYMBOL_PLUS, small, ends, (int32_t)x, (int32_t)y);
+  std::string label;
+  uint32_t label_color = crew_color::kQuiet;
+  if (mic) {
+    label = "MIC " + db_text(view_.mic_gain_tenths) + " dB";
+    label_color = crew_color::kTalk;  // Not the usual: the arc is the mic's
+  } else if (view_.muted) {
+    label = LV_SYMBOL_MUTE " MUTED";
+    label_color = crew_color::kTransmit;
   } else {
-    snprintf(label, sizeof(label), "VOL %u", (unsigned)view_.volume);
+    label = "VOL " + std::to_string((unsigned)view_.volume);
   }
-  draw_text(layer, label, small,
-            view_.muted ? crew_color::kTransmit : crew_color::kQuiet, g_.cx,
+  draw_text(layer, label.c_str(), small, label_color, g_.cx,
             g_.cy + g_.px(kVolLabelY));
 }
 

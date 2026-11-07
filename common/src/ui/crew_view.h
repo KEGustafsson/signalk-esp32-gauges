@@ -53,6 +53,13 @@ struct CrewView {
   bool transmitting = false;
   uint8_t volume = 0;
   uint8_t volume_max = 0;
+  // The mic's preamp as the codec runs it, in tenths of a dB (300 = 30 dB),
+  // and its top; whether there is a mic at all.
+  uint16_t mic_gain_tenths = 0;
+  uint16_t mic_gain_max_tenths = 0;
+  bool mic_ok = false;
+  // The screen may step the levels (set_crew_adjust): the radio is running.
+  bool adjustable = false;
   // Everyone else on the channel, sorted by name so nobody moves around the
   // ring when someone joins. The head count is its size, as on the phones.
   std::vector<CrewMember> members;
@@ -68,7 +75,11 @@ struct CrewView {
   bool operator==(const CrewView& o) const {
     return channel == o.channel && state == o.state && muted == o.muted &&
            transmitting == o.transmitting && volume == o.volume &&
-           volume_max == o.volume_max && members == o.members;
+           volume_max == o.volume_max &&
+           mic_gain_tenths == o.mic_gain_tenths &&
+           mic_gain_max_tenths == o.mic_gain_max_tenths &&
+           mic_ok == o.mic_ok && adjustable == o.adjustable &&
+           members == o.members;
   }
   bool operator!=(const CrewView& o) const { return !(*this == o); }
 
@@ -88,6 +99,15 @@ void set_crew_view_source(CrewViewSource source);
 bool crew_view_available();
 // The view now: the source's, or a radio that is off.
 CrewView read_crew_view();
+
+// The levels the Crew page's - and + step.
+enum class CrewLevel : uint8_t { kVolume, kMicGain };
+// The screen's level control, registered once at boot by the firmware with
+// a radio: one step of `level` up (dir > 0) or down, from the loop task;
+// true when the radio took it. Without one, crew_adjust() is false.
+using CrewAdjust = bool (*)(CrewLevel level, int dir);
+void set_crew_adjust(CrewAdjust adjust);
+bool crew_adjust(CrewLevel level, int dir);
 
 }  // namespace ui
 }  // namespace skgauges
