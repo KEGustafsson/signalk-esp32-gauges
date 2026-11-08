@@ -18,6 +18,7 @@
 #include <atomic>
 
 #include "core/packet.h"
+#include "core/rns/out_buffer.h"
 #include "core/rns/reticulum_node.h"
 #include "core/rns/rns_packet.h"
 
@@ -41,15 +42,16 @@ constexpr int64_t kTickMs = 1000;
 constexpr int64_t kBackoffMinMs = 1000;
 constexpr int64_t kBackoffMaxMs = 15000;
 // crew-radio's "radio under load" rules (2026-11-08). cr-rns never waits on
-// the socket: what it writes goes into kOutBytes of its own and out as the
-// socket takes it. Voice older than kVoiceMaxAgeMs when its turn comes, or
-// arriving while more than kBacklogBytes wait, is dropped rather than sent
-// late (a backlog of voice is no use to anyone, and a node that stopped
-// reading would stall the hub for every member). Only kNoProgressMs with
-// bytes waiting and none taken closes the connection. At most kDrainBudget
-// packets a pass, so the socket is read and the memory guard checked between
-// them whatever the other tasks hand over.
-constexpr size_t kOutBytes = 16 * 1024;
+// the socket: what it writes goes into a buffer of its own
+// (core/rns/out_buffer.h, 16 KB) and out as the socket takes it. Voice older
+// than kVoiceMaxAgeMs when its turn comes, or arriving while more than
+// kBacklogBytes wait, is dropped rather than sent late, and so is voice that
+// waits that long in the buffer itself (a backlog of voice is no use to
+// anyone, a receiver would still play it seconds late, and a node that
+// stopped reading would stall the hub for every member). Only kNoProgressMs
+// with bytes waiting and none taken closes the connection. At most
+// kDrainBudget packets a pass, so the socket is read and the memory guard
+// checked between them whatever the other tasks hand over.
 constexpr size_t kBacklogBytes = 4 * 1024;
 constexpr int64_t kVoiceMaxAgeMs = 200;
 constexpr int64_t kNoProgressMs = 10000;
@@ -133,40 +135,48 @@ class SocketWriter : public rns::ReticulumNode::Writer {
   void reset(int new_fd, int64_t now) {
     fd = new_fd;
     broken = false;
-    len_ = 0;
+    out_.clear();
     progress_ms_ = now;
+  }
+  // What the packets written next are: voice handed over at at_ms (the
+  // drain loop, around node->send for a voice item), or link control and
+  // hellos (everything else, the default).
+  void set_voice(bool voice, int64_t at_ms) {
+    voice_ = voice;
+    at_ms_ = at_ms;
   }
   void write(const uint8_t* raw, size_t len) override {
     if (fd < 0 || broken) return;
-    if (len_ + rns::kMaxFrame > kOutBytes) {
-      overflow++;
-      return;
-    }
-    len_ += rns::frame(raw, len, out_ + len_);
+    const size_t n = rns::frame(raw, len, frame_);
+    if (!out_.append(frame_, n, voice_, at_ms_)) overflow++;
   }
-  size_t pending() const { return len_; }
-  // Out as much as the socket takes now.
-  void flush(int64_t now) {
-    if (fd < 0 || broken) return;
-    if (len_ == 0) {
+  size_t pending() const { return out_.size(); }
+  // Voice that waited past kVoiceMaxAgeMs dropped (out_buffer.h), then out
+  // as much as the socket takes now. Returns the voice frames dropped.
+  int flush(int64_t now) {
+    if (fd < 0 || broken) return 0;
+    const int dropped = out_.expire(now, kVoiceMaxAgeMs);
+    if (out_.size() == 0) {
       progress_ms_ = now;
-      return;
+      return dropped;
     }
-    const int w = ::send(fd, out_, len_, MSG_DONTWAIT);
+    const int w = ::send(fd, out_.data(), out_.size(), MSG_DONTWAIT);
     if (w > 0) {
-      memmove(out_, out_ + w, len_ - (size_t)w);
-      len_ -= (size_t)w;
+      out_.consume((size_t)w);
       progress_ms_ = now;
     } else if (w < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
       broken = true;
     } else if (now - progress_ms_ >= kNoProgressMs) {
       broken = true;  // Bytes waiting and none taken
     }
+    return dropped;
   }
 
  private:
-  uint8_t out_[kOutBytes];
-  size_t len_ = 0;
+  rns::OutBuffer out_;
+  uint8_t frame_[rns::kMaxFrame];
+  bool voice_ = false;
+  int64_t at_ms_ = 0;
   int64_t progress_ms_ = 0;
 };
 
@@ -407,8 +417,10 @@ void task(void*) {
         } else {
           // Split horizon for voice only: our hellos go on every link, so
           // each far end learns who we are.
+          writer->set_voice(head.voice != 0, head.at_ms);
           node->send((const uint8_t*)item + sizeof(head), len - sizeof(head),
                      head.voice != 0 ? &skip : nullptr);
+          writer->set_voice(false, 0);
         }
         vRingbufferReturnItem(g->to_rns, item);
       }
@@ -416,7 +428,7 @@ void task(void*) {
         why = "paused";
         break;
       }
-      writer->flush(mono_ms());
+      g->dropped_late += (uint32_t)writer->flush(mono_ms());
       const int64_t now = mono_ms();
       if (now - last_tick >= kTickMs) {
         last_tick = now;

@@ -400,7 +400,9 @@ ported rule for rule into `src/core/rns/` and checked against the same
     link straight from its sender; `ReticulumNode::Skip`, link tags).
   - **cr-rns never waits** (`esp/reticulum_link.cpp`): its writes go into
     16 KB of its own and out as the socket takes them; voice older than
-    200 ms, or behind 4 KB of backlog, is dropped and counted; eight
+    200 ms, or behind 4 KB of backlog, is dropped and counted, and so is
+    voice that waits 200 ms in that buffer itself (`core/rns/out_buffer.h`:
+    a socket that stalls and recovers sends no seconds-old speech); eight
     packets a pass at most, the socket read and the memory guard checked
     between; only 10 s with bytes waiting and none taken closes the
     connection. cr-audio stops handing voice over once the guard sheds

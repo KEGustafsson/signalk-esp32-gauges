@@ -123,7 +123,8 @@ add_executable(crew_radio_tests
   ${SRC}/core/rns/rns_identity.cpp
   ${SRC}/core/rns/rns_link.cpp
   ${SRC}/core/rns/carry.cpp
-  ${SRC}/core/rns/reticulum_node.cpp)
+  ${SRC}/core/rns/reticulum_node.cpp
+  ${SRC}/core/rns/out_buffer.cpp)
 target_include_directories(crew_radio_tests PRIVATE ${SRC} ${GAUGE_TESTS}
                            ${arduinojson_SOURCE_DIR}/src)
 target_compile_definitions(crew_radio_tests PRIVATE

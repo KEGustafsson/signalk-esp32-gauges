@@ -4,6 +4,7 @@
 #include "core/channel_floor.h"
 #include "core/encode_budget.h"
 #include "core/forwarder.h"
+#include "core/rns/out_buffer.h"
 #include "test.h"
 
 using namespace crewradio;
@@ -237,4 +238,56 @@ TEST(encode_budget_stops_at_zero_and_never_steps_up) {
     for (int i = 0; i < EncodeBudget::kWindow; i++) b.took(100);
   }
   CHECK(b.complexity() == 0);
+}
+
+// ---- cr-rns's output buffer (rns/out_buffer.h) -----------------------------
+
+namespace {
+// A frame of n bytes, every byte its tag.
+std::vector<uint8_t> frame(uint8_t tag, size_t n) { return std::vector<uint8_t>(n, tag); }
+bool append(rns::OutBuffer& b, uint8_t tag, size_t n, bool voice, int64_t at) {
+  auto f = frame(tag, n);
+  return b.append(f.data(), f.size(), voice, at);
+}
+}  // namespace
+
+TEST(out_buffer_drops_old_voice_never_control) {
+  rns::OutBuffer b;
+  CHECK(append(b, 1, 100, true, 0));     // old voice
+  CHECK(append(b, 2, 50, false, 0));     // a hello: never expires
+  CHECK(append(b, 3, 100, true, 0));     // old voice
+  CHECK(append(b, 4, 100, true, 900));   // fresh voice
+  CHECK(b.expire(1000, 200) == 2);
+  CHECK(b.frames() == 2 && b.size() == 150);
+  CHECK(b.data()[0] == 2 && b.data()[49] == 2 && b.data()[50] == 4 &&
+        b.data()[149] == 4);
+  CHECK(b.expire(1000, 200) == 0);       // Nothing more to drop
+}
+
+TEST(out_buffer_a_frame_partly_sent_always_goes_out_whole) {
+  rns::OutBuffer b;
+  append(b, 1, 100, true, 0);
+  append(b, 2, 100, true, 0);
+  b.consume(30);                         // The socket took 30 bytes of frame 1
+  CHECK(b.expire(5000, 200) == 1);       // Frame 2 dropped, frame 1 kept
+  CHECK(b.size() == 70 && b.frames() == 1 && b.data()[0] == 1);
+  b.consume(70);                         // Frame 1 out whole
+  CHECK(b.size() == 0 && b.frames() == 0);
+  append(b, 5, 10, true, 5000);
+  CHECK(b.expire(5100, 200) == 0 && b.size() == 10 && b.data()[0] == 5);
+}
+
+TEST(out_buffer_consumes_across_frames_and_wraps_its_ring) {
+  rns::OutBuffer b;
+  for (int round = 0; round < 3 * rns::OutBuffer::kMaxFrames; round++) {
+    CHECK(append(b, (uint8_t)round, 10, round % 2 == 0, round));
+    if (b.frames() > 4) b.consume(15);   // One and a half frames at a time
+  }
+  CHECK(b.size() <= 50);
+  // Everything left is from the end of the run; a late expire keeps the
+  // control frames and the partly sent front.
+  const size_t before = b.size();
+  b.expire(1 << 20, 200);
+  CHECK(b.size() <= before);
+  CHECK(!append(b, 9, rns::OutBuffer::kBytes, false, 0));  // Never over the size
 }
