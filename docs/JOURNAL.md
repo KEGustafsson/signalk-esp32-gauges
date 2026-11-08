@@ -1545,3 +1545,17 @@ to the server (no system-info outputs), so it never had a flood to take.
 Left as they are: the memory guard's lines, the reconnects, the GNSS clock
 line (16 in 13 h on the port 4", in pairs seconds apart: a matter for the
 clock's rule, not the log).
+
+## 2026-11-08 — The talker sees the key at once
+
+Two fingers on the 4": the crew's screens showed the talker before the
+talker's own did. The talk key's state reached the status only in
+cr-audio's once-a-second copy (0-1 s late), and the halo and the Crew
+page read the view every 250 ms; a receiver's cr-net publishes as soon as
+the number of talkers changes, so the crew had it sooner. Now cr-audio
+writes the key's state to an atomic every 20 ms frame, which `status()`
+reads (as it reads the volume), and the halo and the Crew page look every
+50 ms (a copy of the status; they redraw only on a change). What is left
+between the fingers and the screen: the 20 ms touch sample and the key's
+40 ms debounce, and on the 4" one LVGL pass (about 100 ms) for the
+redraw, during which the touch is not sampled either.

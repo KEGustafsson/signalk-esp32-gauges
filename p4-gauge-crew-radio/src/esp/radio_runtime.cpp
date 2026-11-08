@@ -109,6 +109,10 @@ struct Shared {
   // not taken as still held, or the mic would stay open after the fingers
   // left the glass.
   std::atomic<int64_t> touch_at{0};
+  // The talk key's state, written by cr-audio every frame (status() reads
+  // it): the talker's own screen shows it within a frame, not at the next
+  // once-a-second copy of the status.
+  std::atomic<bool> talking{false};
   Supervisor supervisor;
   std::atomic<bool> clock_ok{false};
   std::atomic<uint8_t> shed{0};
@@ -559,6 +563,7 @@ void audio_task(void* arg) {
       case TalkKey::Event::kNone:
         break;
     }
+    g->talking.store(key.talking());
 
     // One frame out (blocks until the DMA has room: the clock of the loop)
     // and one frame in.
@@ -656,7 +661,6 @@ void audio_task(void* arg) {
       g->status.frames = g->playout->counters().frames;
       g->status.decode_errors = g->playout->counters().decode_errors;
       g->status.concealed = g->mixer->concealed_frames();
-      g->status.talking = key.talking();
       g->status.sent = g->transmitter->sent();
       g->status.timeouts = timeouts;
       g->status.mic_level = level;
@@ -673,6 +677,7 @@ void audio_task(void* arg) {
   }
   tx.close_it();
   g->mixer->set_gain(1.0f);
+  g->talking.store(false);
   g->supervisor.disarm(kSlotAudio);
   g->audio_running.store(false);
   vTaskDelete(nullptr);
@@ -1097,6 +1102,7 @@ RadioStatus status() {
     s = g->status;
     xSemaphoreGive(g->status_lock);
   }
+  s.talking = g->talking.load();
   s.volume = g->volume.load();
   s.mic_gain_db = g->mic_gain_tenths.load() / 10.0f;
   s.mic_channel = g->config.mic_channel;

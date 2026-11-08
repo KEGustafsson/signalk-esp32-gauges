@@ -79,7 +79,10 @@ struct UiState {
 };
 
 // How often the halo looks at the radio's view; it redraws only on a change.
-constexpr uint32_t kHaloPollMs = 250;
+// Often enough that the talker sees the halo light within a frame or two of
+// keying (at 250 ms it trailed what the crew saw, 2026-11-08); a look is a
+// copy of the status, not a redraw.
+constexpr uint32_t kHaloPollMs = 50;
 
 UiState* state = nullptr;
 
