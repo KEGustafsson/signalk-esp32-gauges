@@ -80,11 +80,12 @@ class CrewPage {
 };
 
 // The Crew page as one of the gauge pages (page style "Crew radio"): it
-// reads the radio's view (crew_view.h) four times a second and redraws
-// only when it changed. The Signal K value it is handed is unused.
+// reads the radio's view (crew_view.h) every 50 ms, so the talker's own
+// keying shows at once, and redraws only when it changed. The Signal K
+// value it is handed is unused.
 class CrewGaugePage : public GaugePage {
  public:
-  static constexpr uint32_t kPollMs = 250;
+  static constexpr uint32_t kPollMs = 50;
 
   CrewGaugePage(lv_obj_t* parent, const GaugeDef& def,
                 const Geometry& geometry);
