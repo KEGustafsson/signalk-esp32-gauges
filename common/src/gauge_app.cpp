@@ -135,6 +135,10 @@ class WatchdogOffForReset : public sensesp::Resettable {
   void reset() override { loop_watchdog(false); }
 };
 
+// Starts the loop watchdog (kLoopWatchdogMs) and, when the build has an OTA
+// password, takes over ArduinoOTA's callbacks from SensESP: the watchdog
+// off and a notice on screen during an upload, its progress every 10 %,
+// a restart if it fails after starting.
 void start_loop_watchdog() {
   // The framework's other settings kept: core 0's idle task watched, a
   // panic (and a core dump) when it fires.
@@ -306,6 +310,9 @@ Identity read_identity(const GaugeAppConfig& config) {
 
 }  // namespace
 
+// Brings the unit up (gauge_app.h): its identity, the gauge UI, SensESP with
+// WiFi, Signal K and OTA, the cards, the link watch, the 10-minute heap and
+// loop report and the loop watchdog. Called once from the board's setup().
 void gauge_app_begin(const GaugeAppConfig& config) {
   // UI first, so the gauge is on screen while WiFi and Signal K connect.
   // Touch only answers once setup() returns and the loop runs, so the boot
@@ -414,6 +421,9 @@ void gauge_app_begin(const GaugeAppConfig& config) {
            (unsigned)millis());
 }
 
+// One pass of the loop, from the board's loop(): SensESP's event loop, then
+// LVGL, each timed (note_pass()); SensESP passes that keep taking 4 s or
+// more restart the unit. Sleeps until LVGL's next timer, at most 5 ms.
 void gauge_app_loop() {
   // Anything that holds the loop kStallMs or more makes touch feel dead:
   // counted, and logged with the side that held it (note_pass()).
