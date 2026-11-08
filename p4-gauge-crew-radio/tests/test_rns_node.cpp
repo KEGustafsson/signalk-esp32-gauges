@@ -177,6 +177,13 @@ TEST(rns_node_tags_each_link_and_skips_the_ones_asked) {
   CHECK((*a)->send(opus.data(), opus.size(), &skip_it));
   m.settle();
   CHECK(b->inbox.size() == 2 && b->tags[1] == tag);
+  // The links send() would use: none once its only one is skipped (what
+  // the hello's kRnsUp claims: a far end off our own WLAN).
+  CHECK((*a)->link_count() == 1);
+  skip_it.tag = a->tags[0];
+  CHECK((*a)->link_count(&skip_it) == 0);
+  skip_it.tag = a->tags[0] + 1;
+  CHECK((*a)->link_count(&skip_it) == 1);
 }
 
 TEST(rns_node_a_stranger_who_copies_the_name_hash_gets_and_passes_nothing) {

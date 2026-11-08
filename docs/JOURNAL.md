@@ -1612,3 +1612,13 @@ over. So:
   each second, which held the kernel long enough to make both 4" screens
   flicker for a moment every so often; it now reads the idle task's counter
   alone.
+
+CodeRabbit's reviews of both PRs then tightened the hello's 0x10 bit
+(RNS_UP) the same way in all three clients: connected, a confirmed link
+whose far end is not on the boat's own WLAN, and the node bridging at all
+(Relay on, a hop limit of 2 or more, the WLAN up). A unit whose only link
+went to a crewmate aboard, or one that bridged nothing, could otherwise be
+elected forwarder and leave the boat's voice to nobody. And the encoder's
+budget lives with the encoder: a cr-audio the supervisor restarted began
+again at complexity 5 while the encoder stayed lower, so its next step
+down would have raised it.

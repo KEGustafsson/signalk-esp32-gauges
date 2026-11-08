@@ -91,6 +91,9 @@ size_t receive(uint8_t* out, size_t cap, uint32_t* link_tag);
 bool connected();
 // At least one confirmed link.
 bool linked();
+// At least one confirmed link whose far end is not on our own WLAN (or is
+// not known yet): someone ashore hears what this node sends.
+bool linked_remote();
 ReticulumStatus status();
 
 }  // namespace reticulum

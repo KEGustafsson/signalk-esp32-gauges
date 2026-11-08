@@ -72,6 +72,9 @@ struct Shared {
   RingbufHandle_t from_rns = nullptr;
   std::atomic<bool> connected{false};
   std::atomic<bool> linked{false};
+  // A confirmed link to a node not on our own WLAN (split horizon's view):
+  // what the hello's kRnsUp claims.
+  std::atomic<bool> linked_remote{false};
   std::atomic<uint32_t> dropped_in{0};
   std::atomic<uint32_t> dropped_out{0};
   std::atomic<uint32_t> dropped_late{0};  // Voice too old, or a backlog
@@ -424,6 +427,7 @@ void task(void*) {
         publish(*node, reconnects);
       }
       g->linked.store(node->link_count() > 0);
+      g->linked_remote.store(node->link_count(&skip) > 0);
       if (writer->broken) {
         why = writer->pending() > 0 ? "send stalled" : "send failed";
         break;
@@ -436,6 +440,7 @@ void task(void*) {
     }
     node->disconnected(mono_ms());
     g->linked.store(false);
+    g->linked_remote.store(false);
     g->connected.store(false);
     writer->reset(-1, mono_ms());
     for (auto& t : g->skip) t.store(0);  // Every link went with it
@@ -556,6 +561,11 @@ bool connected() {
 bool linked() {
   Shared* s = ready();
   return s != nullptr && s->linked.load();
+}
+
+bool linked_remote() {
+  Shared* s = ready();
+  return s != nullptr && s->linked_remote.load();
 }
 
 ReticulumStatus status() {

@@ -122,6 +122,10 @@ struct Shared {
   // Opus encode since cr-cpu last looked, in us: what core 0 has to spare.
   std::atomic<int> audio_work_max_us{0};
   std::atomic<int> encode_max_us{0};
+  // How hard the encoder may work (core/encode_budget.h): kept with the
+  // encoder, so a cr-audio the supervisor restarts goes on from where the
+  // encoder is, not from kComplexity (its next step would raise it).
+  EncodeBudget budget{OpusFrameEncoder::kComplexity};
   Supervisor supervisor;
   std::atomic<bool> clock_ok{false};
   std::atomic<uint8_t> shed{0};
@@ -378,15 +382,21 @@ void net_task(void* arg) {
         // What this node is on now: the WLAN while its socket is open, and
         // Reticulum while connected to its transport node (on Reticulum
         // alone it keeps the channel, as the plugin does). kRnsUp only with
-        // a confirmed link as well: a talker connected but not yet linked
-        // must not make the forwarder leave its voice to it, which nobody
-        // ashore would then hear (the app's and the plugin's rule too).
-        // kFwdAvoid always: with little RAM this node forwards the boat's
-        // voice only when nobody else can (core/forwarder.h).
+        // a confirmed link to a node off this WLAN, and only when this node
+        // bridges at all: the card's Relay on, a hop limit that lets a
+        // packet go one hop further (relay_ttl gives 0 below 2), and the
+        // WLAN up. A talker not yet linked ashore must not make the
+        // forwarder leave its voice to it, which nobody ashore would then
+        // hear, and a node that bridges nothing must not be elected to (the
+        // app's Forwarding.bridges and the plugin's bridges() are the same
+        // rule). kFwdAvoid always: with little RAM this node forwards the
+        // boat's voice only when nobody else can (core/forwarder.h).
+        const bool bridges =
+            g->config.relay && g->config.max_hops >= 2 && sock.fd >= 0;
         const uint8_t on = (uint8_t)(
             (sock.fd >= 0 ? Hello::kLan : 0) |
             (reticulum::connected() ? Hello::kReticulum : 0) |
-            (reticulum::linked() ? Hello::kRnsUp : 0));
+            (bridges && reticulum::linked_remote() ? Hello::kRnsUp : 0));
         node.set_transports(on != 0 ? (uint8_t)(on | Hello::kFwdAvoid) : 0);
         const size_t len =
             on != 0 ? node.build_hello((int64_t)time(nullptr), hello) : 0;
@@ -498,7 +508,6 @@ void audio_task(void* arg) {
   TalkKey key;
   BurstFloor floor;
   ChannelFloor channel(g->self_id);
-  EncodeBudget budget(OpusFrameEncoder::kComplexity);
   int overruns = 0;      // Passes in a row with more work than a frame
   int64_t gave_ms = 0;   // When the last "gave core 0 a moment" was logged
   TxSocket tx;
@@ -689,10 +698,10 @@ void audio_task(void* arg) {
       if (took_us > g->encode_max_us.load()) g->encode_max_us.store(took_us);
       // Too slow for the frame (the encoder's state is in PSRAM, behind the
       // cache the display shares): a lighter encode from the next frame.
-      if (budget.took(took_us)) {
-        g->encoder->set_complexity(budget.complexity());
+      if (g->budget.took(took_us)) {
+        g->encoder->set_complexity(g->budget.complexity());
         ESP_LOGW(kTag, "Opus encodes took up to %d us: complexity %d now",
-                 took_us, budget.complexity());
+                 took_us, g->budget.complexity());
       }
       if (n > 0 && g->peers.read(&v) && tx.ensure(v.ip)) {
         // The group copies while no peer is known, and for the first frames

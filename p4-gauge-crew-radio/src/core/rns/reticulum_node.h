@@ -145,8 +145,10 @@ class ReticulumNode {
   // closes it and calls disconnected().
   bool tick(int64_t now);
 
-  // Links that carry channel traffic: up, and their far end proved the key.
-  int link_count() const;
+  // Links that carry channel traffic: up, and their far end proved the key;
+  // with `skip`, only those send() would use (split horizon: the far ends
+  // not on our own WLAN).
+  int link_count(const Skip* skip = nullptr) const;
   int peer_count() const;
   int pending_count() const;
   int entry_count() const;  // Links held, confirmed or not

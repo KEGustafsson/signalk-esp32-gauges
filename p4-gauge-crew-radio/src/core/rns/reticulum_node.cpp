@@ -59,10 +59,13 @@ ReticulumNode::ReticulumNode(const char* tag, const uint8_t confirm_key[32],
   ok_ = destination_hash(name_hash_, identity_.hash(), destination_) && ok_;
 }
 
-int ReticulumNode::link_count() const {
+int ReticulumNode::link_count(const Skip* skip) const {
   int n = 0;
-  for (const Entry& e : entries_) {
-    if (e.used && e.link.active() && e.confirmed) n++;
+  for (int i = 0; i < kMaxLinks; i++) {
+    const Entry& e = entries_[i];
+    if (!e.used || !e.link.active() || !e.confirmed) continue;
+    if (skip != nullptr && skip->skip(tag_of(i, e.epoch))) continue;
+    n++;
   }
   return n;
 }
