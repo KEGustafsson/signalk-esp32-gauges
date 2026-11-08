@@ -1516,3 +1516,32 @@ what is in the tree. Fixed:
   moving too; and the station's talk-disc screen (phase 3b) is preview
   only, the firmware's Crew page has it off (the radio's README said a 4"
   with only the Crew page was the station).
+
+## 2026-11-08 — A quieter serial log
+
+All four units ran 13 h after the last OTA (2026-11-07) without a restart:
+the Signal K server gone for 2 min at 03:07 (all four reconnected by
+03:09), the radio's memory guard taking Reticulum off for a second (once
+on the starboard 4", 7 times on the port one), one lost reply from the
+port 4"'s C6 (a 5 s pass, as designed). The serial logs, over all their
+boots, were mostly noise:
+
+| Lines (4" starboard log) | What |
+|---|---|
+| 120 401 | SensESP's `OTA Progress: N%`, one per chunk: 3300 an upload |
+| 7 618 | `Dropping oldest received value update (queue full)`, nearly all during uploads (the upload holds the loop) |
+| 4 390 + 4 130 | the `loop` and `heap` lines, once a minute: 86 % of a running unit's log |
+| 1 042 | `saveable.cpp: Not loading configuration: no config_path specified`, 15 a boot |
+
+and on the port 4", 177 `LVGL held the loop for 150-250 ms` in 13 h.
+Changed in `gauge_app.cpp`, without touching SensESP: the upload's
+progress every 10 % (our own `onProgress`, which replaces SensESP's as
+`onStart` already did); SensESP's WebSocket client at errors only once an
+upload has started (the unit restarts after it, either way); `saveable.cpp`
+at warnings; the `heap` and `loop` report every 10 minutes, the `loop`
+line with how many passes of each side stalled; a stall logged only when
+it is its side's first since the report, or 1 s or more. Nothing is sent
+to the server (no system-info outputs), so it never had a flood to take.
+Left as they are: the memory guard's lines, the reconnects, the GNSS clock
+line (16 in 13 h on the port 4", in pairs seconds apart: a matter for the
+clock's rule, not the log).
