@@ -377,13 +377,16 @@ void net_task(void* arg) {
       if (on_air && g->shed.load() < (uint8_t)Shed::kTransmit) {
         // What this node is on now: the WLAN while its socket is open, and
         // Reticulum while connected to its transport node (on Reticulum
-        // alone it keeps the channel, as the plugin does). kRnsUp with it,
-        // and kFwdAvoid always: with little RAM this node forwards the
-        // boat's voice only when nobody else can (core/forwarder.h).
-        const bool rns_up = reticulum::connected();
-        const uint8_t on =
-            (uint8_t)((sock.fd >= 0 ? Hello::kLan : 0) |
-                      (rns_up ? Hello::kReticulum | Hello::kRnsUp : 0));
+        // alone it keeps the channel, as the plugin does). kRnsUp only with
+        // a confirmed link as well: a talker connected but not yet linked
+        // must not make the forwarder leave its voice to it, which nobody
+        // ashore would then hear (the app's and the plugin's rule too).
+        // kFwdAvoid always: with little RAM this node forwards the boat's
+        // voice only when nobody else can (core/forwarder.h).
+        const uint8_t on = (uint8_t)(
+            (sock.fd >= 0 ? Hello::kLan : 0) |
+            (reticulum::connected() ? Hello::kReticulum : 0) |
+            (reticulum::linked() ? Hello::kRnsUp : 0));
         node.set_transports(on != 0 ? (uint8_t)(on | Hello::kFwdAvoid) : 0);
         const size_t len =
             on != 0 ? node.build_hello((int64_t)time(nullptr), hello) : 0;

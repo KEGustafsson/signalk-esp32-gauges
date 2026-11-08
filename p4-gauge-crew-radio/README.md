@@ -389,8 +389,9 @@ ported rule for rule into `src/core/rns/` and checked against the same
   forwards from one thread with a blocking `sendall`, stalled for everyone
   behind the one node that stopped reading. Now:
   - **One forwarder per boat** (`core/forwarder.h`). Hellos carry three
-    more transport bits: `0x10` connected to the hub now, `0x20` would
-    rather forward (the plugin), `0x40` would rather not (this node). From
+    more transport bits: `0x10` connected to the hub with a confirmed
+    link, `0x20` would rather forward (the plugin), `0x40` would rather not
+    (this node). From
     the unrelayed hellos it hears on the WLAN every node picks the same
     forwarder (rank, then the lowest id); only it bridges audio, and from
     the WLAN only for a talker not on Reticulum itself.

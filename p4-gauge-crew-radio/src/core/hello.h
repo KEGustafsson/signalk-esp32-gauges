@@ -34,7 +34,8 @@ struct Hello {
   static constexpr uint8_t kAware = 4;
   static constexpr uint8_t kReticulum = 8;
   // crew-radio's "radio under load" bits (forwarder.h): connected to the
-  // Reticulum hub now; would rather be the boat's forwarder (the plugin);
+  // Reticulum hub now with at least one confirmed link; would rather be the
+  // boat's forwarder (the plugin);
   // would rather not be (this node: little RAM). A decoder ignores bits it
   // does not know, so old nodes read these hellos as before.
   static constexpr uint8_t kRnsUp = 0x10;
