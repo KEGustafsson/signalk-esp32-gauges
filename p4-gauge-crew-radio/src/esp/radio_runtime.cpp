@@ -40,6 +40,7 @@
 #include "core/self_test.h"
 #include "core/spsc_ring.h"
 #include "core/supervisor.h"
+#include "core/channel_floor.h"
 #include "core/talk_key.h"
 #include "core/tones.h"
 #include "core/transmitter.h"
@@ -113,6 +114,7 @@ struct Shared {
   // it): the talker's own screen shows it within a frame, not at the next
   // once-a-second copy of the status.
   std::atomic<bool> talking{false};
+  std::atomic<bool> busy{false};  // RadioStatus::busy
   Supervisor supervisor;
   std::atomic<bool> clock_ok{false};
   std::atomic<uint8_t> shed{0};
@@ -260,11 +262,12 @@ void send_lan(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
 // One packet from either transport through the pipeline: audio to cr-audio,
 // a copy for the other transport where the bridge says so.
 void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
-          NetNode::Via via, uint32_t from, int64_t now) {
+          NetNode::Via via, uint32_t from, int64_t now,
+          uint32_t link_tag = 0) {
   NetNode::Audio au;
   NetNode::Relay relay;
   if (node.on_packet(p, len, via, from, now, (int64_t)time(nullptr), &au,
-                     &relay)) {
+                     &relay, link_tag)) {
     uint8_t* slot = g->ring->write_slot();
     if (slot == nullptr || au.len > audio::kFrameBytes) {
       g->ring_drops++;
@@ -278,7 +281,9 @@ void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
     }
   }
   if (g->shed.load() >= (uint8_t)Shed::kTransmit) return;  // Nothing goes out
-  if (relay.to_reticulum) reticulum::send(relay.data, relay.len);
+  if (relay.to_reticulum) {
+    reticulum::send(relay.data, relay.len, /*voice=*/!relay.hello);
+  }
   if (relay.to_lan && sock.fd >= 0) {
     send_lan(node, sock, relay.data, relay.len, relay.hello, now);
   }
@@ -295,6 +300,7 @@ void net_task(void* arg) {
   // waits at most that long in its ring.
   const int timeout_ms = g->config.reticulum ? 20 : 100;
   int64_t next_beat = 0;
+  int64_t next_skip = 0;
   int talkers = 0;       // As last published
   int64_t retry_at = 0;  // A socket that could not be opened: tried again
   g->supervisor.arm(kSlotNet, mono_ms());
@@ -331,8 +337,21 @@ void net_task(void* arg) {
     const int64_t now = mono_ms();
     // What came over Reticulum meanwhile, through the same pipeline.
     size_t m;
-    while ((m = reticulum::receive(from_rns, sizeof(from_rns))) > 0) {
-      if (on_air) take(node, sock, from_rns, m, NetNode::Via::kReticulum, 0, now);
+    uint32_t link_tag = 0;
+    while ((m = reticulum::receive(from_rns, sizeof(from_rns), &link_tag)) >
+           0) {
+      if (on_air) {
+        take(node, sock, from_rns, m, NetNode::Via::kReticulum, 0, now,
+             link_tag);
+      }
+    }
+    if (g->config.reticulum && now >= next_skip) {
+      // Split horizon (core/forwarder.h): the links whose far end hears us
+      // on the WLAN get none of what this node sends over Reticulum.
+      next_skip = now + 250;
+      for (int slot = 0; slot < Forwarder::kMaxLinks; slot++) {
+        reticulum::set_skip(slot, node.forwarder().skip_tag(slot, now));
+      }
     }
     if (sock.fd >= 0) {
       // Where this node's voice goes, for cr-audio.
@@ -351,16 +370,19 @@ void net_task(void* arg) {
       if (on_air && g->shed.load() < (uint8_t)Shed::kTransmit) {
         // What this node is on now: the WLAN while its socket is open, and
         // Reticulum while connected to its transport node (on Reticulum
-        // alone it keeps the channel, as the plugin does).
+        // alone it keeps the channel, as the plugin does). kRnsUp with it,
+        // and kFwdAvoid always: with little RAM this node forwards the
+        // boat's voice only when nobody else can (core/forwarder.h).
+        const bool rns_up = reticulum::connected();
         const uint8_t on =
             (uint8_t)((sock.fd >= 0 ? Hello::kLan : 0) |
-                      (reticulum::connected() ? Hello::kReticulum : 0));
-        node.set_transports(on);
+                      (rns_up ? Hello::kReticulum | Hello::kRnsUp : 0));
+        node.set_transports(on != 0 ? (uint8_t)(on | Hello::kFwdAvoid) : 0);
         const size_t len =
             on != 0 ? node.build_hello((int64_t)time(nullptr), hello) : 0;
         if (len > 0) {
           if (sock.fd >= 0) send_lan(node, sock, hello, len, /*hello=*/true, now);
-          reticulum::send(hello, len);
+          reticulum::send(hello, len, /*voice=*/false);
         }
       }
       node.roster().expire(now);
@@ -465,6 +487,7 @@ void audio_task(void* arg) {
   uint8_t pkt[Transmitter::kMaxPacket];
   TalkKey key;
   BurstFloor floor;
+  ChannelFloor channel(g->self_id);
   TxSocket tx;
   int timeouts = 0;
   int level = 0;
@@ -535,6 +558,7 @@ void audio_task(void* arg) {
       memcpy(&d, slot, sizeof(d));
       if (len >= sizeof(d) && d.len == len - sizeof(d)) {
         g->playout->deliver(d, slot + sizeof(d), now);
+        channel.heard(d.sender, now);  // Another talker: channel busy
       }
       g->ring->release();
     }
@@ -546,7 +570,37 @@ void audio_task(void* arg) {
                        now - g->touch_at.load() < kTouchFreshMs;
     const bool may_talk = g->mic_ok && g->clock_ok.load() &&
                           g->shed.load() < (uint8_t)Shed::kTransmit;
-    switch (key.sample(button, touch, may_talk, now)) {
+    // Channel busy (core/channel_floor.h): pressed while another talker is
+    // heard, the key keys only when held through the busy cue; two keyed at
+    // once, the higher id gives way. Half duplex only, as on the phones: full
+    // duplex is an open intercom that mixes talkers on purpose (the floor
+    // then sees nothing held, and stays idle).
+    const bool listen = !g->full_duplex.load();
+    bool floor_ok = true;
+    int32_t holder = 0;
+    switch (channel.sample(listen && (button || touch), key.talking(), now,
+                           &floor_ok)) {
+      case ChannelFloor::Event::kRefused:
+        channel.busy(now, &holder);
+        cue(tones::Cue::kBusy);  // Always: the talker must know
+        ESP_LOGI(kTag, "Channel busy (%08x talking): held, not keyed",
+                 (unsigned)holder);
+        break;
+      case ChannelFloor::Event::kOverride:
+        ESP_LOGW(kTag, "Talking over the channel (held through the busy cue)");
+        break;
+      case ChannelFloor::Event::kYielded:
+        channel.busy(now, &holder);
+        cue(tones::Cue::kBusy);
+        ESP_LOGI(kTag, "Gave way to %08x: the mic stays off until released",
+                 (unsigned)holder);
+        break;
+      case ChannelFloor::Event::kNone:
+        break;
+    }
+    if (!listen) floor_ok = true;
+    g->busy.store(channel.holding_off());
+    switch (key.sample(button, touch, may_talk && floor_ok, now)) {
       case TalkKey::Event::kKeyed:
         g->encoder->reset();
         // Half duplex unless asked: the crew is not played while talking.
@@ -608,7 +662,8 @@ void audio_task(void* arg) {
     }
 
     // While keyed: this frame to the crew.
-    if (heard && key.talking()) {
+    // (Not after giving way: off at once, not after the key's release.)
+    if (heard && key.talking() && floor_ok) {
       PeerView v;
       const size_t n = g->transmitter->build(g->encoder.get(), mono,
                                              (int64_t)time(nullptr), pkt);
@@ -625,7 +680,11 @@ void audio_task(void* arg) {
         for (int i = 0; i < v.count; i++) tx.send_to(pkt, n, v.addrs[i], c.port);
       }
       // And on every Reticulum link (nothing while there is none).
-      if (n > 0) reticulum::send(pkt, n);
+      // Not while the memory guard has shed Reticulum: cr-rns has gone or is
+      // going, and the ring would only fill.
+      if (n > 0 && g->shed.load() < (uint8_t)Shed::kReticulum) {
+        reticulum::send(pkt, n, /*voice=*/true);
+      }
     }
 
     if (now >= next_sweep) {
@@ -683,6 +742,7 @@ void audio_task(void* arg) {
   tx.close_it();
   g->mixer->set_gain(1.0f);
   g->talking.store(false);
+  g->busy.store(false);
   g->supervisor.disarm(kSlotAudio);
   g->audio_running.store(false);
   vTaskDelete(nullptr);
@@ -1112,6 +1172,7 @@ RadioStatus status() {
     xSemaphoreGive(g->status_lock);
   }
   s.talking = g->talking.load();
+  s.busy = g->busy.load();
   s.volume = g->volume.load();
   s.mic_gain_db = g->mic_gain_tenths.load() / 10.0f;
   s.mic_channel = g->config.mic_channel;

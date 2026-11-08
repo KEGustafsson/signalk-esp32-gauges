@@ -45,6 +45,11 @@ std::vector<int16_t> frames(Cue cue) {
         gap(&out, 60);
       }
       break;
+    case Cue::kBusy:
+      tone(&out, 350.0f, 50);
+      gap(&out, 50);
+      tone(&out, 350.0f, 50);
+      break;
   }
   // Pad to whole frames.
   const size_t rem = out.size() % audio::kFrameSamples;

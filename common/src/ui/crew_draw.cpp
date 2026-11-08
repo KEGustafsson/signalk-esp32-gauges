@@ -148,6 +148,8 @@ std::string crew_status_text(const CrewView& view) {
     if (!talkers.empty()) talkers += ", ";
     talkers += m.name;
   }
+  // Held, but someone else has the channel.
+  if (view.busy) return talkers.empty() ? "CHANNEL BUSY" : "BUSY: " + talkers;
   if (!talkers.empty()) return talkers + " TALKING";
   return view.muted ? "ON CHANNEL  " LV_SYMBOL_MUTE : "ON CHANNEL";
 }
@@ -156,6 +158,7 @@ uint32_t crew_status_color(const CrewView& view) {
   switch (view.state) {
     case RadioState::kOnChannel:
       if (view.transmitting) return crew_color::kTransmit;
+      if (view.busy) return crew_color::kWarn;
       return view.anyone_talking() ? crew_color::kTalk : crew_color::kQuiet;
     case RadioState::kSelfTestFailed:
     case RadioState::kNoAudio:

@@ -18,12 +18,16 @@
 // (its Ingress is the only one, so every packet still passes the one receive
 // pipeline), and out, from cr-net (hellos, the bridge) and cr-audio (this
 // node's voice). A packet that finds a ring full is dropped and counted.
+// cr-rns never waits on the socket (2026-11-08): its writes go into a buffer
+// of its own, voice too old or behind a backlog is dropped, and it takes a
+// few packets a pass, so its socket is always read (one node that stops
+// reading stalls rnsd's TCP server for every member).
 //
 // The connection is opened only while the clock is trusted and the memory
 // guard leaves Reticulum on (the first thing it sheds), and re-opened after
 // 1 s doubling to 15 s, reset once a connection has held 30 s. A connection
 // that dies without a word is noticed by the node's silence rules; TCP
-// keep-alives and a 2 s send time-out do the rest. cr-rns is not under the
+// keep-alives and 10 s without the socket taking a byte do the rest. cr-rns is not under the
 // Supervisor: its waits are a DNS lookup and a connect, longer than the
 // Supervisor's 2 s by design, and each is bounded. It leaves when the radio
 // stops for good, closing its links first.
@@ -53,6 +57,7 @@ struct ReticulumStatus {
   uint32_t reconnects = 0;
   uint32_t tx = 0, rx = 0;           // Channel packets
   uint32_t dropped_in = 0, dropped_out = 0;  // Rings full
+  uint32_t dropped_late = 0;  // Voice too old to send, or behind a backlog
   uint32_t announces = 0, takeovers = 0, unproven = 0;
 };
 
@@ -71,12 +76,17 @@ struct Config {
 // runs on the WLAN alone).
 bool start(const Config& config);
 
-// A sealed channel packet for every confirmed link (any task). False when
-// there is no link to take it, or the ring is full.
-bool send(const uint8_t* packet, size_t len);
-// One sealed channel packet that came over Reticulum, into out (cap bytes):
-// its length, or 0 when none is waiting. cr-net only.
-size_t receive(uint8_t* out, size_t cap);
+// A sealed channel packet for every confirmed link but those set_skip()
+// names (any task). False when there is no link to take it, or the ring is
+// full. `voice`: dropped rather than sent late (kVoiceMaxAgeMs, a backlog).
+bool send(const uint8_t* packet, size_t len, bool voice);
+// Split horizon (core/forwarder.h): the link `tag` in `slot` is not sent on
+// (0: the slot's link is). cr-net only.
+void set_skip(int slot, uint32_t tag);
+// One sealed channel packet that came over Reticulum, into out (cap bytes),
+// and the tag of the link it came on: its length, or 0 when none is
+// waiting. cr-net only.
+size_t receive(uint8_t* out, size_t cap, uint32_t* link_tag);
 // Connected to the transport node: what this node's hellos may claim.
 bool connected();
 // At least one confirmed link.

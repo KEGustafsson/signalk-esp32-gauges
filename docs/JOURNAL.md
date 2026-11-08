@@ -1559,3 +1559,34 @@ reads (as it reads the volume), and the halo and the Crew page look every
 between the fingers and the screen: the 20 ms touch sample and the key's
 40 ms debounce, and on the 4" one LVGL pass (about 100 ms) for the
 redraw, during which the touch is not sampled either.
+
+## 2026-11-08 — Two talkers at once: the radio under load
+
+Two crew talking at the same time dropped every client (the plugin, the
+phones, the 4" units) off the Reticulum hub, and the starboard 4" restarted
+twice (20:59, 21:06): the task watchdog, CPU 0 without a moment of idle for
+5 s, cr-audio in the echo canceller when it fired. Each time the memory
+guard had just shed Reticulum and cr-rns never answered ("paused" missing
+from the log): it was stuck in its loop of blocking sends. Two research
+passes, over crew-radio's app and plugin and over RNS 1.6.0's source:
+
+- each 20 ms frame is sealed and written separately on every Reticulum
+  link (TCP_NODELAY, one segment, one ESP-Hosted DMA buffer each);
+- every node on the boat's WLAN that is also on Reticulum bridged every
+  frame again, and the boat's nodes were linked to each other through the
+  hub too: about ten copies of a frame through the hub for one talker;
+- rnsd's TCPServerInterface forwards from one thread with a blocking
+  `sendall`: one client that stops reading stalls it for all, its queue of
+  1024 overflows in about 2 s and the keep-alives go with it;
+- the plugin's and the app's backlog rules then redialled, which drops
+  every link of that node.
+
+One rule set for all three clients (crew-radio branch `radio-under-load`,
+this repo the same): one forwarder per boat chosen from the hellos' new
+bits, split horizon on Reticulum, voice dropped rather than sent late and
+no redial on a backlog, and channel busy (listen before talk, the higher
+id gives way in a collision, an override after 1 s held). Here:
+`core/forwarder.*`, `core/channel_floor.*`, link tags through
+`ReticulumNode`, a cr-rns that never waits on its socket, the busy cue,
+and "CHANNEL BUSY" on the halo and the Crew page. The hub: BackboneInterface
+(already in rnsd 1.5.4, egress control included).

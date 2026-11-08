@@ -181,12 +181,14 @@ void ReticulumNode::close_all() {
   }
 }
 
-bool ReticulumNode::send(const uint8_t* packet, size_t len) {
+bool ReticulumNode::send(const uint8_t* packet, size_t len, const Skip* skip) {
   if (!connected_) return false;
   bool sent = false;
   size_t lens[carry::kMaxParts];
-  for (Entry& e : entries_) {
+  for (int i = 0; i < kMaxLinks; i++) {
+    Entry& e = entries_[i];
     if (!e.used || !e.link.active() || !e.confirmed) continue;
+    if (skip != nullptr && skip->skip(tag_of(i, e.epoch))) continue;
     const size_t n = carry::cut(packet, len, e.cut_id++, parts_, lens);
     size_t written = 0;
     for (size_t i = 0; i < n; i++) {
@@ -385,7 +387,9 @@ void ReticulumNode::on_data(const Packet& p, int64_t now, Sink* sink) {
   if (!e->joiner.push(plain_, plain_len, &whole, &whole_len)) return;
   if (!e->allow(now)) return;
   c_.rx++;
-  if (sink != nullptr) sink->packet(whole, whole_len);
+  if (sink != nullptr) {
+    sink->packet(whole, whole_len, tag_of((int)(e - entries_), e->epoch));
+  }
 }
 
 void ReticulumNode::on_key_proof(Entry& e, const uint8_t* payload, size_t len,
@@ -513,6 +517,9 @@ int ReticulumNode::add_link(const Link& link, const uint8_t* peer,
     e.proof_at = 0;
     e.joiner.reset();
     e.cut_id = 0;
+    e.epoch = next_epoch_;
+    next_epoch_ = (next_epoch_ + 1) & 0xFFFFFFu;
+    if (next_epoch_ == 0) next_epoch_ = 1;  // A tag is never 0
     e.tokens_milli = (int64_t)kLinkBurst * 1000;
     e.refilled = now;
     return i;

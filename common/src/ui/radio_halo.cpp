@@ -54,7 +54,7 @@ void RadioHalo::set(const CrewView& view) {
     relayed = relayed || m.relayed;
     reticulum = reticulum || m.reticulum;
   }
-  lit_ = on && (view.transmitting || !top.empty());
+  lit_ = on && (view.transmitting || view.busy || !top.empty());
   dashed_ = false;
   const bool pip_same = drawn_once_ && view.state == pip_state_ &&
                         view.muted == pip_muted_;
@@ -73,6 +73,15 @@ void RadioHalo::set(const CrewView& view) {
     accent_ = crew_color::kTransmit;
     top = "TALKING";
     bottom = std::to_string(view.members.size()) + " LISTENING";
+  } else if (view.busy) {
+    // The key held while someone else has the channel: who, and why
+    // nothing goes out.
+    accent_ = crew_color::kWarn;
+    if (top.empty()) {
+      top = "CHANNEL BUSY";
+    } else {
+      bottom = "CHANNEL BUSY";
+    }
   } else {
     accent_ = view.muted ? crew_color::kUnlit : crew_color::kTalk;
     dashed_ = relayed || reticulum;

@@ -33,6 +33,13 @@ struct Hello {
   static constexpr uint8_t kBluetooth = 2;
   static constexpr uint8_t kAware = 4;
   static constexpr uint8_t kReticulum = 8;
+  // crew-radio's "radio under load" bits (forwarder.h): connected to the
+  // Reticulum hub now; would rather be the boat's forwarder (the plugin);
+  // would rather not be (this node: little RAM). A decoder ignores bits it
+  // does not know, so old nodes read these hellos as before.
+  static constexpr uint8_t kRnsUp = 0x10;
+  static constexpr uint8_t kFwdPrefer = 0x20;
+  static constexpr uint8_t kFwdAvoid = 0x40;
 
   // Writes at most kMaxSize bytes; the name is cut to kMaxNameBytes on a code
   // point boundary. Returns the length written.

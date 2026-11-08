@@ -211,6 +211,14 @@ static std::vector<RadioScene> radio_scenes() {
   v = sample_view();
   v.transmitting = true;
   s.push_back({"transmitting", "stbd_rpm", v});
+  // The key held while PEKKA has the channel (core/channel_floor.h).
+  v = sample_view();
+  member(v, "PEKKA")->talking = true;
+  v.busy = true;
+  s.push_back({"busy", "stbd_rpm", v});
+  v = sample_view();
+  v.busy = true;
+  s.push_back({"busy_nobody", "stbd_rpm", v});
   v = sample_view();
   v.state = RadioState::kNoClock;
   s.push_back({"no_clock", "speed", v});
@@ -219,6 +227,10 @@ static std::vector<RadioScene> radio_scenes() {
   v = sample_view();
   member(v, "PEKKA")->talking = true;
   s.push_back({"crew_receiving", "crew", v});
+  v = sample_view();
+  member(v, "PEKKA")->talking = true;
+  v.busy = true;
+  s.push_back({"crew_busy", "crew", v});
   v = sample_view();
   v.muted = true;
   member(v, "LISA")->bars = 1;

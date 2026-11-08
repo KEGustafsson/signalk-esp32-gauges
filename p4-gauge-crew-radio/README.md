@@ -117,6 +117,18 @@ with three low beeps, and it stays cut until everything is let go: a button
 shorted by spray or a hand resting on the screen would otherwise hold the
 channel for the whole crew (`core/talk_key.h`).
 
+**One talker at a time** (`core/channel_floor.h`, the same rule as the
+app's and the plugin's). Pressed while someone else is heard, the key does
+not key: two short low beeps, and the halo and the Crew page turn amber
+with "CHANNEL BUSY" and who has it. Held on through the beeps for 1 s, it
+keys anyway (an urgent call talks over). Two pressed at once (within the
+network's delay) each hear the other's first frames while talking: the one
+whose sender id is higher, as an unsigned number, gives way at once with
+the same beeps, its mic off until let go. Both ends compare the same two
+ids, so exactly one keeps the channel on every node. No message and no
+change on the wire. In half duplex only, as on the phones: with Full
+duplex on, the unit is an open intercom that mixes talkers on purpose.
+
 Save, then restart the unit. The Status page's **Crew radio** group shows
 the state (`On channel`, `No clock`, `No network` (neither the WLAN nor
 Reticulum up), `No channel key`, `Self-test failed`, `No audio`,
@@ -368,6 +380,33 @@ ported rule for rule into `src/core/rns/` and checked against the same
   the plugin's to answer and are dropped here.
 - **Opus over Reticulum.** A PCM frame is two link packets; the phones play
   it, but Opus (the default) is one.
+- **Under load** (2026-11-08, crew-radio's shared rules). Two talkers at
+  once used to drop every client off the hub and restart a 4": each 20 ms
+  frame went separately on every link, every node on the boat's WLAN
+  bridged it again, the boat's own nodes were linked to each other through
+  the hub as well (about ten copies of a frame through the hub for one
+  talker), cr-rns sat in blocking sends, and rnsd's TCP server, which
+  forwards from one thread with a blocking `sendall`, stalled for everyone
+  behind the one node that stopped reading. Now:
+  - **One forwarder per boat** (`core/forwarder.h`). Hellos carry three
+    more transport bits: `0x10` connected to the hub now, `0x20` would
+    rather forward (the plugin), `0x40` would rather not (this node). From
+    the unrelayed hellos it hears on the WLAN every node picks the same
+    forwarder (rank, then the lowest id); only it bridges audio, and from
+    the WLAN only for a talker not on Reticulum itself.
+  - **Split horizon**: nothing goes over Reticulum to a link whose far end
+    is heard on the WLAN (learnt from the first packet that came on the
+    link straight from its sender; `ReticulumNode::Skip`, link tags).
+  - **cr-rns never waits** (`esp/reticulum_link.cpp`): its writes go into
+    16 KB of its own and out as the socket takes them; voice older than
+    200 ms, or behind 4 KB of backlog, is dropped and counted; eight
+    packets a pass at most, the socket read and the memory guard checked
+    between; only 10 s with bytes waiting and none taken closes the
+    connection. cr-audio stops handing voice over once the guard sheds
+    Reticulum.
+  - **The hub**: `type = BackboneInterface` in rnsd's config instead of
+    `TCPServerInterface` (crew-radio's `docs/RETICULUM_HUB.md`): it buffers
+    each client and drops only a stalled one's frames.
 
 ## Phases
 

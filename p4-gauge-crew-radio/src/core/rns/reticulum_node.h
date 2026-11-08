@@ -64,9 +64,24 @@ class ReticulumNode {
   class Sink {
    public:
     virtual ~Sink() = default;
-    // One sealed channel packet that came on a confirmed link.
-    virtual void packet(const uint8_t* p, size_t len) = 0;
+    // One sealed channel packet that came on a confirmed link; `link_tag`
+    // names that link (link_tag()).
+    virtual void packet(const uint8_t* p, size_t len, uint32_t link_tag) = 0;
   };
+  // Which links send() leaves out: split horizon (core/forwarder.h), the
+  // links whose far end hears this node on its own WLAN.
+  class Skip {
+   public:
+    virtual ~Skip() = default;
+    virtual bool skip(uint32_t link_tag) const = 0;
+  };
+  // A link's tag: its slot in the top 8 bits, that slot's epoch below (a new
+  // one each time the slot takes a link, never 0), so a slot reused is not
+  // taken for the link it held before. The layout of
+  // Forwarder::make_tag().
+  static constexpr uint32_t tag_of(int slot, uint32_t epoch) {
+    return ((uint32_t)slot << 24) | (epoch & 0xFFFFFFu);
+  }
 
   static constexpr int64_t kIdleAnnounceMs = 5 * 60000;
   static constexpr int64_t kFallbackMs = 5000;
@@ -120,9 +135,9 @@ class ReticulumNode {
   void disconnected(int64_t now);
   // Closes every link politely before the connection goes.
   void close_all();
-  // A sealed channel packet on every confirmed link. True when it went
-  // anywhere.
-  bool send(const uint8_t* packet, size_t len);
+  // A sealed channel packet on every confirmed link `skip` does not leave
+  // out. True when it went anywhere.
+  bool send(const uint8_t* packet, size_t len, const Skip* skip = nullptr);
   // One Reticulum packet from the transport node.
   void on_frame(const uint8_t* raw, size_t len, int64_t now, Sink* sink);
   // Once a second: announces due, requests and links timed out, redials,
@@ -169,6 +184,7 @@ class ReticulumNode {
     int64_t proof_at = 0;
     carry::Joiner joiner;
     uint8_t cut_id = 0;
+    uint32_t epoch = 0;  // tag_of()
     int64_t tokens_milli = 0;
     int64_t refilled = 0;
     bool allow(int64_t now);
@@ -252,6 +268,7 @@ class ReticulumNode {
   Gate request_gate_;
 
   bool connected_ = false;
+  uint32_t next_epoch_ = 1;
   int64_t last_announce_ = 0;
   AnnounceBudget budget_;
   // Links others dialled that proved the key: a newcomer that did dial us

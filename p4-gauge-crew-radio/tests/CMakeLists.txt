@@ -90,6 +90,7 @@ add_executable(crew_radio_tests
   test_rns_node.cpp
   test_levels.cpp
   test_voice.cpp
+  test_under_load.cpp
   ${SRC}/core/packet.cpp
   ${SRC}/core/hello.cpp
   ${SRC}/core/channel_crypto.cpp
@@ -113,6 +114,8 @@ add_executable(crew_radio_tests
   ${SRC}/core/mic.cpp
   ${SRC}/core/levels.cpp
   ${SRC}/core/voice.cpp
+  ${SRC}/core/forwarder.cpp
+  ${SRC}/core/channel_floor.cpp
   ${SRC}/core/rns/curve25519.cpp
   ${SRC}/core/rns/rns_crypto.cpp
   ${SRC}/core/rns/rns_packet.cpp
