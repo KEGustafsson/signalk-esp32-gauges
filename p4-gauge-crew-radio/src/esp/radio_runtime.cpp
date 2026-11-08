@@ -441,6 +441,11 @@ struct AudioBuffers {
   int16_t pair[2 * audio::kFrameSamples];
 };
 
+// cr-audio: one 20 ms frame a pass, clocked by the I2S DMA. What came in is
+// decoded into the mixer and played; the talk key is sampled (its state
+// published to `talking` every frame); the mic is read, cleaned up and,
+// while keyed, encoded and sent. Once a second it sweeps the decoders and
+// copies its counters to the status. `arg` is the generation it runs for.
 void audio_task(void* arg) {
   const uint32_t gen = (uint32_t)(uintptr_t)arg;
   int16_t out[audio::kFrameSamples];
@@ -1092,6 +1097,10 @@ void set_voice(bool echo_cancel, int noise_suppress_db, bool full_duplex) {
   g->full_duplex.store(full_duplex);
 }
 
+// A copy of the radio's status for the screen and the card, from any task:
+// the tasks' once-a-second copy, taken under its lock, with what is kept
+// apart from it (the talk key's state, the levels and the mic's cleanup)
+// read as it is now.
 RadioStatus status() {
   RadioStatus s;
   if (g == nullptr) return s;
