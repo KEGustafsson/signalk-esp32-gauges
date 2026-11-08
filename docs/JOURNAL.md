@@ -1590,3 +1590,25 @@ id gives way in a collision, an override after 1 s held). Here:
 `ReticulumNode`, a cr-rns that never waits on its socket, the busy cue,
 and "CHANNEL BUSY" on the halo and the Crew page. The hub: BackboneInterface
 (already in rnsd 1.5.4, egress control included).
+
+Then the hardware test (22:31-22:59): the Android talking, a 4" held
+through the busy cue and talking over it. Both 4" units restarted on the
+task watchdog again, 12-36 s into talking over, with Reticulum up and the
+network tasks at 1-3 % of core 0. A watch of core 0's idle time (cr-cpu,
+on core 1) gave the cause: cr-audio at 89-97 % of core 0, its Opus encodes
+18-27 ms of a 20 ms frame, a whole pass 23-37 ms. The encoder's state is in
+PSRAM, behind the 128 KB cache the display's drawing on core 1 shares; a
+busy screen (the halo lit for the other talker) slows it several times
+over. So:
+
+- `core/encode_budget.*`: every encode timed; a 200 ms window with one over
+  10 ms steps Opus's complexity down one (5 to 0 at the least), never back
+  up while the radio runs. The same Opus to every receiver.
+- A safety valve in cr-audio: ten passes in a row with more work than a
+  frame, and it gives core 0 a tick; the audio may stutter, the unit stays
+  up.
+- cr-cpu logs `core 0 idle N%` (with cr-audio's longest pass and encode)
+  only when idle is under 15 %. Its first form walked every task's state
+  each second, which held the kernel long enough to make both 4" screens
+  flicker for a moment every so often; it now reads the idle task's counter
+  alone.

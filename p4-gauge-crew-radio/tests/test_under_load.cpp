@@ -2,6 +2,7 @@
 // The radio under load (crew-radio's shared rules, 2026-11-08): one
 // forwarder per boat, split horizon on Reticulum, and channel busy.
 #include "core/channel_floor.h"
+#include "core/encode_budget.h"
 #include "core/forwarder.h"
 #include "test.h"
 
@@ -207,4 +208,33 @@ TEST(floor_ignores_own_frames_and_old_talkers) {
   CHECK(fl.sample(true, false, 1000, &may) == ChannelFloor::Event::kNone);
   CHECK(fl.sample(true, true, 1020, &may) == ChannelFloor::Event::kNone);
   CHECK(may);
+}
+
+// ---- the encoder's budget (encode_budget.h) -------------------------------
+
+TEST(encode_budget_steps_down_on_a_slow_window_only) {
+  EncodeBudget b(5);
+  for (int i = 0; i < EncodeBudget::kWindow; i++) CHECK(!b.took(4000));
+  CHECK(b.complexity() == 5);  // Fast enough
+  bool changed = false;
+  for (int i = 0; i < EncodeBudget::kWindow; i++) {
+    changed = b.took(i == 3 ? EncodeBudget::kHighUs + 1 : 4000) || changed;
+  }
+  CHECK(changed && b.complexity() == 4);  // One slow frame in the window
+  // Exactly at the limit is not over it.
+  for (int i = 0; i < EncodeBudget::kWindow; i++) b.took(EncodeBudget::kHighUs);
+  CHECK(b.complexity() == 4);
+}
+
+TEST(encode_budget_stops_at_zero_and_never_steps_up) {
+  EncodeBudget b(2);
+  for (int w = 0; w < 5; w++) {
+    for (int i = 0; i < EncodeBudget::kWindow; i++) b.took(25000);
+  }
+  CHECK(b.complexity() == 0);
+  for (int i = 0; i < EncodeBudget::kWindow; i++) CHECK(!b.took(25000));
+  for (int w = 0; w < 5; w++) {
+    for (int i = 0; i < EncodeBudget::kWindow; i++) b.took(100);
+  }
+  CHECK(b.complexity() == 0);
 }

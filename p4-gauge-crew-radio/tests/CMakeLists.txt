@@ -116,6 +116,7 @@ add_executable(crew_radio_tests
   ${SRC}/core/voice.cpp
   ${SRC}/core/forwarder.cpp
   ${SRC}/core/channel_floor.cpp
+  ${SRC}/core/encode_budget.cpp
   ${SRC}/core/rns/curve25519.cpp
   ${SRC}/core/rns/rns_crypto.cpp
   ${SRC}/core/rns/rns_packet.cpp

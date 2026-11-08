@@ -33,6 +33,10 @@ int OpusFrameEncoder::encode(const int16_t frame[audio::kFrameSamples],
   return n > 0 ? n : -1;
 }
 
+void OpusFrameEncoder::set_complexity(int complexity) {
+  if (enc_ != nullptr) opus_encoder_ctl(enc_, OPUS_SET_COMPLEXITY(complexity));
+}
+
 void OpusFrameEncoder::reset() {
   if (enc_ != nullptr) opus_encoder_ctl(enc_, OPUS_RESET_STATE);
 }

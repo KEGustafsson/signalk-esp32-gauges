@@ -41,6 +41,7 @@
 #include "core/spsc_ring.h"
 #include "core/supervisor.h"
 #include "core/channel_floor.h"
+#include "core/encode_budget.h"
 #include "core/talk_key.h"
 #include "core/tones.h"
 #include "core/transmitter.h"
@@ -74,6 +75,8 @@ constexpr int kSlotMic2 = 2;
 
 constexpr int kCore = 0;
 constexpr UBaseType_t kAudioPriority = 17;
+// Passes in a row over a frame's time before cr-audio steps aside a tick.
+constexpr int kOverrunPasses = 10;
 constexpr UBaseType_t kNetPriority = 16;
 constexpr UBaseType_t kBeatPriority = 3;
 // A touch sample older than this is a release. The loop samples every 20 ms
@@ -115,6 +118,10 @@ struct Shared {
   // once-a-second copy of the status.
   std::atomic<bool> talking{false};
   std::atomic<bool> busy{false};  // RadioStatus::busy
+  // cr-audio's longest pass of work (its I2S waits left out) and its longest
+  // Opus encode since cr-cpu last looked, in us: what core 0 has to spare.
+  std::atomic<int> audio_work_max_us{0};
+  std::atomic<int> encode_max_us{0};
   Supervisor supervisor;
   std::atomic<bool> clock_ok{false};
   std::atomic<uint8_t> shed{0};
@@ -488,6 +495,9 @@ void audio_task(void* arg) {
   TalkKey key;
   BurstFloor floor;
   ChannelFloor channel(g->self_id);
+  EncodeBudget budget(OpusFrameEncoder::kComplexity);
+  int overruns = 0;      // Passes in a row with more work than a frame
+  int64_t gave_ms = 0;   // When the last "gave core 0 a moment" was logged
   TxSocket tx;
   int timeouts = 0;
   int level = 0;
@@ -518,6 +528,8 @@ void audio_task(void* arg) {
   g->supervisor.arm(kSlotAudio, mono_ms());
   while (g->generation.load() == gen) {
     const int64_t now = mono_ms();
+    const int64_t pass_us = esp_timer_get_time();
+    int64_t waited_us = 0;  // In the I2S calls, which are the loop's clock
     g->supervisor.checkin(kSlotAudio, now);
 
     // The levels, when the screen or the card changed them: a few I2C
@@ -633,6 +645,7 @@ void audio_task(void* arg) {
       words[2 * i] = words[2 * i + 1] = (int32_t)((uint32_t)(uint16_t)out[i] << 16);
     }
     size_t moved = 0;
+    const int64_t io_us = esp_timer_get_time();
     i2s_channel_write(g->tx, words, word_bytes, &moved, pdMS_TO_TICKS(200));
     bool heard = false;
     if (g->rx != nullptr) {
@@ -641,6 +654,7 @@ void audio_task(void* arg) {
                                pdMS_TO_TICKS(40)) == ESP_OK &&
               moved == word_bytes;
     }
+    waited_us += esp_timer_get_time() - io_us;
     if (heard) {
       mic::unpack_tdm(words, buf->slots);
       for (size_t i = 0; i < audio::kFrameSamples; i++) {
@@ -665,8 +679,18 @@ void audio_task(void* arg) {
     // (Not after giving way: off at once, not after the key's release.)
     if (heard && key.talking() && floor_ok) {
       PeerView v;
+      const int64_t enc_us = esp_timer_get_time();
       const size_t n = g->transmitter->build(g->encoder.get(), mono,
                                              (int64_t)time(nullptr), pkt);
+      const int took_us = (int)(esp_timer_get_time() - enc_us);
+      if (took_us > g->encode_max_us.load()) g->encode_max_us.store(took_us);
+      // Too slow for the frame (the encoder's state is in PSRAM, behind the
+      // cache the display shares): a lighter encode from the next frame.
+      if (budget.took(took_us)) {
+        g->encoder->set_complexity(budget.complexity());
+        ESP_LOGW(kTag, "Opus encodes took up to %d us: complexity %d now",
+                 took_us, budget.complexity());
+      }
       if (n > 0 && g->peers.read(&v) && tx.ensure(v.ip)) {
         // The group copies while no peer is known, and for the first frames
         // of each burst unless the memory guard has shed them.
@@ -738,6 +762,26 @@ void audio_task(void* arg) {
       voice_sum_us = 0;
       voice_frames = 0;
     }
+    const int work_us =
+        (int)(esp_timer_get_time() - pass_us - waited_us);
+    if (work_us > g->audio_work_max_us.load()) {
+      g->audio_work_max_us.store(work_us);
+    }
+    // The safety valve: more work than a frame, pass after pass, and the I2S
+    // calls never wait, so this task (priority 17) would hold core 0 until
+    // the task watchdog restarts the unit. A tick off then: the audio may
+    // stutter, the unit stays up (the radio is a guest).
+    overruns = work_us >= (int)audio::kFrameMs * 1000 ? overruns + 1 : 0;
+    if (overruns >= kOverrunPasses) {
+      overruns = 0;
+      if (now - gave_ms >= 60000) {
+        gave_ms = now;
+        ESP_LOGW(kTag, "cr-audio behind (%d us of work a frame): giving core "
+                       "0 a moment",
+                 work_us);
+      }
+      vTaskDelay(1);
+    }
   }
   tx.close_it();
   g->mixer->set_gain(1.0f);
@@ -749,6 +793,7 @@ void audio_task(void* arg) {
 }
 
 void beat_task(void*);
+void cpu_task(void*);
 
 // The tasks, for core/lifecycle.h (which decides; this only does).
 class EspTaskPort : public TaskPort {
@@ -765,6 +810,9 @@ class EspTaskPort : public TaskPort {
       case RadioTask::kBeat:
         if (xTaskCreatePinnedToCore(beat_task, "cr-beat", 4096, nullptr,
                                     kBeatPriority, nullptr, kCore) == pdPASS) {
+          // The core 0 watch, on core 1 so a busy core 0 cannot silence it.
+          xTaskCreatePinnedToCore(cpu_task, "cr-cpu", 4096, nullptr, 4,
+                                  nullptr, 1);
           return true;
         }
         ESP_LOGE(kTag, "The radio's supervisor could not be created");
@@ -833,6 +881,40 @@ void start_sntp_once() {
   esp_sntp_init();
   started = true;
   ESP_LOGI(kTag, "SNTP from %s, then pool.ntp.org", gateway);
+}
+
+// cr-cpu: once a second, how much of the second core 0's idle task had (its
+// run-time counter, in us; one task's, read in a moment). Logged only when
+// it got under kIdleFloor: before the task watchdog (5 s without idle)
+// would restart the unit, the line says how close it is, with cr-audio's
+// longest pass of work and Opus encode in that second. (A walk of every
+// task's state each second, its first form, held the kernel long enough to
+// make the 4"'s screen flicker now and then: 2026-11-08.)
+void cpu_task(void*) {
+  constexpr int kIdleFloor = 15;  // Percent
+  TaskHandle_t idle = xTaskGetIdleTaskHandleForCore(0);
+  uint32_t idle_before = 0;
+  int64_t at_before = 0;
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    TaskStatus_t st;
+    vTaskGetInfo(idle, &st, pdFALSE, eInvalid);
+    const int64_t at = esp_timer_get_time();
+    const uint32_t idle_us = st.ulRunTimeCounter - idle_before;  // Wraps safely
+    const int64_t window = at - at_before;
+    const bool first = at_before == 0;
+    idle_before = st.ulRunTimeCounter;
+    at_before = at;
+    const int audio_us = g->audio_work_max_us.exchange(0);
+    const int enc_us = g->encode_max_us.exchange(0);
+    if (first || window <= 0) continue;
+    const int idle_pct = (int)((int64_t)idle_us * 100 / window);
+    if (idle_pct >= kIdleFloor) continue;
+    ESP_LOGW(kTag,
+             "core 0 idle %d%%; cr-audio work max %d us/frame, encode max "
+             "%d us",
+             idle_pct, audio_us, enc_us);
+  }
 }
 
 void beat_task(void*) {
