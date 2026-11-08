@@ -87,10 +87,34 @@ uint32_t slow_pass_ms[kSlowPassesToRestart] = {};
 uint32_t slow_passes = 0;  // Recorded so far, at most kSlowPassesToRestart
 uint32_t slow_pass_next = 0;
 
-// The longest pass of each side of the loop since the last "loop" log line:
-// how close to a stall the gauge runs, not only when it crosses one.
+// The serial log is read over hours: report the state every 10 minutes and a
+// stall as it happens, but not every stall of a busy page (the 4" port
+// unit's dials gave 177 lines of 150-250 ms in 13 h, 2026-11-08).
+constexpr uint32_t kReportMs = 10 * 60 * 1000;
+// A pass this long means the loop stalls (touch feels slow).
+constexpr uint32_t kStallMs = 150;
+// Every pass this long is logged; a shorter stall only when it is its side's
+// first since the last report (the report counts them all).
+constexpr uint32_t kAlwaysLogStallMs = 1000;
+
+// The longest pass of each side of the loop since the last "loop" log line,
+// and how many stalled: how close to a stall the gauge runs, not only when
+// it crosses one.
 uint32_t slowest_sensesp_ms = 0;
 uint32_t slowest_lvgl_ms = 0;
+uint32_t stalls_sensesp = 0;
+uint32_t stalls_lvgl = 0;
+
+// Counts a pass of one side of the loop; logs it if it stalled and is worth
+// a line of its own.
+void note_pass(const char* side, uint32_t took, uint32_t& slowest,
+               uint32_t& stalls) {
+  if (took > slowest) slowest = took;
+  if (took < kStallMs) return;
+  if (stalls++ == 0 || took >= kAlwaysLogStallMs) {
+    ESP_LOGW("loop", "%s held the loop for %u ms", side, (unsigned)took);
+  }
+}
 
 void loop_watchdog(bool on) {
   if (on == loop_watchdog_on) return;  // ArduinoOTA may report one error twice
@@ -111,6 +135,10 @@ class WatchdogOffForReset : public sensesp::Resettable {
   void reset() override { loop_watchdog(false); }
 };
 
+// Starts the loop watchdog (kLoopWatchdogMs) and, when the build has an OTA
+// password, takes over ArduinoOTA's callbacks from SensESP: the watchdog
+// off and a notice on screen during an upload, its progress every 10 %,
+// a restart if it fails after starting.
 void start_loop_watchdog() {
   // The framework's other settings kept: core 0's idle task watched, a
   // panic (and a core dump) when it fires.
@@ -124,9 +152,24 @@ void start_loop_watchdog() {
     return;
   }
   sensesp::event_loop()->onDelay(1, []() {
+    // SensESP's own progress callback logs every chunk received: 3300 lines
+    // an upload on the 4". Every 10 % instead.
+    static int ota_logged_tenth = -1;
+    ArduinoOTA.onProgress([](unsigned int done, unsigned int total) {
+      const int tenth = total == 0 ? 0 : (int)((uint64_t)done * 10 / total);
+      if (tenth == ota_logged_tenth) return;
+      ota_logged_tenth = tenth;
+      ESP_LOGI("gauge", "OTA upload %d %%", tenth * 10);
+    });
     ArduinoOTA.onStart([]() {
       ota_started = true;
+      ota_logged_tenth = -1;
       loop_watchdog(false);
+      // The upload holds the loop, so every value from the server overflows
+      // SensESP's queue, one warning each (7600 lines over the 4"'s uploads
+      // so far). The gauge is off the screen meanwhile; a real loss of
+      // readings at any other time still logs.
+      esp_log_level_set("signalk_ws_client.cpp", ESP_LOG_ERROR);
       ESP_LOGW("gauge", "OTA upload started");
       // The upload blocks the loop: replace the gauge with a notice rather
       // than leave its last numbers on screen looking live.
@@ -267,6 +310,9 @@ Identity read_identity(const GaugeAppConfig& config) {
 
 }  // namespace
 
+// Brings the unit up (gauge_app.h): its identity, the gauge UI, SensESP with
+// WiFi, Signal K and OTA, the cards, the link watch, the 10-minute heap and
+// loop report and the loop watchdog. Called once from the board's setup().
 void gauge_app_begin(const GaugeAppConfig& config) {
   // UI first, so the gauge is on screen while WiFi and Signal K connect.
   // Touch only answers once setup() returns and the loop runs, so the boot
@@ -300,6 +346,10 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   ESP_LOGI("boot", "Gauge on screen at %u ms", (unsigned)millis());
 
   link_watch_before_wifi();
+  // SensESP's one info line there ("Not loading configuration: no
+  // config_path specified") is printed for each listener at every boot;
+  // its warnings (a configuration that does not parse) still show.
+  esp_log_level_set("saveable.cpp", ESP_LOG_WARN);
   sensesp::SensESPAppBuilder builder;
   builder.set_hostname(id.hostname.c_str())
       ->set_wifi_clients(wifi_clients(id.address))
@@ -346,9 +396,10 @@ void gauge_app_begin(const GaugeAppConfig& config) {
   sk_data().begin();
   link_watch_begin();
   // Internal DMA RAM is what WiFi runs out of first (on the 4" its link to
-  // the C6 stalls for good when it does): log it once a minute, with the
-  // lowest it has been since boot (a dip between two lines shows there).
-  sensesp::event_loop()->onRepeat(60000, []() {
+  // the C6 stalls for good when it does): log it every 10 minutes, with the
+  // lowest it has been since boot (a dip between two lines shows there; the
+  // radio's memory guard logs one it acts on when it happens).
+  sensesp::event_loop()->onRepeat(kReportMs, []() {
     ESP_LOGI("heap",
              "DMA RAM %u KB free (lowest %u KB, largest block %u KB), "
              "PSRAM %u KB",
@@ -357,26 +408,29 @@ void gauge_app_begin(const GaugeAppConfig& config) {
              (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_DMA) >> 10),
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >> 10));
     ESP_LOGI("loop",
-             "Slowest pass in the last minute: LVGL %u ms, SensESP %u ms",
-             (unsigned)slowest_lvgl_ms, (unsigned)slowest_sensesp_ms);
+             "Slowest pass in the last 10 min: LVGL %u ms, SensESP %u ms; "
+             "passes of %u ms or more: LVGL %u, SensESP %u",
+             (unsigned)slowest_lvgl_ms, (unsigned)slowest_sensesp_ms,
+             (unsigned)kStallMs, (unsigned)stalls_lvgl,
+             (unsigned)stalls_sensesp);
     slowest_lvgl_ms = slowest_sensesp_ms = 0;
+    stalls_lvgl = stalls_sensesp = 0;
   });
   start_loop_watchdog();
   ESP_LOGI("boot", "Setup done at %u ms; touch answers from here",
            (unsigned)millis());
 }
 
+// One pass of the loop, from the board's loop(): SensESP's event loop, then
+// LVGL, each timed (note_pass()); SensESP passes that keep taking 4 s or
+// more restart the unit. Sleeps until LVGL's next timer, at most 5 ms.
 void gauge_app_loop() {
-  // Anything that holds the loop this long makes touch feel dead: log it,
-  // with the side that held it.
-  constexpr uint32_t kStallMs = 150;
+  // Anything that holds the loop kStallMs or more makes touch feel dead:
+  // counted, and logged with the side that held it (note_pass()).
   uint32_t start = millis();
   sensesp::event_loop()->tick();
   uint32_t took = millis() - start;
-  if (took > slowest_sensesp_ms) slowest_sensesp_ms = took;
-  if (took >= kStallMs) {
-    ESP_LOGW("loop", "SensESP held the loop for %u ms", (unsigned)took);
-  }
+  note_pass("SensESP", took, slowest_sensesp_ms, stalls_sensesp);
   if (took >= kSlowPassMs && !ota_started) {
     const uint32_t now = millis();
     slow_pass_ms[slow_pass_next] = now;
@@ -404,10 +458,7 @@ void gauge_app_loop() {
   start = millis();
   const uint32_t wait_ms = lv_timer_handler();
   took = millis() - start;
-  if (took > slowest_lvgl_ms) slowest_lvgl_ms = took;
-  if (took >= kStallMs) {
-    ESP_LOGW("loop", "LVGL held the loop for %u ms", (unsigned)took);
-  }
+  note_pass("LVGL", took, slowest_lvgl_ms, stalls_lvgl);
   // Sleep until the next LVGL timer is due, but at most 5 ms so SensESP's
   // event loop keeps ticking often.
   delay(wait_ms == 0 ? 1 : (wait_ms < 5 ? wait_ms : 5));

@@ -106,13 +106,19 @@ Expected, not a fault:
 Warnings worth knowing:
 
 - `loop: SensESP held the loop for ... ms` or `LVGL held ...`: something
-  stalled the loop for 150 ms or more (touch feels slow). An occasional one
-  during WiFi connect is normal; a steady stream is not.
-- `loop: Slowest pass in the last minute: LVGL ... ms, SensESP ... ms`,
-  once a minute after the `heap` line: how close the loop came to a stall.
-  Building pages at boot and the first readings make the first minute's
-  high (300-500 ms); after that tens of milliseconds at rest are normal.
-  On the 2.1", a compass card that keeps turning reaches about 140 ms.
+  stalled the loop for 150 ms or more (touch feels slow). Only the first
+  of each side between two reports is logged, and every one of 1 s or
+  more; the report counts them all. An occasional one during WiFi connect
+  is normal; one after every report is not.
+- `loop: Slowest pass in the last 10 min: LVGL ... ms, SensESP ... ms;
+  passes of 150 ms or more: LVGL n, SensESP n`, every 10 minutes after the
+  `heap` line: how close the loop came to a stall, and how often it
+  stalled. Building pages at boot and the first readings make the first
+  report's high (300-500 ms); after that tens of milliseconds at rest are
+  normal (about 100 ms on the 4"). On the 2.1", a compass card that keeps
+  turning reaches about 140 ms.
+- `gauge: OTA upload 0 %` ... `100 %`: an update, every 10 %. The values
+  the server sends meanwhile are dropped without a line each.
 - `loop: SensESP held the loop over 4 s 3 times in 60 s (a WiFi link not
   answering?): restarting`: the loop kept waiting on calls that time out
   (on the 4": requests to its WiFi chip). The restart is deliberate; if it
