@@ -9,6 +9,8 @@ NetNode::NetNode(const uint8_t key[ChannelCrypto::kKeyBytes], int32_t self_id,
                  const Config& config)
     : crypto_(key), config_(config), self_(self_id) {}
 
+// One packet from the WLAN or Reticulum: admitted (authentic, fresh, first copy),
+// learnt from (local peers, link far ends), played, and where a copy goes.
 bool NetNode::on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
                         int64_t now_ms, int64_t now_s, Audio* audio,
                         Relay* relay, uint32_t link_tag) {
@@ -48,9 +50,11 @@ bool NetNode::on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
   bool to_lan = via == Via::kReticulum;
   bool to_reticulum = via == Via::kLan;
   if (h.codec != Codec::kHello) {
+    const bool local_direct = via == Via::kReticulum && h.hops == h.ttl &&
+                              forwarder_.is_local(h.sender_id, now_ms);
     const Forwarder::Route route = Forwarder::audio_route(
         via == Via::kLan, is_forwarder(now_ms),
-        forwarder_.local_rns_up(h.sender_id, now_ms));
+        forwarder_.local_rns_up(h.sender_id, now_ms), local_direct);
     to_lan = route.to_lan;
     to_reticulum = route.to_reticulum;
   }

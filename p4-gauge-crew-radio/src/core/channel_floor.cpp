@@ -23,6 +23,8 @@ bool ChannelFloor::busy(int64_t now_ms, int32_t* who) const {
   return true;
 }
 
+// One frame of the talk key: refused while busy, override after kOverrideMs held,
+// yield to a lower id on a collision; *may_talk says whether it may send.
 ChannelFloor::Event ChannelFloor::sample(bool held, bool talking,
                                          int64_t now_ms, bool* may_talk) {
   const bool collided = fresh_;

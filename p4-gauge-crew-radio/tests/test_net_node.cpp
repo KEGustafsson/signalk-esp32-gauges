@@ -346,6 +346,37 @@ TEST(net_the_forwarder_leaves_a_reticulum_talker_to_itself) {
   CHECK(relay.to_reticulum);
 }
 
+// A WLAN talker that is not on Reticulum itself sends there before it knows
+// our link is local; when that copy beats its WLAN copy, the forwarder sends
+// it ashore, or the WLAN copy (a duplicate by then) would never get there.
+TEST(net_the_forwarder_sends_a_wlan_talkers_early_reticulum_copy_ashore) {
+  NetNode::Config c = config("Station");
+  c.relay = true;
+  NetNode b(kKey, 2, c);
+  b.set_transports(kForwarding);
+  NetNode::Audio au;
+  NetNode::Relay first;
+  auto hello = hello_from(71, Hello::kLan | Hello::kReticulum);  // Relay off
+  b.on_packet(hello.data(), hello.size(), NetNode::Via::kLan, 9, 0, kNow, &au,
+              &first);
+  CHECK(b.is_forwarder(0));
+  auto p = sealed_audio(kKey, 71, 1);
+  NetNode::Relay over_rns;
+  CHECK(b.on_packet(p.data(), p.size(), NetNode::Via::kReticulum, 0, 0, kNow,
+                    &au, &over_rns, Forwarder::make_tag(4, 1)));
+  CHECK(over_rns.to_reticulum && over_rns.to_lan);
+  NetNode::Relay over_lan;
+  CHECK(!b.on_packet(p.data(), p.size(), NetNode::Via::kLan, 9, 0, kNow, &au,
+                     &over_lan));  // The duplicate
+  CHECK(!over_lan.to_reticulum && !over_lan.to_lan);
+  // A bridge's copy of it (ttl spent) is not the talker's own: never back.
+  auto relayed = sealed_audio(kKey, 71, 2, Codec::kOpus, 40, kNow, 3);
+  NetNode::Relay bridged;
+  CHECK(b.on_packet(relayed.data(), relayed.size(), NetNode::Via::kReticulum,
+                    0, 0, kNow, &au, &bridged));
+  CHECK(!bridged.to_reticulum && bridged.to_lan);
+}
+
 TEST(net_a_wlan_hello_heard_first_over_reticulum_still_makes_it_local) {
   NetNode b(kKey, 2, config("Station"));
   NetNode::Audio au;

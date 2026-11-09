@@ -1622,3 +1622,17 @@ elected forwarder and leave the boat's voice to nobody. And the encoder's
 budget lives with the encoder: a cr-audio the supervisor restarted began
 again at complexity 5 while the encoder stayed lower, so its next step
 down would have raised it.
+
+CodeRabbit's next review of crew-radio (2026-11-09) found a gap the three
+clients shared. A talker on the boat's WLAN that does not bridge (Relay
+off) sends its own voice over Reticulum as well, to every link but those it
+knows lead aboard; until the forwarder's first packet on that link has told
+it, it sends there too. When that copy reached the forwarder before the
+WLAN copy, the forwarder put it on the WLAN only, then dropped the WLAN
+copy as a duplicate, and a listener ashore with no link of its own to the
+talker missed those frames. Now a frame that comes over Reticulum straight
+from a local talker (hops == ttl) goes on to Reticulum from the forwarder
+as its WLAN copy would have (`Forwarder::audio_route`'s
+`talker_local_direct`), never back on the talker's link; the WLAN copy is
+then the duplicate. The plugin's relay also sent a frame to the LAN or to
+Reticulum, never both; it sends to both when both are due.

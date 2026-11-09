@@ -71,6 +71,14 @@ TEST(forwarder_audio_routes) {
   CHECK(!r.to_reticulum && !r.to_lan);
   r = Forwarder::audio_route(false, true, true);  // From ashore: onto the WLAN
   CHECK(r.to_lan && !r.to_reticulum);
+  // A WLAN talker's own copy over Reticulum, before it knows our link is
+  // local: it goes ashore as its WLAN copy would have.
+  r = Forwarder::audio_route(false, true, false, true);
+  CHECK(r.to_lan && r.to_reticulum);
+  r = Forwarder::audio_route(false, true, true, true);  // It sends its own
+  CHECK(r.to_lan && !r.to_reticulum);
+  r = Forwarder::audio_route(false, false, false, true);  // Not the forwarder
+  CHECK(!r.to_lan && !r.to_reticulum);
 }
 
 // Forwarder split horizon by link tag.

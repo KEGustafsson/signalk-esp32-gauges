@@ -293,6 +293,13 @@ void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
   }
   if (g->shed.load() >= (uint8_t)Shed::kTransmit) return;  // Nothing goes out
   if (relay.to_reticulum) {
+    // A frame that came over Reticulum may have just taught its link's far
+    // end: that link's skip goes now, not at the next 250 ms refresh, so a
+    // local talker's own copy never goes back to it.
+    if (link_tag != 0) {
+      const int slot = Forwarder::tag_slot(link_tag);
+      reticulum::set_skip(slot, node.forwarder().skip_tag(slot, now));
+    }
     reticulum::send(relay.data, relay.len, /*voice=*/!relay.hello);
   }
   if (relay.to_lan && sock.fd >= 0) {

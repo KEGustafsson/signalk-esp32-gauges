@@ -512,6 +512,7 @@ void ReticulumNode::link_to(Peer& peer, int64_t now) {
   }
 }
 
+// Puts a new link in a free slot, with a fresh epoch for its tag; -1 when none is free.
 int ReticulumNode::add_link(const Link& link, const uint8_t* peer,
                             int64_t now) {
   for (int i = 0; i < kMaxLinks; i++) {

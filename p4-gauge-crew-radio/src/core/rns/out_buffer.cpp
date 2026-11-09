@@ -6,6 +6,8 @@
 namespace crewradio {
 namespace rns {
 
+// Appends one framed packet with its time and kind; false (nothing kept) when it
+// does not fit in the bytes or the frame count.
 bool OutBuffer::append(const uint8_t* frame, size_t len, bool voice,
                        int64_t at_ms) {
   if (len == 0 || len > 0xFFFF || len_ + len > kBytes ||

@@ -10,6 +10,7 @@ int Forwarder::rank(uint8_t transports) {
   return 1;
 }
 
+// An unrelayed hello over the WLAN: its sender is local now, with these hello bits.
 void Forwarder::local_hello(int32_t sender, uint8_t transports,
                             int64_t now_ms) {
   Local* slot = nullptr;
@@ -51,6 +52,8 @@ bool Forwarder::local_rns_up(int32_t sender, int64_t now_ms) const {
   return l != nullptr && (l->transports & kRnsUp) != 0;
 }
 
+// The boat's forwarder: of us and the fresh local senders on Reticulum (kRnsUp),
+// the highest rank, then the lowest id as unsigned; false when there is none.
 bool Forwarder::forwarder(int32_t self, uint8_t own, int64_t now_ms,
                           int32_t* id) const {
   bool found = false;
@@ -76,14 +79,19 @@ bool Forwarder::forwarder(int32_t self, uint8_t own, int64_t now_ms,
   return found;
 }
 
+// D2 and D3: only the forwarder bridges; WLAN to Reticulum only for a talker
+// not on Reticulum itself, Reticulum to the WLAN always, and Reticulum to
+// Reticulum only for a WLAN talker's own copy (see forwarder.h).
 Forwarder::Route Forwarder::audio_route(bool from_lan, bool am_forwarder,
-                                        bool talker_rns_up) {
+                                        bool talker_rns_up,
+                                        bool talker_local_direct) {
   Route r;
   if (!am_forwarder) return r;
   if (from_lan) {
     r.to_reticulum = !talker_rns_up;
   } else {
     r.to_lan = true;
+    r.to_reticulum = talker_local_direct && !talker_rns_up;
   }
   return r;
 }

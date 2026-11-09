@@ -19,7 +19,9 @@
 //  - Audio first heard on the WLAN goes to Reticulum only from the
 //    forwarder, and only when its talker is not on Reticulum itself (a
 //    talker that is sends its own voice); audio first heard over Reticulum
-//    goes to the WLAN only from the forwarder. Hellos keep their relay.
+//    goes to the WLAN only from the forwarder, and never back to Reticulum,
+//    but for a WLAN talker's own copy (hops == ttl) that beat its WLAN copy
+//    here: that goes on as the WLAN copy would have. Hellos keep their relay.
 //  - Split horizon: nothing goes over Reticulum to a link whose far end is a
 //    local sender. A link's far end is learnt from the first authentic
 //    packet that came on it straight from its sender (hops == ttl).
@@ -70,12 +72,17 @@ class Forwarder {
   }
 
   // Where audio first heard on `from_lan` (else over Reticulum) goes.
+  // `talker_local_direct`: it came over Reticulum straight from a talker on
+  // our own WLAN (hops == ttl), which sends there before it knows our link is
+  // local; that copy goes on as the WLAN copy would have, or the WLAN copy,
+  // a duplicate by then, would never reach the links ashore.
   struct Route {
     bool to_lan = false;
     bool to_reticulum = false;
   };
   static Route audio_route(bool from_lan, bool am_forwarder,
-                           bool talker_rns_up);
+                           bool talker_rns_up,
+                           bool talker_local_direct = false);
 
   // An authentic packet straight from `sender` came on the link `tag`.
   void link_heard(uint32_t tag, int32_t sender);
