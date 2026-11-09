@@ -30,6 +30,7 @@ void gap(std::vector<int16_t>* out, int ms) {
 
 }  // namespace
 
+// The cue as whole 20 ms frames: keyed, unkeyed, time-out or busy.
 std::vector<int16_t> frames(Cue cue) {
   std::vector<int16_t> out;
   switch (cue) {

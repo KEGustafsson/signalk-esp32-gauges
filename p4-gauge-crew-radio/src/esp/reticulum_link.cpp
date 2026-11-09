@@ -145,6 +145,8 @@ class SocketWriter : public rns::ReticulumNode::Writer {
     voice_ = voice;
     at_ms_ = at_ms;
   }
+  // Frames one Reticulum packet into the output buffer, as voice or control
+  // (set_voice).
   void write(const uint8_t* raw, size_t len) override {
     if (fd < 0 || broken) return;
     const size_t n = rns::frame(raw, len, frame_);
@@ -183,6 +185,8 @@ class SocketWriter : public rns::ReticulumNode::Writer {
 // The links cr-net says not to send on (split horizon).
 class SkipView : public rns::ReticulumNode::Skip {
  public:
+  // True when cr-net has marked this link's slot and epoch as one not to send
+  // on.
   bool skip(uint32_t tag) const override {
     const int slot = (int)(tag >> 24);
     return slot < rns::ReticulumNode::kMaxLinks && g->skip[slot].load() == tag;
@@ -191,6 +195,8 @@ class SkipView : public rns::ReticulumNode::Skip {
 
 class RingSink : public rns::ReticulumNode::Sink {
  public:
+  // One channel packet from a confirmed link into the ring for cr-net, its link
+  // tag ahead of it.
   void packet(const uint8_t* p, size_t len, uint32_t link_tag) override {
     // A joined carry packet can be up to 1284 bytes; nothing over the
     // channel's own limit is a channel packet, so it is dropped (and counted)
@@ -310,6 +316,8 @@ int open_connection(const char** why) {
   return fd;
 }
 
+// cr-rns: connects, reads the links, sends what the other tasks hand over a few
+// packets a pass, and reconnects with a backoff.
 void task(void*) {
   // The node's tables (~70 KB) and the deframer go to PSRAM: Arduino-ESP32
   // puts allocations over 4 KB there.
@@ -477,6 +485,8 @@ void task(void*) {
 
 }  // namespace
 
+// Creates the rings and cr-rns, then publishes the shared state to the other
+// tasks.
 bool start(const Config& config) {
   if (g != nullptr) return false;
   // Built whole before any other task can see it: cr-net reads the status
@@ -516,6 +526,8 @@ bool start(const Config& config) {
   return ok;
 }
 
+// Hands a sealed channel packet to cr-rns through the ring, with its time and
+// whether it is voice.
 bool send(const uint8_t* packet, size_t len, bool voice) {
   Shared* s = ready();
   if (s == nullptr || s->to_rns == nullptr || !s->linked.load() ||
@@ -539,12 +551,15 @@ bool send(const uint8_t* packet, size_t len, bool voice) {
   return true;
 }
 
+// cr-net's split horizon: the link `tag` in `slot` gets nothing (0: it does).
 void set_skip(int slot, uint32_t tag) {
   Shared* s = ready();
   if (s == nullptr || slot < 0 || slot >= rns::ReticulumNode::kMaxLinks) return;
   s->skip[slot].store(tag);
 }
 
+// The next channel packet from Reticulum and the tag of the link it came on, or
+// 0 when none waits.
 size_t receive(uint8_t* out, size_t cap, uint32_t* link_tag) {
   Shared* s = ready();
   if (s == nullptr || s->from_rns == nullptr) return 0;
@@ -565,16 +580,19 @@ size_t receive(uint8_t* out, size_t cap, uint32_t* link_tag) {
   }
 }
 
+// True while cr-rns is connected to the transport node.
 bool connected() {
   Shared* s = ready();
   return s != nullptr && s->connected.load();
 }
 
+// True while cr-rns has at least one confirmed link.
 bool linked() {
   Shared* s = ready();
   return s != nullptr && s->linked.load();
 }
 
+// True while some confirmed link's far end is off our own WLAN.
 bool linked_remote() {
   Shared* s = ready();
   return s != nullptr && s->linked_remote.load();

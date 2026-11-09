@@ -19,6 +19,8 @@ bool OutBuffer::append(const uint8_t* frame, size_t len, bool voice,
   return true;
 }
 
+// Takes the bytes the socket accepted off the front, and the frames they
+// completed.
 void OutBuffer::consume(size_t n) {
   if (n > len_) n = len_;
   memmove(buf_, buf_ + n, len_ - n);
@@ -31,6 +33,8 @@ void OutBuffer::consume(size_t n) {
   }
 }
 
+// Drops voice not yet started that is older than max_age_ms; returns how many
+// frames went.
 int OutBuffer::expire(int64_t now_ms, int64_t max_age_ms) {
   // Compacts in place, front to back: a kept frame's bytes and record move
   // down over the dropped ones before it (k <= i, so nothing unread is

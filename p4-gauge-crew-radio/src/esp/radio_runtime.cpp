@@ -300,6 +300,8 @@ void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
   }
 }
 
+// cr-net: the WLAN socket and what came over Reticulum through the receive
+// pipeline, the bridge, split horizon's skip list, the hello and the roster.
 void net_task(void* arg) {
   const uint32_t gen = (uint32_t)(uintptr_t)arg;
   NetNode& node = *g->node;
@@ -810,6 +812,8 @@ void cpu_task(void*);
 // The tasks, for core/lifecycle.h (which decides; this only does).
 class EspTaskPort : public TaskPort {
  public:
+  // Creates one of the radio's tasks (cr-net, cr-audio, cr-beat) for the
+  // current generation.
   bool create(RadioTask task) override {
     const uint32_t gen = g->generation.load();
     switch (task) {

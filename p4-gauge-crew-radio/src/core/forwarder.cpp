@@ -3,6 +3,7 @@
 
 namespace crewradio {
 
+// A node's forwarder rank from its hello bits: prefer 2, neither 1, avoid 0.
 int Forwarder::rank(uint8_t transports) {
   if (transports & kFwdPrefer) return 2;
   if (transports & kFwdAvoid) return 0;
@@ -30,6 +31,8 @@ void Forwarder::local_hello(int32_t sender, uint8_t transports,
   slot->at = now_ms;
 }
 
+// The sender's local entry while it is fresh (heard within kLocalMs), else
+// null.
 const Forwarder::Local* Forwarder::find(int32_t sender, int64_t now_ms) const {
   for (const Local& l : local_) {
     if (l.used && l.sender == sender && now_ms - l.at < kLocalMs) return &l;
@@ -41,6 +44,8 @@ bool Forwarder::is_local(int32_t sender, int64_t now_ms) const {
   return find(sender, now_ms) != nullptr;
 }
 
+// True when the sender is local and its last hello said it is on Reticulum
+// (kRnsUp).
 bool Forwarder::local_rns_up(int32_t sender, int64_t now_ms) const {
   const Local* l = find(sender, now_ms);
   return l != nullptr && (l->transports & kRnsUp) != 0;
@@ -83,6 +88,8 @@ Forwarder::Route Forwarder::audio_route(bool from_lan, bool am_forwarder,
   return r;
 }
 
+// Records which sender is at the far end of the link `tag` (its slot and
+// epoch).
 void Forwarder::link_heard(uint32_t tag, int32_t sender) {
   const int slot = tag_slot(tag);
   if (tag == 0 || slot < 0 || slot >= kMaxLinks) return;
@@ -90,6 +97,7 @@ void Forwarder::link_heard(uint32_t tag, int32_t sender) {
   links_[slot].sender = sender;
 }
 
+// The slot's link tag when its far end is local now (no copies to it), else 0.
 uint32_t Forwarder::skip_tag(int slot, int64_t now_ms) const {
   if (slot < 0 || slot >= kMaxLinks) return 0;
   const LinkEnd& e = links_[slot];

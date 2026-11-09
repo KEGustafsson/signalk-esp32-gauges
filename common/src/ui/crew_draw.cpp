@@ -118,6 +118,8 @@ void draw_bars(lv_layer_t* layer, float cx, float cy, float h, uint8_t level,
   }
 }
 
+// The Crew page's status line: the radio's state, or who is talking,
+// transmitting, busy or muted.
 std::string crew_status_text(const CrewView& view) {
   switch (view.state) {
     case RadioState::kOff:
@@ -154,6 +156,7 @@ std::string crew_status_text(const CrewView& view) {
   return view.muted ? "ON CHANNEL  " LV_SYMBOL_MUTE : "ON CHANNEL";
 }
 
+// The status line's colour for the same states (amber for busy and warnings).
 uint32_t crew_status_color(const CrewView& view) {
   switch (view.state) {
     case RadioState::kOnChannel:

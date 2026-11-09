@@ -63,6 +63,7 @@ class Forwarder {
   // false when there is none (nobody on Reticulum).
   bool forwarder(int32_t self, uint8_t own, int64_t now_ms,
                  int32_t* id) const;
+  // True when this node is the boat's forwarder now.
   bool is_forwarder(int32_t self, uint8_t own, int64_t now_ms) const {
     int32_t id = 0;
     return forwarder(self, own, now_ms, &id) && id == self;

@@ -3,6 +3,8 @@
 
 namespace crewradio {
 
+// Adds one encode's time; at the end of a slow window, steps the complexity
+// down one.
 bool EncodeBudget::took(int us) {
   if (us > slowest_) slowest_ = us;
   if (++frames_ < kWindow) return false;

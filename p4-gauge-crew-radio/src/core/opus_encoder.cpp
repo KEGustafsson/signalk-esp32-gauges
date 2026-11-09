@@ -33,6 +33,8 @@ int OpusFrameEncoder::encode(const int16_t frame[audio::kFrameSamples],
   return n > 0 ? n : -1;
 }
 
+// Sets libopus's complexity from the next frame on (encode_budget.h steps it
+// down).
 void OpusFrameEncoder::set_complexity(int complexity) {
   if (enc_ != nullptr) opus_encoder_ctl(enc_, OPUS_SET_COMPLEXITY(complexity));
 }

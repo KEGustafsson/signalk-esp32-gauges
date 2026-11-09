@@ -183,6 +183,7 @@ struct RadioScene {
   bool mic_shown = false;
 };
 
+// The halo and Crew page sample scenes the preview renders, busy ones included.
 static std::vector<RadioScene> radio_scenes() {
   using skgauges::ui::RadioState;
   std::vector<RadioScene> s;

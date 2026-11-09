@@ -43,6 +43,8 @@ bool running(crewradio::RadioState s) {
 
 }  // namespace
 
+// The radio's status as the UI's CrewView: state, talking or busy, levels and
+// the crew.
 bool crew_view_from_radio(ui::CrewView* out) {
   crewradio::esp::RadioStatus s = crewradio::esp::status();
   if (running(s.state) &&

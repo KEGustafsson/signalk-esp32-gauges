@@ -3,6 +3,8 @@
 
 namespace crewradio {
 
+// Notes another sender's accepted audio: the channel is busy, and a collision
+// is due if we are talking.
 void ChannelFloor::heard(int32_t sender, int64_t now_ms) {
   if (sender == self_) return;
   heard_any_ = true;
@@ -14,6 +16,7 @@ void ChannelFloor::heard(int32_t sender, int64_t now_ms) {
   fresh_ = true;
 }
 
+// True while another talker was heard within kBusyMs; *who is the last one.
 bool ChannelFloor::busy(int64_t now_ms, int32_t* who) const {
   if (!heard_any_ || now_ms - last_ms_ >= kBusyMs) return false;
   if (who != nullptr) *who = last_;

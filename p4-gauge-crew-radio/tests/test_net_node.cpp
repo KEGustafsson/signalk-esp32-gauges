@@ -111,6 +111,7 @@ TEST(net_our_own_packets_coming_back_are_dropped_unopened) {
 constexpr uint8_t kForwarding =
     Hello::kLan | Hello::kReticulum | Hello::kRnsUp | Hello::kFwdAvoid;
 
+// Net the bridge forwards a first copy to the other transport.
 TEST(net_the_bridge_forwards_a_first_copy_to_the_other_transport) {
   NetNode::Config c = config("Station");
   c.relay = true;
@@ -137,6 +138,7 @@ TEST(net_the_bridge_forwards_a_first_copy_to_the_other_transport) {
   CHECK(b.counters().relayed == 2);
 }
 
+// Net the bridge keeps the hop rule and is off unless asked.
 TEST(net_the_bridge_keeps_the_hop_rule_and_is_off_unless_asked) {
   NetNode::Config c = config("Station");
   c.relay = true;
@@ -297,6 +299,7 @@ std::vector<uint8_t> hello_from(int32_t sender, uint8_t transports) {
 }
 }  // namespace
 
+// Net only the forwarder bridges audio.
 TEST(net_only_the_forwarder_bridges_audio) {
   NetNode::Config c = config("Station");
   c.relay = true;

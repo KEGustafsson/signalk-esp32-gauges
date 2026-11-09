@@ -59,6 +59,8 @@ ReticulumNode::ReticulumNode(const char* tag, const uint8_t confirm_key[32],
   ok_ = destination_hash(name_hash_, identity_.hash(), destination_) && ok_;
 }
 
+// Counts the confirmed links, leaving out those `skip` names (the far ends on
+// our own WLAN).
 int ReticulumNode::link_count(const Skip* skip) const {
   int n = 0;
   for (int i = 0; i < kMaxLinks; i++) {
@@ -177,6 +179,7 @@ void ReticulumNode::disconnected(int64_t /*now*/) {
   }
 }
 
+// Closes every link politely, while the connection still takes the close.
 void ReticulumNode::close_all() {
   for (Entry& e : entries_) {
     if (!e.used) continue;
@@ -184,6 +187,8 @@ void ReticulumNode::close_all() {
   }
 }
 
+// Seals a channel packet on every confirmed link `skip` leaves in, cut into
+// carry parts as needed.
 bool ReticulumNode::send(const uint8_t* packet, size_t len, const Skip* skip) {
   if (!connected_) return false;
   bool sent = false;
@@ -353,6 +358,8 @@ void ReticulumNode::on_proof(const Packet& p, int64_t now) {
   send_proof(e, now);  // After the RTT, which makes it active at the far end
 }
 
+// A link's data packet: keep-alive, close, key proof, or a channel packet for
+// the sink with its link tag.
 void ReticulumNode::on_data(const Packet& p, int64_t now, Sink* sink) {
   if (p.packet_type != kData || p.dest_type != kLink) return;
   Entry* e = find_entry(p.destination);

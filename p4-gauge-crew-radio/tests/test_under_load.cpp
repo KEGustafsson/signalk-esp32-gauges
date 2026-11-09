@@ -15,6 +15,7 @@ constexpr uint8_t kPrefer = Forwarder::kFwdPrefer;
 constexpr uint8_t kAvoid = Forwarder::kFwdAvoid;
 }  // namespace
 
+// Forwarder needs reticulum up.
 TEST(forwarder_needs_reticulum_up) {
   Forwarder f;
   int32_t id = 0;
@@ -24,6 +25,7 @@ TEST(forwarder_needs_reticulum_up) {
   CHECK(f.forwarder(7, kAvoid | kUp, 0, &id) && id == 7);
 }
 
+// Forwarder rank then lowest unsigned id.
 TEST(forwarder_rank_then_lowest_unsigned_id) {
   Forwarder f;
   int32_t id = 0;
@@ -43,6 +45,7 @@ TEST(forwarder_rank_then_lowest_unsigned_id) {
   CHECK(h.forwarder(-5, kUp, 0, &id) && id == (int32_t)0x80000000u);
 }
 
+// Forwarder forgets quiet peers.
 TEST(forwarder_forgets_quiet_peers) {
   Forwarder f;
   f.local_hello(1, 1 | kUp, 0);
@@ -55,6 +58,7 @@ TEST(forwarder_forgets_quiet_peers) {
   CHECK(f.is_forwarder(9, kAvoid | kUp, 20000));
 }
 
+// Forwarder audio routes.
 TEST(forwarder_audio_routes) {
   using R = Forwarder::Route;
   R r = Forwarder::audio_route(true, false, false);  // Not the forwarder
@@ -69,6 +73,7 @@ TEST(forwarder_audio_routes) {
   CHECK(r.to_lan && !r.to_reticulum);
 }
 
+// Forwarder split horizon by link tag.
 TEST(forwarder_split_horizon_by_link_tag) {
   Forwarder f;
   const uint32_t a = Forwarder::make_tag(3, 1);
@@ -86,6 +91,7 @@ TEST(forwarder_split_horizon_by_link_tag) {
   CHECK(f.skip_tag(-1, 0) == 0 && f.skip_tag(Forwarder::kMaxLinks, 0) == 0);
 }
 
+// Forwarder full table drops the oldest.
 TEST(forwarder_full_table_drops_the_oldest) {
   Forwarder f;
   for (int i = 0; i < Forwarder::kMaxLocal; i++) f.local_hello(i + 1, 1, i);
@@ -109,6 +115,7 @@ ChannelFloor::Event run(ChannelFloor& fl, int64_t& t, int64_t t_end, bool held,
 }
 }  // namespace
 
+// Floor free channel keys.
 TEST(floor_free_channel_keys) {
   ChannelFloor fl(10);
   bool may = false;
@@ -116,6 +123,7 @@ TEST(floor_free_channel_keys) {
   CHECK(may && !fl.holding_off());
 }
 
+// Floor refuses while busy then override.
 TEST(floor_refuses_while_busy_then_override) {
   ChannelFloor fl(10);
   fl.heard(20, 0);
@@ -138,6 +146,7 @@ TEST(floor_refuses_while_busy_then_override) {
   CHECK(may);
 }
 
+// Floor release before override resets.
 TEST(floor_release_before_override_resets) {
   ChannelFloor fl(10);
   fl.heard(20, 0);
@@ -151,6 +160,7 @@ TEST(floor_release_before_override_resets) {
   CHECK(may);
 }
 
+// Floor short touch gap keeps refusal.
 TEST(floor_short_touch_gap_keeps_refusal) {
   ChannelFloor fl(10);
   fl.heard(20, 0);
@@ -161,6 +171,7 @@ TEST(floor_short_touch_gap_keeps_refusal) {
   CHECK(!may && fl.holding_off());   // Not a release yet
 }
 
+// Floor collision higher id yields.
 TEST(floor_collision_higher_id_yields) {
   // Both keyed at once; each hears the other's first frames while talking.
   ChannelFloor low(5), high(9);
@@ -184,6 +195,7 @@ TEST(floor_collision_higher_id_yields) {
   CHECK(may_high);
 }
 
+// Floor collision compares unsigned.
 TEST(floor_collision_compares_unsigned) {
   // 0x80000000 is above 7 as unsigned: it yields to 7, not the other way.
   ChannelFloor neg((int32_t)0x80000000u), pos(7);
@@ -227,6 +239,7 @@ TEST(encode_budget_steps_down_on_a_slow_window_only) {
   CHECK(b.complexity() == 4);
 }
 
+// Encode budget stops at zero and never steps up.
 TEST(encode_budget_stops_at_zero_and_never_steps_up) {
   EncodeBudget b(2);
   for (int w = 0; w < 5; w++) {
@@ -251,6 +264,7 @@ bool append(rns::OutBuffer& b, uint8_t tag, size_t n, bool voice, int64_t at) {
 }
 }  // namespace
 
+// Out buffer drops old voice never control.
 TEST(out_buffer_drops_old_voice_never_control) {
   rns::OutBuffer b;
   CHECK(append(b, 1, 100, true, 0));     // old voice
@@ -264,6 +278,7 @@ TEST(out_buffer_drops_old_voice_never_control) {
   CHECK(b.expire(1000, 200) == 0);       // Nothing more to drop
 }
 
+// Out buffer a frame partly sent always goes out whole.
 TEST(out_buffer_a_frame_partly_sent_always_goes_out_whole) {
   rns::OutBuffer b;
   append(b, 1, 100, true, 0);
@@ -277,6 +292,7 @@ TEST(out_buffer_a_frame_partly_sent_always_goes_out_whole) {
   CHECK(b.expire(5100, 200) == 0 && b.size() == 10 && b.data()[0] == 5);
 }
 
+// Out buffer consumes across frames and wraps its ring.
 TEST(out_buffer_consumes_across_frames_and_wraps_its_ring) {
   rns::OutBuffer b;
   for (int round = 0; round < 3 * rns::OutBuffer::kMaxFrames; round++) {
