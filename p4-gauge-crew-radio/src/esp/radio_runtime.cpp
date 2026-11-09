@@ -292,7 +292,9 @@ void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
     }
   }
   if (g->shed.load() >= (uint8_t)Shed::kTransmit) return;  // Nothing goes out
-  if (relay.to_reticulum) {
+  // Not to Reticulum once the memory guard has shed it, as for our own voice:
+  // cr-rns has gone or is going, and the ring would only fill.
+  if (relay.to_reticulum && g->shed.load() < (uint8_t)Shed::kReticulum) {
     // A frame that came over Reticulum may have just taught its link's far
     // end: that link's skip goes now, not at the next 250 ms refresh, so a
     // local talker's own copy never goes back to it.
