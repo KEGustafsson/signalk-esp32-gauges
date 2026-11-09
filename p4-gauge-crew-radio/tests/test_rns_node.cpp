@@ -32,7 +32,11 @@ struct TestNode : ReticulumNode::Writer, ReticulumNode::Sink {
   std::unique_ptr<ReticulumNode> n;
   std::vector<Bytes> inbox;
   void write(const uint8_t* raw, size_t len) override;
-  void packet(const uint8_t* p, size_t len) override { inbox.emplace_back(p, p + len); }
+  void packet(const uint8_t* p, size_t len, uint32_t tag) override {
+    inbox.emplace_back(p, p + len);
+    tags.push_back(tag);
+  }
+  std::vector<uint32_t> tags;
   ReticulumNode* operator->() { return n.get(); }
 };
 
@@ -145,6 +149,41 @@ TEST(rns_node_two_nodes_link_prove_the_key_and_carry_the_channel) {
   CHECK((*b)->send(opus.data(), opus.size()));
   m.settle();
   CHECK(a->inbox.size() == 1);
+}
+
+// Each packet names the link it came on, and send() can leave a link out
+// (split horizon, core/forwarder.h).
+TEST(rns_node_tags_each_link_and_skips_the_ones_asked) {
+  Medium m;
+  auto [a, b] = m.linked();
+  const Bytes opus = bytes(88, 2);
+  CHECK((*a)->send(opus.data(), opus.size()));
+  m.settle();
+  CHECK(b->tags.size() == 1 && b->tags[0] != 0);
+  const uint32_t tag = b->tags[0];
+  CHECK((tag & 0xFFFFFFu) != 0);  // An epoch, never 0
+  CHECK((*b)->send(opus.data(), opus.size()));
+  m.settle();
+  CHECK(a->tags.size() == 1 && a->tags[0] != 0);
+  struct SkipAll : ReticulumNode::Skip {
+    uint32_t tag;
+    bool skip(uint32_t t) const override { return t == tag; }
+  } skip_it;
+  skip_it.tag = a->tags[0];  // a's own name for its link to b
+  CHECK(!(*a)->send(opus.data(), opus.size(), &skip_it));  // Went nowhere
+  m.settle();
+  CHECK(b->inbox.size() == 1);
+  skip_it.tag = a->tags[0] + 1;  // Another epoch: not this link
+  CHECK((*a)->send(opus.data(), opus.size(), &skip_it));
+  m.settle();
+  CHECK(b->inbox.size() == 2 && b->tags[1] == tag);
+  // The links send() would use: none once its only one is skipped (what
+  // the hello's kRnsUp claims: a far end off our own WLAN).
+  CHECK((*a)->link_count() == 1);
+  skip_it.tag = a->tags[0];
+  CHECK((*a)->link_count(&skip_it) == 0);
+  skip_it.tag = a->tags[0] + 1;
+  CHECK((*a)->link_count(&skip_it) == 1);
 }
 
 TEST(rns_node_a_stranger_who_copies_the_name_hash_gets_and_passes_nothing) {

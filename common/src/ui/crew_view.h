@@ -51,6 +51,8 @@ struct CrewView {
   RadioState state = RadioState::kOff;
   bool muted = false;
   bool transmitting = false;
+  // The talk key held but kept silent: someone else has the channel.
+  bool busy = false;
   uint8_t volume = 0;
   uint8_t volume_max = 0;
   // The mic's preamp as the codec runs it, in tenths of a dB (300 = 30 dB),
@@ -74,7 +76,8 @@ struct CrewView {
   }
   bool operator==(const CrewView& o) const {
     return channel == o.channel && state == o.state && muted == o.muted &&
-           transmitting == o.transmitting && volume == o.volume &&
+           transmitting == o.transmitting && busy == o.busy &&
+           volume == o.volume &&
            volume_max == o.volume_max &&
            mic_gain_tenths == o.mic_gain_tenths &&
            mic_gain_max_tenths == o.mic_gain_max_tenths &&

@@ -107,10 +107,16 @@ TEST(net_our_own_packets_coming_back_are_dropped_unopened) {
   CHECK(a.counters().duplicates == 1);
 }
 
+// On Reticulum and nobody else on the boat: this node is the forwarder.
+constexpr uint8_t kForwarding =
+    Hello::kLan | Hello::kReticulum | Hello::kRnsUp | Hello::kFwdAvoid;
+
+// Net the bridge forwards a first copy to the other transport.
 TEST(net_the_bridge_forwards_a_first_copy_to_the_other_transport) {
   NetNode::Config c = config("Station");
   c.relay = true;
   NetNode b(kKey, 2, c);
+  b.set_transports(kForwarding);
   NetNode::Audio au;
   NetNode::Relay relay;
   // From the WLAN: on to Reticulum, one hop spent.
@@ -132,11 +138,13 @@ TEST(net_the_bridge_forwards_a_first_copy_to_the_other_transport) {
   CHECK(b.counters().relayed == 2);
 }
 
+// Net the bridge keeps the hop rule and is off unless asked.
 TEST(net_the_bridge_keeps_the_hop_rule_and_is_off_unless_asked) {
   NetNode::Config c = config("Station");
   c.relay = true;
   c.max_hops = 4;
   NetNode b(kKey, 2, c);
+  b.set_transports(kForwarding);
   NetNode::Audio au;
   NetNode::Relay relay;
   // A packet already three relays from its origin goes no further.
@@ -275,4 +283,135 @@ TEST(net_an_audio_only_member_talking_cleanly_keeps_its_bars) {
   std::vector<Member> m;
   b.roster().snapshot(5000, &m);
   CHECK(m.size() == 1 && m[0].bars == 4);
+}
+
+// ---- one forwarder per boat (forwarder.h) --------------------------------
+
+namespace {
+// A hello from `sender` saying `transports`, as it would come straight over
+// the WLAN.
+std::vector<uint8_t> hello_from(int32_t sender, uint8_t transports) {
+  NetNode n(kKey, sender, config("Peer"));
+  n.set_transports(transports);
+  uint8_t buf[NetNode::kMaxHello];
+  const size_t len = n.build_hello(kNow, buf);
+  return std::vector<uint8_t>(buf, buf + len);
+}
+}  // namespace
+
+// Net only the forwarder bridges audio.
+TEST(net_only_the_forwarder_bridges_audio) {
+  NetNode::Config c = config("Station");
+  c.relay = true;
+  NetNode b(kKey, 2, c);
+  b.set_transports(kForwarding);
+  NetNode::Audio au;
+  NetNode::Relay relay;
+  // The plugin on the same WLAN, on Reticulum: it forwards, not us.
+  auto hello = hello_from(900, Hello::kLan | Hello::kReticulum |
+                                   Hello::kRnsUp | Hello::kFwdPrefer);
+  b.on_packet(hello.data(), hello.size(), NetNode::Via::kLan, 9, 0, kNow, &au,
+              &relay);
+  CHECK(!b.is_forwarder(0));
+  CHECK(relay.to_reticulum);  // Hellos keep their relay
+  auto p = sealed_audio(kKey, 5, 1);
+  CHECK(b.on_packet(p.data(), p.size(), NetNode::Via::kLan, 9, 0, kNow, &au, &relay));
+  CHECK(!relay.to_reticulum && !relay.to_lan);  // Played, not bridged
+  p = sealed_audio(kKey, 6, 1);
+  CHECK(b.on_packet(p.data(), p.size(), NetNode::Via::kReticulum, 0, 0, kNow, &au, &relay));
+  CHECK(!relay.to_lan);
+  // The plugin quiet for kLocalMs: this node forwards again.
+  CHECK(b.is_forwarder(Forwarder::kLocalMs));
+}
+
+TEST(net_the_forwarder_leaves_a_reticulum_talker_to_itself) {
+  NetNode::Config c = config("Station");
+  c.relay = true;
+  NetNode b(kKey, 2, c);
+  b.set_transports(kForwarding);
+  NetNode::Audio au;
+  NetNode::Relay relay;
+  // Another node on the WLAN, on Reticulum too; both would rather not
+  // forward, and the lower id does.
+  auto hello = hello_from(70, Hello::kLan | Hello::kRnsUp | Hello::kFwdAvoid);
+  b.on_packet(hello.data(), hello.size(), NetNode::Via::kLan, 9, 0, kNow, &au,
+              &relay);
+  CHECK(b.is_forwarder(0));  // 2 < 70
+  auto p = sealed_audio(kKey, 70, 1);
+  CHECK(b.on_packet(p.data(), p.size(), NetNode::Via::kLan, 9, 0, kNow, &au, &relay));
+  CHECK(!relay.to_reticulum);  // 70 sends its own over Reticulum
+  // A talker on the WLAN alone: bridged.
+  p = sealed_audio(kKey, 71, 1);
+  CHECK(b.on_packet(p.data(), p.size(), NetNode::Via::kLan, 9, 0, kNow, &au, &relay));
+  CHECK(relay.to_reticulum);
+}
+
+// A WLAN talker that is not on Reticulum itself sends there before it knows
+// our link is local; when that copy beats its WLAN copy, the forwarder sends
+// it ashore, or the WLAN copy (a duplicate by then) would never get there.
+TEST(net_the_forwarder_sends_a_wlan_talkers_early_reticulum_copy_ashore) {
+  NetNode::Config c = config("Station");
+  c.relay = true;
+  NetNode b(kKey, 2, c);
+  b.set_transports(kForwarding);
+  NetNode::Audio au;
+  NetNode::Relay first;
+  auto hello = hello_from(71, Hello::kLan | Hello::kReticulum);  // Relay off
+  b.on_packet(hello.data(), hello.size(), NetNode::Via::kLan, 9, 0, kNow, &au,
+              &first);
+  CHECK(b.is_forwarder(0));
+  auto p = sealed_audio(kKey, 71, 1);
+  NetNode::Relay over_rns;
+  CHECK(b.on_packet(p.data(), p.size(), NetNode::Via::kReticulum, 0, 0, kNow,
+                    &au, &over_rns, Forwarder::make_tag(4, 1)));
+  CHECK(over_rns.to_reticulum && over_rns.to_lan);
+  NetNode::Relay over_lan;
+  CHECK(!b.on_packet(p.data(), p.size(), NetNode::Via::kLan, 9, 0, kNow, &au,
+                     &over_lan));  // The duplicate
+  CHECK(!over_lan.to_reticulum && !over_lan.to_lan);
+  // A bridge's copy of it (ttl spent) is not the talker's own: never back.
+  auto relayed = sealed_audio(kKey, 71, 2, Codec::kOpus, 40, kNow, 3);
+  NetNode::Relay bridged;
+  CHECK(b.on_packet(relayed.data(), relayed.size(), NetNode::Via::kReticulum,
+                    0, 0, kNow, &au, &bridged));
+  CHECK(!bridged.to_reticulum && bridged.to_lan);
+}
+
+TEST(net_a_wlan_hello_heard_first_over_reticulum_still_makes_it_local) {
+  NetNode b(kKey, 2, config("Station"));
+  NetNode::Audio au;
+  NetNode::Relay relay;
+  auto hello = hello_from(70, Hello::kLan | Hello::kRnsUp);
+  b.on_packet(hello.data(), hello.size(), NetNode::Via::kReticulum, 0, 0, kNow,
+              &au, &relay);
+  CHECK(!b.forwarder().is_local(70, 0));
+  b.on_packet(hello.data(), hello.size(), NetNode::Via::kLan, 9, 0, kNow, &au,
+              &relay);  // The same hello, a copy now
+  CHECK(b.forwarder().is_local(70, 0));
+}
+
+TEST(net_learns_who_is_at_the_far_end_of_a_link) {
+  NetNode b(kKey, 2, config("Station"));
+  NetNode::Audio au;
+  NetNode::Relay relay;
+  const uint32_t tag = Forwarder::make_tag(4, 1);
+  // A bridge's copy (ttl spent by one) says nothing about the link.
+  auto relayed = sealed_audio(kKey, 70, 1, Codec::kOpus, 40, kNow, 3);
+  b.on_packet(relayed.data(), relayed.size(), NetNode::Via::kReticulum, 0, 0,
+              kNow, &au, &relay, tag);
+  auto hello = hello_from(70, Hello::kLan | Hello::kRnsUp);
+  b.on_packet(hello.data(), hello.size(), NetNode::Via::kLan, 9, 0, kNow, &au,
+              &relay);
+  CHECK(b.forwarder().skip_tag(4, 0) == 0);
+  // Straight from 70 on that link: 70 is local, so no copies on it.
+  auto p = sealed_audio(kKey, 70, 2);
+  b.on_packet(p.data(), p.size(), NetNode::Via::kReticulum, 0, 0, kNow, &au,
+              &relay, tag);
+  CHECK(b.forwarder().skip_tag(4, 0) == tag);
+  // A stranger's packet on the link teaches nothing.
+  const uint8_t other[32] = {9};
+  auto junk = sealed_audio(other, 71, 1);
+  b.on_packet(junk.data(), junk.size(), NetNode::Via::kReticulum, 0, 0, kNow,
+              &au, &relay, Forwarder::make_tag(5, 1));
+  CHECK(b.forwarder().skip_tag(5, 0) == 0);
 }

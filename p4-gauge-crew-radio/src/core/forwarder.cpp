@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: EUPL-1.2
+#include "forwarder.h"
+
+namespace crewradio {
+
+// A node's forwarder rank from its hello bits: prefer 2, neither 1, avoid 0.
+int Forwarder::rank(uint8_t transports) {
+  if (transports & kFwdPrefer) return 2;
+  if (transports & kFwdAvoid) return 0;
+  return 1;
+}
+
+// An unrelayed hello over the WLAN: its sender is local now, with these hello bits.
+void Forwarder::local_hello(int32_t sender, uint8_t transports,
+                            int64_t now_ms) {
+  Local* slot = nullptr;
+  Local* oldest = &local_[0];
+  for (Local& l : local_) {
+    if (l.used && l.sender == sender) {
+      slot = &l;
+      break;
+    }
+    if (slot == nullptr && !l.used) slot = &l;
+    if (l.at < oldest->at) oldest = &l;
+  }
+  // A full table (more than kMaxLocal on one boat): the one heard longest
+  // ago makes room; it is the likeliest to have left.
+  if (slot == nullptr) slot = oldest;
+  slot->used = true;
+  slot->sender = sender;
+  slot->transports = transports;
+  slot->at = now_ms;
+}
+
+// The sender's local entry while it is fresh (heard within kLocalMs), else
+// null.
+const Forwarder::Local* Forwarder::find(int32_t sender, int64_t now_ms) const {
+  for (const Local& l : local_) {
+    if (l.used && l.sender == sender && now_ms - l.at < kLocalMs) return &l;
+  }
+  return nullptr;
+}
+
+bool Forwarder::is_local(int32_t sender, int64_t now_ms) const {
+  return find(sender, now_ms) != nullptr;
+}
+
+// True when the sender is local and its last hello said it is on Reticulum
+// (kRnsUp).
+bool Forwarder::local_rns_up(int32_t sender, int64_t now_ms) const {
+  const Local* l = find(sender, now_ms);
+  return l != nullptr && (l->transports & kRnsUp) != 0;
+}
+
+// The boat's forwarder: of us and the fresh local senders on Reticulum (kRnsUp),
+// the highest rank, then the lowest id as unsigned; false when there is none.
+bool Forwarder::forwarder(int32_t self, uint8_t own, int64_t now_ms,
+                          int32_t* id) const {
+  bool found = false;
+  int best_rank = -1;
+  uint32_t best_id = 0;
+  auto consider = [&](int32_t sender, uint8_t transports) {
+    if ((transports & kRnsUp) == 0) return;
+    const int r = rank(transports);
+    const uint32_t u = (uint32_t)sender;
+    if (!found || r > best_rank || (r == best_rank && u < best_id)) {
+      found = true;
+      best_rank = r;
+      best_id = u;
+    }
+  };
+  consider(self, own);
+  for (const Local& l : local_) {
+    if (l.used && l.sender != self && now_ms - l.at < kLocalMs) {
+      consider(l.sender, l.transports);
+    }
+  }
+  if (found) *id = (int32_t)best_id;
+  return found;
+}
+
+// D2 and D3: only the forwarder bridges; WLAN to Reticulum only for a talker
+// not on Reticulum itself, Reticulum to the WLAN always, and Reticulum to
+// Reticulum only for a WLAN talker's own copy (see forwarder.h).
+Forwarder::Route Forwarder::audio_route(bool from_lan, bool am_forwarder,
+                                        bool talker_rns_up,
+                                        bool talker_local_direct) {
+  Route r;
+  if (!am_forwarder) return r;
+  if (from_lan) {
+    r.to_reticulum = !talker_rns_up;
+  } else {
+    r.to_lan = true;
+    r.to_reticulum = talker_local_direct && !talker_rns_up;
+  }
+  return r;
+}
+
+// Records which sender is at the far end of the link `tag` (its slot and
+// epoch).
+void Forwarder::link_heard(uint32_t tag, int32_t sender) {
+  const int slot = tag_slot(tag);
+  if (tag == 0 || slot < 0 || slot >= kMaxLinks) return;
+  links_[slot].tag = tag;
+  links_[slot].sender = sender;
+}
+
+// The slot's link tag when its far end is local now (no copies to it), else 0.
+uint32_t Forwarder::skip_tag(int slot, int64_t now_ms) const {
+  if (slot < 0 || slot >= kMaxLinks) return 0;
+  const LinkEnd& e = links_[slot];
+  if (e.tag == 0 || !is_local(e.sender, now_ms)) return 0;
+  return e.tag;
+}
+
+}  // namespace crewradio

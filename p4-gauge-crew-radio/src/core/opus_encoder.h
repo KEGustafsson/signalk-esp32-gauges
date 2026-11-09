@@ -14,7 +14,8 @@ namespace crewradio {
 class OpusFrameEncoder : public FrameEncoder {
  public:
   static constexpr int kBitrate = 24000;
-  // Fixed point on a 400 MHz core: a middle setting, measured on the board.
+  // Fixed point on a 400 MHz core: a middle setting, measured on the board;
+  // stepped down at run time when encodes take too long (encode_budget.h).
   static constexpr int kComplexity = 5;
 
   OpusFrameEncoder();
@@ -27,6 +28,7 @@ class OpusFrameEncoder : public FrameEncoder {
   int encode(const int16_t frame[audio::kFrameSamples],
              uint8_t out[kMaxPayload]) override;
   void reset() override;
+  void set_complexity(int complexity) override;
 
  private:
   ::OpusEncoder* enc_ = nullptr;

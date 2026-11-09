@@ -18,6 +18,12 @@
 // it at once; on Reticulum every node links to every other). A peer is
 // learned only from the WLAN, and a hello heard over Reticulum marks its
 // member so (the screen draws it dashed).
+//
+// Audio is bridged only by the boat's forwarder (forwarder.h), and from the
+// WLAN only for a talker not on Reticulum itself; hellos as before. The
+// forwarder's view comes from here: the unrelayed hellos heard over the WLAN,
+// and which sender is at the far end of each Reticulum link (`link_tag`, from
+// the packet that came on it straight from its sender).
 
 #include <stddef.h>
 #include <stdint.h>
@@ -26,6 +32,7 @@
 
 #include "audio_config.h"
 #include "channel_crypto.h"
+#include "forwarder.h"
 #include "hello.h"
 #include "ingress.h"
 #include "lan_peers.h"
@@ -92,8 +99,11 @@ class NetNode {
   }
   // The same from either transport (`from` only for the WLAN); with relay,
   // *relay says where a copy goes (nowhere unless Config::relay).
+  // `link_tag`: the Reticulum link it came on (Forwarder::make_tag), 0 for
+  // the WLAN or when unknown.
   bool on_packet(const uint8_t* p, size_t len, Via via, uint32_t from,
-                 int64_t now_ms, int64_t now_s, Audio* audio, Relay* relay);
+                 int64_t now_ms, int64_t now_s, Audio* audio, Relay* relay,
+                 uint32_t link_tag = 0);
 
   // What this node's hellos say it is on (Hello::kLan, kReticulum).
   void set_transports(uint8_t transports) { config_.transports = transports; }
@@ -105,6 +115,11 @@ class NetNode {
   LanPeers& peers() { return peers_; }
   SourceLimiter& sources() { return sources_; }
   Roster& roster() { return roster_; }
+  const Forwarder& forwarder() const { return forwarder_; }
+  // This node is the boat's forwarder now (its own hellos' bits).
+  bool is_forwarder(int64_t now_ms) const {
+    return forwarder_.is_forwarder(self_, config_.transports, now_ms);
+  }
   const Counters& counters() const { return c_; }
 
  private:
@@ -113,6 +128,7 @@ class NetNode {
   Roster roster_;
   LanPeers peers_;
   SourceLimiter sources_;
+  Forwarder forwarder_;
   Config config_;
   int32_t self_;
   uint32_t hello_seq_ = 0;  // Wraps, as the phones expect (int32 on the wire)

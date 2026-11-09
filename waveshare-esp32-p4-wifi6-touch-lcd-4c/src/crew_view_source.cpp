@@ -43,6 +43,8 @@ bool running(crewradio::RadioState s) {
 
 }  // namespace
 
+// The radio's status as the UI's CrewView: state, talking or busy, levels and
+// the crew.
 bool crew_view_from_radio(ui::CrewView* out) {
   crewradio::esp::RadioStatus s = crewradio::esp::status();
   if (running(s.state) &&
@@ -50,12 +52,14 @@ bool crew_view_from_radio(ui::CrewView* out) {
     s.state = crewradio::RadioState::kStopped;
     s.members.clear();
     s.talking = false;
+    s.busy = false;
   }
   // Names in the fonts' ASCII (text_fold.h): a Mäkelä is drawn as Makela,
   // not as Mkel.
   out->channel = s.channel.empty() ? "CREW" : ascii_fold(s.channel);
   out->state = ui_state(s.state);
   out->transmitting = s.talking;
+  out->busy = s.busy && !s.talking;
   out->volume = (uint8_t)(s.volume < 0 ? 0 : s.volume > 100 ? 100 : s.volume);
   out->volume_max = 100;
   out->muted = out->volume == 0;  // The ES8311 mutes at 0 (es8311.cpp)

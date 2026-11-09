@@ -97,6 +97,10 @@ struct RadioStatus {
   bool socket_open = false;
   bool mic_ok = false;
   bool talking = false;
+  // The talk key held but kept silent: pressed while another talker was
+  // heard, or yielded to one (core/channel_floor.h). The screen says
+  // "Channel busy".
+  bool busy = false;
   uint64_t sent = 0;
   int timeouts = 0;
   int mic_level = 0;  // RMS of the last frame heard by the mic

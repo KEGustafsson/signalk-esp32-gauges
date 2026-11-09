@@ -16,7 +16,9 @@
 namespace crewradio {
 namespace tones {
 
-enum class Cue : uint8_t { kKeyed, kUnkeyed, kTimedOut };
+// kBusy: the channel is someone else's (channel_floor.h): two short low
+// beeps, unlike the time-out's three longer ones.
+enum class Cue : uint8_t { kKeyed, kUnkeyed, kTimedOut, kBusy };
 
 // The cue as whole 20 ms frames, kFrameSamples each, one after the other.
 std::vector<int16_t> frames(Cue cue);

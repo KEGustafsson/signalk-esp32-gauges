@@ -40,6 +40,8 @@
 #include "core/self_test.h"
 #include "core/spsc_ring.h"
 #include "core/supervisor.h"
+#include "core/channel_floor.h"
+#include "core/encode_budget.h"
 #include "core/talk_key.h"
 #include "core/tones.h"
 #include "core/transmitter.h"
@@ -73,6 +75,8 @@ constexpr int kSlotMic2 = 2;
 
 constexpr int kCore = 0;
 constexpr UBaseType_t kAudioPriority = 17;
+// Passes in a row over a frame's time before cr-audio steps aside a tick.
+constexpr int kOverrunPasses = 10;
 constexpr UBaseType_t kNetPriority = 16;
 constexpr UBaseType_t kBeatPriority = 3;
 // A touch sample older than this is a release. The loop samples every 20 ms
@@ -113,6 +117,15 @@ struct Shared {
   // it): the talker's own screen shows it within a frame, not at the next
   // once-a-second copy of the status.
   std::atomic<bool> talking{false};
+  std::atomic<bool> busy{false};  // RadioStatus::busy
+  // cr-audio's longest pass of work (its I2S waits left out) and its longest
+  // Opus encode since cr-cpu last looked, in us: what core 0 has to spare.
+  std::atomic<int> audio_work_max_us{0};
+  std::atomic<int> encode_max_us{0};
+  // How hard the encoder may work (core/encode_budget.h): kept with the
+  // encoder, so a cr-audio the supervisor restarts goes on from where the
+  // encoder is, not from kComplexity (its next step would raise it).
+  EncodeBudget budget{OpusFrameEncoder::kComplexity};
   Supervisor supervisor;
   std::atomic<bool> clock_ok{false};
   std::atomic<uint8_t> shed{0};
@@ -260,11 +273,12 @@ void send_lan(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
 // One packet from either transport through the pipeline: audio to cr-audio,
 // a copy for the other transport where the bridge says so.
 void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
-          NetNode::Via via, uint32_t from, int64_t now) {
+          NetNode::Via via, uint32_t from, int64_t now,
+          uint32_t link_tag = 0) {
   NetNode::Audio au;
   NetNode::Relay relay;
   if (node.on_packet(p, len, via, from, now, (int64_t)time(nullptr), &au,
-                     &relay)) {
+                     &relay, link_tag)) {
     uint8_t* slot = g->ring->write_slot();
     if (slot == nullptr || au.len > audio::kFrameBytes) {
       g->ring_drops++;
@@ -278,12 +292,25 @@ void take(NetNode& node, Socket& sock, const uint8_t* p, size_t len,
     }
   }
   if (g->shed.load() >= (uint8_t)Shed::kTransmit) return;  // Nothing goes out
-  if (relay.to_reticulum) reticulum::send(relay.data, relay.len);
+  // Not to Reticulum once the memory guard has shed it, as for our own voice:
+  // cr-rns has gone or is going, and the ring would only fill.
+  if (relay.to_reticulum && g->shed.load() < (uint8_t)Shed::kReticulum) {
+    // A frame that came over Reticulum may have just taught its link's far
+    // end: that link's skip goes now, not at the next 250 ms refresh, so a
+    // local talker's own copy never goes back to it.
+    if (link_tag != 0) {
+      const int slot = Forwarder::tag_slot(link_tag);
+      reticulum::set_skip(slot, node.forwarder().skip_tag(slot, now));
+    }
+    reticulum::send(relay.data, relay.len, /*voice=*/!relay.hello);
+  }
   if (relay.to_lan && sock.fd >= 0) {
     send_lan(node, sock, relay.data, relay.len, relay.hello, now);
   }
 }
 
+// cr-net: the WLAN socket and what came over Reticulum through the receive
+// pipeline, the bridge, split horizon's skip list, the hello and the roster.
 void net_task(void* arg) {
   const uint32_t gen = (uint32_t)(uintptr_t)arg;
   NetNode& node = *g->node;
@@ -295,6 +322,7 @@ void net_task(void* arg) {
   // waits at most that long in its ring.
   const int timeout_ms = g->config.reticulum ? 20 : 100;
   int64_t next_beat = 0;
+  int64_t next_skip = 0;
   int talkers = 0;       // As last published
   int64_t retry_at = 0;  // A socket that could not be opened: tried again
   g->supervisor.arm(kSlotNet, mono_ms());
@@ -331,8 +359,21 @@ void net_task(void* arg) {
     const int64_t now = mono_ms();
     // What came over Reticulum meanwhile, through the same pipeline.
     size_t m;
-    while ((m = reticulum::receive(from_rns, sizeof(from_rns))) > 0) {
-      if (on_air) take(node, sock, from_rns, m, NetNode::Via::kReticulum, 0, now);
+    uint32_t link_tag = 0;
+    while ((m = reticulum::receive(from_rns, sizeof(from_rns), &link_tag)) >
+           0) {
+      if (on_air) {
+        take(node, sock, from_rns, m, NetNode::Via::kReticulum, 0, now,
+             link_tag);
+      }
+    }
+    if (g->config.reticulum && now >= next_skip) {
+      // Split horizon (core/forwarder.h): the links whose far end hears us
+      // on the WLAN get none of what this node sends over Reticulum.
+      next_skip = now + 250;
+      for (int slot = 0; slot < Forwarder::kMaxLinks; slot++) {
+        reticulum::set_skip(slot, node.forwarder().skip_tag(slot, now));
+      }
     }
     if (sock.fd >= 0) {
       // Where this node's voice goes, for cr-audio.
@@ -351,16 +392,28 @@ void net_task(void* arg) {
       if (on_air && g->shed.load() < (uint8_t)Shed::kTransmit) {
         // What this node is on now: the WLAN while its socket is open, and
         // Reticulum while connected to its transport node (on Reticulum
-        // alone it keeps the channel, as the plugin does).
-        const uint8_t on =
-            (uint8_t)((sock.fd >= 0 ? Hello::kLan : 0) |
-                      (reticulum::connected() ? Hello::kReticulum : 0));
-        node.set_transports(on);
+        // alone it keeps the channel, as the plugin does). kRnsUp only with
+        // a confirmed link to a node off this WLAN, and only when this node
+        // bridges at all: the card's Relay on, a hop limit that lets a
+        // packet go one hop further (relay_ttl gives 0 below 2), and the
+        // WLAN up. A talker not yet linked ashore must not make the
+        // forwarder leave its voice to it, which nobody ashore would then
+        // hear, and a node that bridges nothing must not be elected to (the
+        // app's Forwarding.bridges and the plugin's bridges() are the same
+        // rule). kFwdAvoid always: with little RAM this node forwards the
+        // boat's voice only when nobody else can (core/forwarder.h).
+        const bool bridges =
+            g->config.relay && g->config.max_hops >= 2 && sock.fd >= 0;
+        const uint8_t on = (uint8_t)(
+            (sock.fd >= 0 ? Hello::kLan : 0) |
+            (reticulum::connected() ? Hello::kReticulum : 0) |
+            (bridges && reticulum::linked_remote() ? Hello::kRnsUp : 0));
+        node.set_transports(on != 0 ? (uint8_t)(on | Hello::kFwdAvoid) : 0);
         const size_t len =
             on != 0 ? node.build_hello((int64_t)time(nullptr), hello) : 0;
         if (len > 0) {
           if (sock.fd >= 0) send_lan(node, sock, hello, len, /*hello=*/true, now);
-          reticulum::send(hello, len);
+          reticulum::send(hello, len, /*voice=*/false);
         }
       }
       node.roster().expire(now);
@@ -465,6 +518,9 @@ void audio_task(void* arg) {
   uint8_t pkt[Transmitter::kMaxPacket];
   TalkKey key;
   BurstFloor floor;
+  ChannelFloor channel(g->self_id);
+  int overruns = 0;      // Passes in a row with more work than a frame
+  int64_t gave_ms = 0;   // When the last "gave core 0 a moment" was logged
   TxSocket tx;
   int timeouts = 0;
   int level = 0;
@@ -495,6 +551,8 @@ void audio_task(void* arg) {
   g->supervisor.arm(kSlotAudio, mono_ms());
   while (g->generation.load() == gen) {
     const int64_t now = mono_ms();
+    const int64_t pass_us = esp_timer_get_time();
+    int64_t waited_us = 0;  // In the I2S calls, which are the loop's clock
     g->supervisor.checkin(kSlotAudio, now);
 
     // The levels, when the screen or the card changed them: a few I2C
@@ -535,6 +593,7 @@ void audio_task(void* arg) {
       memcpy(&d, slot, sizeof(d));
       if (len >= sizeof(d) && d.len == len - sizeof(d)) {
         g->playout->deliver(d, slot + sizeof(d), now);
+        channel.heard(d.sender, now);  // Another talker: channel busy
       }
       g->ring->release();
     }
@@ -546,7 +605,37 @@ void audio_task(void* arg) {
                        now - g->touch_at.load() < kTouchFreshMs;
     const bool may_talk = g->mic_ok && g->clock_ok.load() &&
                           g->shed.load() < (uint8_t)Shed::kTransmit;
-    switch (key.sample(button, touch, may_talk, now)) {
+    // Channel busy (core/channel_floor.h): pressed while another talker is
+    // heard, the key keys only when held through the busy cue; two keyed at
+    // once, the higher id gives way. Half duplex only, as on the phones: full
+    // duplex is an open intercom that mixes talkers on purpose (the floor
+    // then sees nothing held, and stays idle).
+    const bool listen = !g->full_duplex.load();
+    bool floor_ok = true;
+    int32_t holder = 0;
+    switch (channel.sample(listen && (button || touch), key.talking(), now,
+                           &floor_ok)) {
+      case ChannelFloor::Event::kRefused:
+        channel.busy(now, &holder);
+        cue(tones::Cue::kBusy);  // Always: the talker must know
+        ESP_LOGI(kTag, "Channel busy (%08x talking): held, not keyed",
+                 (unsigned)holder);
+        break;
+      case ChannelFloor::Event::kOverride:
+        ESP_LOGW(kTag, "Talking over the channel (held through the busy cue)");
+        break;
+      case ChannelFloor::Event::kYielded:
+        channel.busy(now, &holder);
+        cue(tones::Cue::kBusy);
+        ESP_LOGI(kTag, "Gave way to %08x: the mic stays off until released",
+                 (unsigned)holder);
+        break;
+      case ChannelFloor::Event::kNone:
+        break;
+    }
+    if (!listen) floor_ok = true;
+    g->busy.store(channel.holding_off());
+    switch (key.sample(button, touch, may_talk && floor_ok, now)) {
       case TalkKey::Event::kKeyed:
         g->encoder->reset();
         // Half duplex unless asked: the crew is not played while talking.
@@ -579,6 +668,7 @@ void audio_task(void* arg) {
       words[2 * i] = words[2 * i + 1] = (int32_t)((uint32_t)(uint16_t)out[i] << 16);
     }
     size_t moved = 0;
+    const int64_t io_us = esp_timer_get_time();
     i2s_channel_write(g->tx, words, word_bytes, &moved, pdMS_TO_TICKS(200));
     bool heard = false;
     if (g->rx != nullptr) {
@@ -587,6 +677,7 @@ void audio_task(void* arg) {
                                pdMS_TO_TICKS(40)) == ESP_OK &&
               moved == word_bytes;
     }
+    waited_us += esp_timer_get_time() - io_us;
     if (heard) {
       mic::unpack_tdm(words, buf->slots);
       for (size_t i = 0; i < audio::kFrameSamples; i++) {
@@ -608,10 +699,21 @@ void audio_task(void* arg) {
     }
 
     // While keyed: this frame to the crew.
-    if (heard && key.talking()) {
+    // (Not after giving way: off at once, not after the key's release.)
+    if (heard && key.talking() && floor_ok) {
       PeerView v;
+      const int64_t enc_us = esp_timer_get_time();
       const size_t n = g->transmitter->build(g->encoder.get(), mono,
                                              (int64_t)time(nullptr), pkt);
+      const int took_us = (int)(esp_timer_get_time() - enc_us);
+      if (took_us > g->encode_max_us.load()) g->encode_max_us.store(took_us);
+      // Too slow for the frame (the encoder's state is in PSRAM, behind the
+      // cache the display shares): a lighter encode from the next frame.
+      if (g->budget.took(took_us)) {
+        g->encoder->set_complexity(g->budget.complexity());
+        ESP_LOGW(kTag, "Opus encodes took up to %d us: complexity %d now",
+                 took_us, g->budget.complexity());
+      }
       if (n > 0 && g->peers.read(&v) && tx.ensure(v.ip)) {
         // The group copies while no peer is known, and for the first frames
         // of each burst unless the memory guard has shed them.
@@ -625,7 +727,11 @@ void audio_task(void* arg) {
         for (int i = 0; i < v.count; i++) tx.send_to(pkt, n, v.addrs[i], c.port);
       }
       // And on every Reticulum link (nothing while there is none).
-      if (n > 0) reticulum::send(pkt, n);
+      // Not while the memory guard has shed Reticulum: cr-rns has gone or is
+      // going, and the ring would only fill.
+      if (n > 0 && g->shed.load() < (uint8_t)Shed::kReticulum) {
+        reticulum::send(pkt, n, /*voice=*/true);
+      }
     }
 
     if (now >= next_sweep) {
@@ -679,20 +785,44 @@ void audio_task(void* arg) {
       voice_sum_us = 0;
       voice_frames = 0;
     }
+    const int work_us =
+        (int)(esp_timer_get_time() - pass_us - waited_us);
+    if (work_us > g->audio_work_max_us.load()) {
+      g->audio_work_max_us.store(work_us);
+    }
+    // The safety valve: more work than a frame, pass after pass, and the I2S
+    // calls never wait, so this task (priority 17) would hold core 0 until
+    // the task watchdog restarts the unit. A tick off then: the audio may
+    // stutter, the unit stays up (the radio is a guest).
+    overruns = work_us >= (int)audio::kFrameMs * 1000 ? overruns + 1 : 0;
+    if (overruns >= kOverrunPasses) {
+      overruns = 0;
+      if (now - gave_ms >= 60000) {
+        gave_ms = now;
+        ESP_LOGW(kTag, "cr-audio behind (%d us of work a frame): giving core "
+                       "0 a moment",
+                 work_us);
+      }
+      vTaskDelay(1);
+    }
   }
   tx.close_it();
   g->mixer->set_gain(1.0f);
   g->talking.store(false);
+  g->busy.store(false);
   g->supervisor.disarm(kSlotAudio);
   g->audio_running.store(false);
   vTaskDelete(nullptr);
 }
 
 void beat_task(void*);
+void cpu_task(void*);
 
 // The tasks, for core/lifecycle.h (which decides; this only does).
 class EspTaskPort : public TaskPort {
  public:
+  // Creates one of the radio's tasks (cr-net, cr-audio, cr-beat) for the
+  // current generation.
   bool create(RadioTask task) override {
     const uint32_t gen = g->generation.load();
     switch (task) {
@@ -705,6 +835,9 @@ class EspTaskPort : public TaskPort {
       case RadioTask::kBeat:
         if (xTaskCreatePinnedToCore(beat_task, "cr-beat", 4096, nullptr,
                                     kBeatPriority, nullptr, kCore) == pdPASS) {
+          // The core 0 watch, on core 1 so a busy core 0 cannot silence it.
+          xTaskCreatePinnedToCore(cpu_task, "cr-cpu", 4096, nullptr, 4,
+                                  nullptr, 1);
           return true;
         }
         ESP_LOGE(kTag, "The radio's supervisor could not be created");
@@ -773,6 +906,40 @@ void start_sntp_once() {
   esp_sntp_init();
   started = true;
   ESP_LOGI(kTag, "SNTP from %s, then pool.ntp.org", gateway);
+}
+
+// cr-cpu: once a second, how much of the second core 0's idle task had (its
+// run-time counter, in us; one task's, read in a moment). Logged only when
+// it got under kIdleFloor: before the task watchdog (5 s without idle)
+// would restart the unit, the line says how close it is, with cr-audio's
+// longest pass of work and Opus encode in that second. (A walk of every
+// task's state each second, its first form, held the kernel long enough to
+// make the 4"'s screen flicker now and then: 2026-11-08.)
+void cpu_task(void*) {
+  constexpr int kIdleFloor = 15;  // Percent
+  TaskHandle_t idle = xTaskGetIdleTaskHandleForCore(0);
+  uint32_t idle_before = 0;
+  int64_t at_before = 0;
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    TaskStatus_t st;
+    vTaskGetInfo(idle, &st, pdFALSE, eInvalid);
+    const int64_t at = esp_timer_get_time();
+    const uint32_t idle_us = st.ulRunTimeCounter - idle_before;  // Wraps safely
+    const int64_t window = at - at_before;
+    const bool first = at_before == 0;
+    idle_before = st.ulRunTimeCounter;
+    at_before = at;
+    const int audio_us = g->audio_work_max_us.exchange(0);
+    const int enc_us = g->encode_max_us.exchange(0);
+    if (first || window <= 0) continue;
+    const int idle_pct = (int)((int64_t)idle_us * 100 / window);
+    if (idle_pct >= kIdleFloor) continue;
+    ESP_LOGW(kTag,
+             "core 0 idle %d%%; cr-audio work max %d us/frame, encode max "
+             "%d us",
+             idle_pct, audio_us, enc_us);
+  }
 }
 
 void beat_task(void*) {
@@ -1112,6 +1279,7 @@ RadioStatus status() {
     xSemaphoreGive(g->status_lock);
   }
   s.talking = g->talking.load();
+  s.busy = g->busy.load();
   s.volume = g->volume.load();
   s.mic_gain_db = g->mic_gain_tenths.load() / 10.0f;
   s.mic_channel = g->config.mic_channel;

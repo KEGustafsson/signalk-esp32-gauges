@@ -24,6 +24,9 @@ class FrameEncoder {
                      uint8_t out[kMaxPayload]) = 0;
   // A new talk burst: no state carried over from the last one.
   virtual void reset() {}
+  // How hard the encoder works (Opus: 0-10; encode_budget.h). Nothing to
+  // set for PCM.
+  virtual void set_complexity(int) {}
 };
 
 class PcmFrameEncoder : public FrameEncoder {

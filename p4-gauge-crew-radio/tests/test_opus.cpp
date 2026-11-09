@@ -94,3 +94,46 @@ TEST(opus_encoder_round_trips_through_the_decoder) {
   enc.reset();
   CHECK(enc.encode(pcm, payload) > 0);
 }
+
+// The encoder steps its complexity down at run time (encode_budget.h), and
+// this libopus is built with its assertions on: a failed one aborts, which
+// restarts the unit. So every complexity it can reach, and the step down
+// in the middle of a signal, over the signals that trip the encoder's
+// assertions at low bitrates (silence, a tone, noise, a square wave, DC).
+TEST(opus_encoder_holds_at_every_complexity_the_budget_can_reach) {
+  OpusFrameEncoder enc;
+  OpusFrameDecoder dec;
+  CHECK(enc.ok() && dec.ok());
+  int16_t pcm[N], out[N];
+  uint8_t payload[FrameEncoder::kMaxPayload];
+  uint32_t rng = 12345;
+  int bad = 0;
+  for (int c = OpusFrameEncoder::kComplexity; c >= 0; c--) {
+    enc.set_complexity(c);
+    for (int signal = 0; signal < 5; signal++) {
+      for (int f = 0; f < 1500; f++) {
+        // Step down once more half way through, as the budget does.
+        if (f == 750 && c > 0) enc.set_complexity(c - 1);
+        if (f == 751 && c > 0) enc.set_complexity(c);
+        for (size_t i = 0; i < N; i++) {
+          const double t = (double)(f * N + i) / audio::kSampleRate;
+          int v = 0;
+          switch (signal) {
+            case 0: v = 0; break;
+            case 1: v = (int)(12000 * sin(2 * M_PI * 440 * t)); break;
+            case 2:
+              rng = rng * 1103515245u + 12345u;
+              v = (int)((rng >> 16) & 0x7FFF) - 16384;
+              break;
+            case 3: v = ((f * (int)N + (int)i) / 40) % 2 ? 20000 : -20000; break;
+            case 4: v = 15000; break;
+          }
+          pcm[i] = (int16_t)v;
+        }
+        const int n = enc.encode(pcm, payload);
+        if (n <= 0 || dec.decode(payload, (size_t)n, out) != (int)N) bad++;
+      }
+    }
+  }
+  CHECK(bad == 0);
+}

@@ -1559,3 +1559,80 @@ reads (as it reads the volume), and the halo and the Crew page look every
 between the fingers and the screen: the 20 ms touch sample and the key's
 40 ms debounce, and on the 4" one LVGL pass (about 100 ms) for the
 redraw, during which the touch is not sampled either.
+
+## 2026-11-08 — Two talkers at once: the radio under load
+
+Two crew talking at the same time dropped every client (the plugin, the
+phones, the 4" units) off the Reticulum hub, and the starboard 4" restarted
+twice (20:59, 21:06): the task watchdog, CPU 0 without a moment of idle for
+5 s, cr-audio in the echo canceller when it fired. Each time the memory
+guard had just shed Reticulum and cr-rns never answered ("paused" missing
+from the log): it was stuck in its loop of blocking sends. Two research
+passes, over crew-radio's app and plugin and over RNS 1.6.0's source:
+
+- each 20 ms frame is sealed and written separately on every Reticulum
+  link (TCP_NODELAY, one segment, one ESP-Hosted DMA buffer each);
+- every node on the boat's WLAN that is also on Reticulum bridged every
+  frame again, and the boat's nodes were linked to each other through the
+  hub too: about ten copies of a frame through the hub for one talker;
+- rnsd's TCPServerInterface forwards from one thread with a blocking
+  `sendall`: one client that stops reading stalls it for all, its queue of
+  1024 overflows in about 2 s and the keep-alives go with it;
+- the plugin's and the app's backlog rules then redialled, which drops
+  every link of that node.
+
+One rule set for all three clients (crew-radio branch `radio-under-load`,
+this repo the same): one forwarder per boat chosen from the hellos' new
+bits, split horizon on Reticulum, voice dropped rather than sent late and
+no redial on a backlog, and channel busy (listen before talk, the higher
+id gives way in a collision, an override after 1 s held). Here:
+`core/forwarder.*`, `core/channel_floor.*`, link tags through
+`ReticulumNode`, a cr-rns that never waits on its socket, the busy cue,
+and "CHANNEL BUSY" on the halo and the Crew page. The hub: BackboneInterface
+(already in rnsd 1.5.4, egress control included).
+
+Then the hardware test (22:31-22:59): the Android talking, a 4" held
+through the busy cue and talking over it. Both 4" units restarted on the
+task watchdog again, 12-36 s into talking over, with Reticulum up and the
+network tasks at 1-3 % of core 0. A watch of core 0's idle time (cr-cpu,
+on core 1) gave the cause: cr-audio at 89-97 % of core 0, its Opus encodes
+18-27 ms of a 20 ms frame, a whole pass 23-37 ms. The encoder's state is in
+PSRAM, behind the 128 KB cache the display's drawing on core 1 shares; a
+busy screen (the halo lit for the other talker) slows it several times
+over. So:
+
+- `core/encode_budget.*`: every encode timed; a 200 ms window with one over
+  10 ms steps Opus's complexity down one (5 to 0 at the least), never back
+  up while the radio runs. The same Opus to every receiver.
+- A safety valve in cr-audio: ten passes in a row with more work than a
+  frame, and it gives core 0 a tick; the audio may stutter, the unit stays
+  up.
+- cr-cpu logs `core 0 idle N%` (with cr-audio's longest pass and encode)
+  only when idle is under 15 %. Its first form walked every task's state
+  each second, which held the kernel long enough to make both 4" screens
+  flicker for a moment every so often; it now reads the idle task's counter
+  alone.
+
+CodeRabbit's reviews of both PRs then tightened the hello's 0x10 bit
+(RNS_UP) the same way in all three clients: connected, a confirmed link
+whose far end is not on the boat's own WLAN, and the node bridging at all
+(Relay on, a hop limit of 2 or more, the WLAN up). A unit whose only link
+went to a crewmate aboard, or one that bridged nothing, could otherwise be
+elected forwarder and leave the boat's voice to nobody. And the encoder's
+budget lives with the encoder: a cr-audio the supervisor restarted began
+again at complexity 5 while the encoder stayed lower, so its next step
+down would have raised it.
+
+CodeRabbit's next review of crew-radio (2026-11-09) found a gap the three
+clients shared. A talker on the boat's WLAN that does not bridge (Relay
+off) sends its own voice over Reticulum as well, to every link but those it
+knows lead aboard; until the forwarder's first packet on that link has told
+it, it sends there too. When that copy reached the forwarder before the
+WLAN copy, the forwarder put it on the WLAN only, then dropped the WLAN
+copy as a duplicate, and a listener ashore with no link of its own to the
+talker missed those frames. Now a frame that comes over Reticulum straight
+from a local talker (hops == ttl) goes on to Reticulum from the forwarder
+as its WLAN copy would have (`Forwarder::audio_route`'s
+`talker_local_direct`), never back on the talker's link; the WLAN copy is
+then the duplicate. The plugin's relay also sent a frame to the LAN or to
+Reticulum, never both; it sends to both when both are due.
