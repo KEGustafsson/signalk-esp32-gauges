@@ -1681,7 +1681,46 @@ guard shed Reticulum once for a second during the first round of builds;
 the logs of 2026-11-07 have 81 and 53 such events on the two 4" units, so
 it is not new.
 
-Signal K could switch the mode by itself later: `environment.mode`
-(day / night, as used by signalk-bandg-displaydaynight) or a sun phase
-(`environment.sun`: dawn, sunrise, day, sunset, dusk, night). Not done:
-the buttons are the only way for now.
+### The mode from Signal K
+
+What the server can say, from the sources:
+
+- `environment.mode` is in the specification (`schemas/groups/environment.json`):
+  "Mode of the vessel based on the current conditions", one of `day`,
+  `night`, `restricted visibility`. SignalK/signalk-derived-data's Sun
+  calculation writes it at sunrise and sunset only (so a switch by hand
+  holds until then); the App Dock's day / night button writes it by hand;
+  the Instrument Panel and Freeboard-SK read it.
+- `environment.sun` is not in the specification: derived-data writes it
+  every minute from `navigation.position` and `navigation.datetime`, one of
+  `nauticalDawn`, `dawn`, `sunrise`, `day`, `sunset`, `dusk`,
+  `nauticalDusk`, `night` (suncalc's times: `dawn` starts civil twilight,
+  `dusk` ends it, `night` ends astronomical twilight; `sunriseEnd` gives
+  `day`). Freeboard-SK reads it.
+
+`SkColourMode` (`colour_mode.h`, host-tested) turns them into a mode: the
+sun's phase by how dark it is (sun up Day, civil twilight Dusk, nautical
+twilight and darker Night), `environment.mode` alone without a phase, and
+`environment.mode` over the sun only when it changes to contradict it
+(night in daylight, day in the dark: a hand on the App Dock), until the
+sun's mode next changes. The first test run caught the rule this replaced
+(any contradiction wins): `environment.mode` stays `night` from sunset to
+sunrise while the phase moves on, and would have held the morning in Night
+for up to a minute. The unit switches only when the answer changes: the
+phase restated every minute and the values replayed on each reconnect leave
+a mode chosen on the buttons alone. `TextListener` (`sk_listeners.h`) passes
+only JSON strings (a null from a lost source says nothing).
+`SkData` subscribes to both (5 s), `gauge_ui`'s `ui_set_colour_mode()`
+switches, and the log says why (`Colour mode Night (Signal K)` or
+`(button)`).
+
+The boat's server (2.37.0) had `navigation.position` and
+`navigation.datetime` but neither path; with derived-data's Sun
+calculation switched on it publishes both (`day` / `day` at 13:54). All
+four units flashed over USB; the 2.1" port unit's log shows both
+subscriptions (5 s) and no switch, being in Day already.
+
+CodeRabbit on #18: a second finger landing on a colour button ended the
+first finger's press as a click and changed the mode at the start of a
+two-finger talk; the buttons now ignore a click while two fingers are down,
+as the screen's tap does.

@@ -100,4 +100,25 @@ class AttitudeListener : public GaugeListener<sensesp::SKListener> {
   Callback callback_;
 };
 
+// A path whose value is a word (environment.mode, environment.sun): calls
+// the callback with it, only for a JSON string -- null, a number or an
+// object say nothing here (as<const char*>() would make a null "null").
+class TextListener : public sensesp::SKListener {
+ public:
+  using Callback = std::function<void(const char* value)>;
+  TextListener(const String& sk_path, int listen_delay, Callback callback)
+      : sensesp::SKListener(sk_path, listen_delay),
+        callback_(std::move(callback)) {}
+
+  void parse_value(const JsonObject& json) override {
+    JsonVariantConst value = json["value"];
+    if (value.is<const char*>() && callback_) {
+      callback_(value.as<const char*>());
+    }
+  }
+
+ private:
+  Callback callback_;
+};
+
 }  // namespace skgauges

@@ -174,7 +174,9 @@ The gauges never show a number nobody vouches for:
 - **Swipe left / right**: next / previous gauge (wraps around).
 - **Swipe down**: info box with the device, its IP address, the Signal K
   connection and the Signal K path the current page listens to, with
-  **Day / Dusk / Night** buttons for the colours ([docs/PAGES.md](docs/PAGES.md#day-dusk-and-night)).
+  **Day / Dusk / Night** buttons for the colours, which also follow Signal
+  K's `environment.sun` / `environment.mode` when the server has them
+  ([docs/PAGES.md](docs/PAGES.md#day-dusk-and-night)).
   Swipe up or tap to close it (a tap alone opens nothing: a short sideways
   swipe is easily read as one).
 - **Long press**: backlight 100 → 60 → 30 → 10 %.

@@ -12,9 +12,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
+#include "colour_mode.h"
 #include "gauge_defs.h"
 #include "gauge_value.h"
 #include "sensesp/signalk/signalk_listener.h"
@@ -26,6 +28,13 @@ class SkData {
   // Subscribes to the SK path of every page swiped through. Call after
   // SensESPAppBuilder's get_app() and gauge_config().begin().
   void begin();
+
+  // Called (on the loop) when Signal K's environment.mode / environment.sun
+  // ask for another colour mode (SkColourMode, colour_mode.h). Set before
+  // begin().
+  void set_colour_mode_handler(std::function<void(ColourMode)> handler) {
+    colour_mode_handler_ = std::move(handler);
+  }
 
   const GaugeValue& get(size_t index) const { return values_[index]; }
 
@@ -43,6 +52,8 @@ class SkData {
   // WebSocket library also reconnects the same client on its own.
   uint32_t conn_epoch_ = 0;
   std::vector<std::shared_ptr<sensesp::SKListener>> listeners_;
+  SkColourMode sk_colour_mode_;
+  std::function<void(ColourMode)> colour_mode_handler_;
 };
 
 SkData& sk_data();

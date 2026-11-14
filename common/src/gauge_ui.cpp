@@ -409,15 +409,15 @@ void create_status_dot() {
   style_status_dot();
 }
 
-// A colour button in the info box was tapped. Everything drawn so far is in
-// the old colours: the visible page is drawn again at once (one page build,
-// a few hundred ms), the others are dropped and built again in the
-// background as after boot, and the halo, the dot and the box restyled.
-void choose_mode(ColourMode mode) {
-  lv_timer_reset(state->overlay_timer);  // The box stays its full time
+// Switches the colour mode. Everything drawn so far is in the old colours:
+// the visible page is drawn again at once (one page build, a few hundred
+// ms), the others are dropped and built again in the background as after
+// boot, and the halo, the dot and the box restyled.
+void apply_mode(ColourMode mode, const char* why) {
   if (mode == ui::colour_mode()) {
     return;
   }
+  ESP_LOGI("gauge_ui", "Colour mode %s (%s)", colour_mode_name(mode), why);
   ui::set_colour_mode(mode);
   state->overlay->restyle();
   style_status_dot();
@@ -437,6 +437,18 @@ void choose_mode(ColourMode mode) {
         lv_timer_create(prebuild_cb, kPrebuildPeriodMs, nullptr);
   }
   save_prefs();
+}
+
+// A colour button in the info box was tapped.
+void choose_mode(ColourMode mode) {
+  // A second finger landing ends the first one's press as a release
+  // (lvgl_port.cpp), which LVGL takes as a click on the button under it:
+  // the start of a two-finger talk, not a choice.
+  if (touch_fingers() >= 2) {
+    return;
+  }
+  lv_timer_reset(state->overlay_timer);  // The box stays its full time
+  apply_mode(mode, "button");
 }
 
 void create_overlay() {
@@ -512,6 +524,13 @@ void ui_show_notice(const char* text) {
   show_overlay(text, kInfoShowMs, false);
   lv_timer_pause(state->overlay_timer);  // Stays until the restart
   lv_refr_now(nullptr);
+}
+
+void ui_set_colour_mode(ColourMode mode, const char* why) {
+  if (state == nullptr) {
+    return;
+  }
+  apply_mode(mode, why);
 }
 
 void ui_set_status_color(uint8_t r, uint8_t g, uint8_t b) {

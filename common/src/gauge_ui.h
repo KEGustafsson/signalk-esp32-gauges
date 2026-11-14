@@ -14,6 +14,7 @@
 
 #include <functional>
 
+#include "colour_mode.h"
 #include "gauge_defs.h"
 
 namespace skgauges {
@@ -29,6 +30,11 @@ void ui_begin(const UiConfig& config);
 // Replaces the gauge page with a full-screen notice and draws it at once
 // (used while an OTA upload blocks the loop).
 void ui_show_notice(const char* text);
+
+// Switches the colour mode (as a tap on its button does) and logs `why`;
+// nothing when it is the mode already. Used for Signal K's environment.mode
+// and environment.sun (sk_data.h).
+void ui_set_colour_mode(ColourMode mode, const char* why);
 
 // SensESP's system status "LED" colour, mirrored as a small dot at the
 // bottom of the bezel (see status_led.h).

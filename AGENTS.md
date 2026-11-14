@@ -80,7 +80,8 @@ If a task would require breaking one of these, stop and flag it.
     the unit), `arc_fit.h` (how much of a name fits along an arc),
     `text_fold.h` (names in the fonts' ASCII: Mäkelä as Makela), `crew_tap.h`
     (where a tap on the Crew page lands), `colour_mode.h` (day, dusk and
-    night: one rule each over the day colours). Put new logic of this kind there, with a test, rather than in
+    night: one rule each over the day colours; the mode from Signal K's
+    `environment.sun` and `environment.mode`). Put new logic of this kind there, with a test, rather than in
     the Arduino glue.
   - `ui/` -- pure LVGL drawing. No Arduino, no SensESP: it must keep compiling
     on the host for `tools/preview`, which CI runs. Colours are written for

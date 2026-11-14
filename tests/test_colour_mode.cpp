@@ -72,3 +72,141 @@ TEST(colour_mode_from_storage_falls_back_to_day) {
   CHECK(colour_mode_from_int(3) == ColourMode::kDay);
   CHECK(colour_mode_from_int(-1) == ColourMode::kDay);
 }
+
+using skgauges::colour_mode_from_sk_mode;
+using skgauges::colour_mode_from_sk_sun;
+using skgauges::SkColourMode;
+
+TEST(colour_sk_mode_values_day_and_night_only) {
+  ColourMode m = ColourMode::kDusk;
+  CHECK(colour_mode_from_sk_mode("day", &m) && m == ColourMode::kDay);
+  CHECK(colour_mode_from_sk_mode("night", &m) && m == ColourMode::kNight);
+  m = ColourMode::kDusk;
+  CHECK(!colour_mode_from_sk_mode("restricted visibility", &m));
+  CHECK(!colour_mode_from_sk_mode("Night", &m));
+  CHECK(!colour_mode_from_sk_mode("", &m));
+  CHECK(!colour_mode_from_sk_mode(nullptr, &m));
+  CHECK(m == ColourMode::kDusk);  // Untouched
+}
+
+TEST(colour_sk_sun_phases_by_how_dark_it_is) {
+  struct Case {
+    const char* phase;
+    ColourMode mode;
+  };
+  const Case cases[] = {
+      {"day", ColourMode::kDay},           {"sunrise", ColourMode::kDay},
+      {"dawn", ColourMode::kDusk},         {"sunset", ColourMode::kDusk},
+      {"nauticalDawn", ColourMode::kNight}, {"dusk", ColourMode::kNight},
+      {"nauticalDusk", ColourMode::kNight}, {"night", ColourMode::kNight},
+  };
+  for (const Case& c : cases) {
+    ColourMode m = ColourMode::kDay;
+    CHECK(colour_mode_from_sk_sun(c.phase, &m) && m == c.mode);
+  }
+  ColourMode m = ColourMode::kDusk;
+  CHECK(!colour_mode_from_sk_sun("noon", &m));
+  CHECK(!colour_mode_from_sk_sun("sunriseEnd", &m));  // A time, not a phase
+  CHECK(!colour_mode_from_sk_sun(nullptr, &m));
+  CHECK(m == ColourMode::kDusk);
+}
+
+TEST(colour_sk_mode_alone_switches_on_each_change_only) {
+  SkColourMode sk;
+  ColourMode to = ColourMode::kDusk;
+  CHECK(sk.on_mode("night", &to) && to == ColourMode::kNight);  // First value
+  CHECK(!sk.on_mode("night", &to));    // Replayed on a reconnect: no switch
+  CHECK(!sk.on_mode("restricted visibility", &to));
+  CHECK(!sk.on_mode(nullptr, &to));     // A null from a lost source
+  CHECK(sk.on_mode("day", &to) && to == ColourMode::kDay);
+}
+
+TEST(colour_sk_sun_decides_and_restating_it_never_undoes_a_tap) {
+  SkColourMode sk;
+  ColourMode to = ColourMode::kNight;
+  CHECK(sk.on_sun("day", &to) && to == ColourMode::kDay);
+  // Every minute the same phase again: no switch, so a mode chosen on the
+  // unit's buttons holds.
+  for (int i = 0; i < 5; i++) CHECK(!sk.on_sun("day", &to));
+  CHECK(!sk.on_sun("sunrise", &to));  // Another phase, the same mode
+  CHECK(sk.on_sun("sunset", &to) && to == ColourMode::kDusk);
+  CHECK(sk.on_sun("dusk", &to) && to == ColourMode::kNight);
+  CHECK(!sk.on_sun("nauticalDusk", &to));
+  CHECK(!sk.on_sun("night", &to));
+  CHECK(!sk.on_sun("nauticalDawn", &to));
+  CHECK(sk.on_sun("dawn", &to) && to == ColourMode::kDusk);
+  CHECK(sk.on_sun("sunrise", &to) && to == ColourMode::kDay);
+}
+
+TEST(colour_sk_derived_datas_own_mode_switch_follows_the_sun) {
+  // At sunset derived-data sets environment.mode to night while the sun's
+  // phase is sunset (dusk here): the sun decides, no jump to night and back.
+  SkColourMode sk;
+  ColourMode to = ColourMode::kDay;
+  CHECK(sk.on_mode("day", &to) && to == ColourMode::kDay);
+  CHECK(!sk.on_sun("day", &to));
+  CHECK(sk.on_sun("sunset", &to) && to == ColourMode::kDusk);
+  CHECK(!sk.on_mode("night", &to));
+  CHECK(sk.on_sun("dusk", &to) && to == ColourMode::kNight);
+  // Sunrise: day from both.
+  CHECK(sk.on_sun("dawn", &to) && to == ColourMode::kDusk);
+  CHECK(sk.on_sun("sunrise", &to) && to == ColourMode::kDay);
+  CHECK(!sk.on_mode("day", &to));
+}
+
+TEST(colour_sk_mode_set_by_hand_against_the_sun_wins_until_its_next_step) {
+  SkColourMode sk;
+  ColourMode to = ColourMode::kNight;
+  CHECK(sk.on_mode("day", &to) && to == ColourMode::kDay);
+  CHECK(!sk.on_sun("day", &to));
+  CHECK(sk.on_mode("night", &to) && to == ColourMode::kNight);  // App Dock
+  CHECK(!sk.on_sun("day", &to));   // The sun restated: night holds
+  CHECK(!sk.on_mode("night", &to));
+  // Sunset: the sun's next step decides again.
+  CHECK(sk.on_sun("sunset", &to) && to == ColourMode::kDusk);
+  // Day by hand in the dark, until dawn.
+  CHECK(sk.on_sun("night", &to) && to == ColourMode::kNight);
+  CHECK(sk.on_mode("day", &to) && to == ColourMode::kDay);
+  CHECK(!sk.on_sun("night", &to));
+  // A phase with the same mode is no step: day holds through it.
+  CHECK(!sk.on_sun("nauticalDawn", &to));
+  CHECK(sk.on_sun("dawn", &to) && to == ColourMode::kDusk);
+}
+
+TEST(colour_sk_mode_left_at_night_does_not_hold_back_the_morning) {
+  // derived-data leaves environment.mode at night until the sun is up, and
+  // writes day in the same minute as the phase sunrise, or a minute later.
+  SkColourMode sk;
+  ColourMode to = ColourMode::kDay;
+  CHECK(sk.on_mode("night", &to) && to == ColourMode::kNight);
+  CHECK(!sk.on_sun("night", &to));
+  CHECK(!sk.on_sun("nauticalDawn", &to));
+  CHECK(sk.on_sun("dawn", &to) && to == ColourMode::kDusk);
+  CHECK(sk.on_sun("sunrise", &to) && to == ColourMode::kDay);
+  CHECK(!sk.on_mode("day", &to));
+  // A first mode against the sun (at boot): who set it is unknown.
+  SkColourMode boot;
+  CHECK(boot.on_sun("day", &to) && to == ColourMode::kDay);
+  CHECK(!boot.on_mode("night", &to));
+}
+
+TEST(colour_sk_first_values_agree_in_either_order) {
+  // At boot (and on each reconnect) the server sends both cached values, in
+  // no fixed order; the answer must not depend on it.
+  const char* sets[][2] = {{"night", "sunset"}, {"night", "day"},
+                           {"day", "night"},    {"day", "dawn"},
+                           {"restricted visibility", "dusk"}};
+  for (const auto& set : sets) {
+    SkColourMode a;
+    SkColourMode b;
+    ColourMode ta = ColourMode::kDay;
+    ColourMode tb = ColourMode::kDay;
+    ColourMode last_a = ColourMode::kDay;
+    ColourMode last_b = ColourMode::kDay;
+    if (a.on_mode(set[0], &ta)) last_a = ta;
+    if (a.on_sun(set[1], &ta)) last_a = ta;
+    if (b.on_sun(set[1], &tb)) last_b = tb;
+    if (b.on_mode(set[0], &tb)) last_b = tb;
+    CHECK(last_a == last_b);
+  }
+}

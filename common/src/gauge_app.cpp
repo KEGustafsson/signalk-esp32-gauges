@@ -393,6 +393,8 @@ void gauge_app_begin(const GaugeAppConfig& config) {
 
   add_unit_card(config.board, config.board_label, id.side);
   gauge_config().add_config_items();
+  sk_data().set_colour_mode_handler(
+      [](ColourMode mode) { ui_set_colour_mode(mode, "Signal K"); });
   sk_data().begin();
   link_watch_begin();
   // Internal DMA RAM is what WiFi runs out of first (on the 4" its link to

@@ -14,6 +14,10 @@ namespace skgauges {
 
 namespace {
 
+// environment.mode and environment.sun change a few times a day
+// (derived-data restates the sun's phase once a minute).
+constexpr int kColourListenDelayMs = 5000;
+
 float wrap360(float deg) {
   deg = fmodf(deg, 360.0f);
   if (deg < 0.0f) deg += 360.0f;
@@ -43,6 +47,21 @@ void SkData::begin() {
       gate_sweep(&slot, now);
     }
   });
+
+  // The colour mode from the server's environment.mode and environment.sun
+  // (colour_mode.h), when it has them; otherwise the unit's buttons alone.
+  const auto colour_listener = [this](const char* path, bool sun) {
+    auto listener = std::make_shared<TextListener>(
+        path, kColourListenDelayMs, [this, sun](const char* value) {
+          ColourMode mode;
+          const bool change = sun ? sk_colour_mode_.on_sun(value, &mode)
+                                  : sk_colour_mode_.on_mode(value, &mode);
+          if (change && colour_mode_handler_) colour_mode_handler_(mode);
+        });
+    listeners_.push_back(listener);
+  };
+  colour_listener("environment.mode", false);
+  colour_listener("environment.sun", true);
 
   // The pages gauge_ui shows, each with its path, display unit and data
   // timeout from its settings card. Metadata for the path (zones,

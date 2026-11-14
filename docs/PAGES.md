@@ -62,6 +62,30 @@ redraws the page on screen at once (a moment's pause); the other pages
 follow in the background, or when you swipe to them. The backlight is
 separate: hold a finger on the screen to step it down to 30 or 10 %.
 
+**From Signal K.** When the server publishes them, every unit follows
+`environment.sun` and `environment.mode` by itself. Both come from the
+server's **signalk-derived-data** plugin: turn on its **Sun** calculation
+(Server → Plugin Config → Derived Data); it needs `navigation.position` and
+`navigation.datetime` (a GNSS). The sun's phase sets the mode by how dark
+it is:
+
+| `environment.sun` | Sun | Mode |
+|---|---|---|
+| `day`, `sunrise` | up | Day |
+| `dawn`, `sunset` | up to 6° below the horizon (civil twilight) | Dusk |
+| `nauticalDawn`, `dusk`, `nauticalDusk`, `night` | 6° or more below | Night |
+
+`environment.mode` (in the Signal K specification: `day`, `night` or
+`restricted visibility`) is used alone when the server has no sun phase,
+and wins over the sun when someone switches it by hand against it (the
+App Dock's day / night button: night in daylight, day in the dark), until
+the sun's next step. `restricted visibility` changes nothing.
+
+A unit switches only when that answer changes. A button on the unit still
+works at any time and holds until the next change: the server restating
+the same phase every minute, or replaying it on a reconnect, does not undo
+it. Without either path the buttons are the only way, as before.
+
 ![The same pages in day, dusk and night, rendered at 4" resolution](colour-modes-4in.png)
 
 ## Opening the web UI

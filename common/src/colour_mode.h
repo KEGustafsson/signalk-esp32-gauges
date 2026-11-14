@@ -16,10 +16,12 @@
 //    red needle is as bright as a white marking, and a zone shows as a
 //    brighter band, not a colour.
 //
-// Black stays black in every mode. Pure and header-only, host-tested
-// (tests/test_colour_mode.cpp).
+// Black stays black in every mode. The mode is chosen on the unit (the
+// swipe-down box) or follows Signal K (SkColourMode, below). Pure and
+// header-only, host-tested (tests/test_colour_mode.cpp).
 
 #include <stdint.h>
+#include <string.h>
 
 namespace skgauges {
 
@@ -51,6 +53,124 @@ constexpr uint32_t kDuskBlue = 128;   // 50 %
 // Night: the brightest a red goes (a white marking), of 255.
 constexpr uint32_t kNightPeak = 220;
 }  // namespace colour_mode_detail
+
+// ---- The mode from Signal K ----
+//
+// Two paths say how light it is, both written by the server's derived-data
+// plugin (its "Sun" calculation, from navigation.position and .datetime):
+//
+//  - environment.mode, in the Signal K specification: "day", "night" or
+//    "restricted visibility". derived-data sets it at sunrise and sunset
+//    only; the App Dock's day / night button sets it by hand.
+//  - environment.sun, not in the specification, derived-data's: the sun's
+//    phase, written every minute: "nauticalDawn", "dawn", "sunrise", "day",
+//    "sunset", "dusk", "nauticalDusk", "night".
+
+// environment.mode's value as a mode: day and night; false for anything
+// else (restricted visibility, unknown).
+inline bool colour_mode_from_sk_mode(const char* value, ColourMode* mode) {
+  if (value == nullptr) return false;
+  if (strcmp(value, "day") == 0) {
+    *mode = ColourMode::kDay;
+  } else if (strcmp(value, "night") == 0) {
+    *mode = ColourMode::kNight;
+  } else {
+    return false;
+  }
+  return true;
+}
+
+// environment.sun's phase as a mode, by how dark it is: the sun up (day,
+// sunrise) is day; civil twilight, the sun up to 6 degrees below the horizon
+// (dawn, sunset), is dusk; nautical twilight and darker (nauticalDawn,
+// dusk, nauticalDusk, night) is night. False for anything else.
+inline bool colour_mode_from_sk_sun(const char* value, ColourMode* mode) {
+  if (value == nullptr) return false;
+  struct Phase {
+    const char* name;
+    ColourMode mode;
+  };
+  static const Phase kPhases[] = {
+      {"day", ColourMode::kDay},           {"sunrise", ColourMode::kDay},
+      {"dawn", ColourMode::kDusk},         {"sunset", ColourMode::kDusk},
+      {"nauticalDawn", ColourMode::kNight}, {"dusk", ColourMode::kNight},
+      {"nauticalDusk", ColourMode::kNight}, {"night", ColourMode::kNight},
+  };
+  for (const Phase& p : kPhases) {
+    if (strcmp(value, p.name) == 0) {
+      *mode = p.mode;
+      return true;
+    }
+  }
+  return false;
+}
+
+// What the two paths ask for, and when the unit should switch to it.
+//
+// The sun's phase decides when the server has one (it has three steps, the
+// mode two). environment.mode decides instead only when it changes to
+// contradict the sun outright -- to night while the sun says day, or to day
+// while it says night: that is someone's hand on the App Dock's button. It
+// holds until the sun's next step. A mode that merely stays as it was
+// overrides nothing: derived-data leaves it at night until sunrise, while
+// the sun's phase has already moved on to dawn and sunrise. Nor do
+// derived-data's own switches contradict (night at sunset falls in the
+// sun's dusk). Without a phase, environment.mode decides alone.
+//
+// The unit switches only when that answer changes, never because a value
+// came again: derived-data restates the phase every minute and the server
+// replays both on every reconnect, and neither may undo a mode chosen on the
+// unit's own buttons, which holds until the next change of the answer. The
+// first values (at boot, in either order) override nothing: who set them is
+// unknown by then. A value that means nothing here (null, "restricted
+// visibility", unknown) changes nothing.
+class SkColourMode {
+ public:
+  // A value of environment.mode / environment.sun. True, with *switch_to,
+  // when the unit should switch.
+  bool on_mode(const char* value, ColourMode* switch_to) {
+    ColourMode m;
+    if (!colour_mode_from_sk_mode(value, &m)) return false;
+    if (have_mode_ && m != mode_) {
+      by_hand_ = have_sun_ && contradicts(m, sun_);
+    }
+    mode_ = m;
+    have_mode_ = true;
+    return decide(switch_to);
+  }
+  bool on_sun(const char* value, ColourMode* switch_to) {
+    ColourMode m;
+    if (!colour_mode_from_sk_sun(value, &m)) return false;
+    if (!have_sun_ || m != sun_) {
+      by_hand_ = false;  // The sun's next step ends a switch by hand
+    }
+    sun_ = m;
+    have_sun_ = true;
+    return decide(switch_to);
+  }
+
+ private:
+  static bool contradicts(ColourMode mode, ColourMode sun) {
+    return (mode == ColourMode::kNight && sun == ColourMode::kDay) ||
+           (mode == ColourMode::kDay && sun == ColourMode::kNight);
+  }
+  bool decide(ColourMode* switch_to) {
+    const ColourMode wanted = !have_sun_ || by_hand_ ? mode_ : sun_;
+    if (have_wanted_ && wanted == wanted_) return false;
+    wanted_ = wanted;
+    have_wanted_ = true;
+    *switch_to = wanted;
+    return true;
+  }
+
+  ColourMode mode_ = ColourMode::kDay;
+  ColourMode sun_ = ColourMode::kDay;
+  ColourMode wanted_ = ColourMode::kDay;
+  bool have_mode_ = false;
+  bool have_sun_ = false;
+  bool have_wanted_ = false;
+  bool by_hand_ = false;  // environment.mode changed against the sun
+};
 
 // `rgb` (0xRRGGBB, a day colour) as it is drawn in `mode`.
 inline uint32_t tone_colour(uint32_t rgb, ColourMode mode) {
