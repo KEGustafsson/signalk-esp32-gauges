@@ -143,7 +143,9 @@ Warnings worth knowing:
    yet. This is right.
 2. Swipe left and right: every page comes up; a short toast names it.
 3. Swipe down: the info box shows the device, its IP address, the Signal K
-   connection state and the page's path. Swipe up or tap to close.
+   connection state and the page's path, and under it the Day / Dusk /
+   Night buttons. Tap Night: the page turns red on black after a moment;
+   tap Day to go back. Swipe up or tap outside the buttons to close.
 4. Long press: the backlight steps 100 → 60 → 30 → 10 %.
 5. The small dot at the bottom of the bezel is the status: it turns blue,
    with a brief blink each second, once connected to Signal K.
@@ -152,7 +154,10 @@ Warnings worth knowing:
 
 In the Signal K admin UI: **Security → Access Requests**, approve the
 device (named after its hostname, e.g. `gauge-4c-stbd`; read access is
-enough). The dot turns blue and the needles start to move.
+enough). The dot turns blue and the needles start to move. With
+signalk-derived-data's Sun calculation on, the colour mode then follows
+the sun by itself (the serial log says `Colour mode ... (Signal K)` at
+each change; [PAGES.md](PAGES.md#day-dusk-and-night)).
 
 ## 6. Check the readings
 

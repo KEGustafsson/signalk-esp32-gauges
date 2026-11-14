@@ -49,11 +49,15 @@ If an OTA upload fails:
 
 ## Phase 3: Monitor and Configure
 
-1. `pio device monitor` from the project folder (2.1": CH343 UART; 4": USB
-   Serial/JTAG on the USB-C port).
+1. `pio device monitor` from the project folder, on whichever USB port is
+   plugged in: each board has both the chip's own USB Serial/JTAG
+   (VID 303A) and a CH343 UART (VID 1A86). `pio device list` tells them
+   apart; on 2026-11-14 the 4" units were on their CH343, the 2.1" on USB
+   Serial/JTAG. An upload checks the chip type before writing anything.
 2. Interpret the output: display init, WiFi, Signal K connection, crashes
    (`esp32_exception_decoder` symbolises backtraces).
-3. On the screen: the gauge appears with dashes; a swipe down shows the IP and the
+3. On the screen: the gauge appears with dashes; a swipe down shows the IP,
+   the Day / Dusk / Night buttons and the
    Signal K state; the bezel dot is SensESP's status LED.
 4. A unit without WiFi credentials in `secrets.h` raises SensESP's access
    point named after its hostname (password `SECRET_AP_PASSWORD`, or

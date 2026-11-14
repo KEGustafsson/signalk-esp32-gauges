@@ -1657,7 +1657,13 @@ mode over about a hundred colours, not three palettes to keep in step.
   the brightest areas on the screen, so at night those two take their own
   colours: a dark steel bezel (`draw_steel_bezel()`) and lit digits on a
   dark window (`lcd_colours()`). Zones lose their hues at night (a brighter
-  red band); the sea horizon's sky is still a large red area.
+  red band). The sea horizon's light blue sky came out as a large bright
+  red disc in which the horizon line and the boat were lost; of three
+  renders (as it was, a dim sky, lines only) the dim one was chosen: at
+  night the sky is dark, brightest at the horizon, over a sea close to
+  black (`attitude_gauge.cpp`), so the line, the ladder and the boat carry
+  the reading and sky and sea still stay apart. All four units run it
+  (flashed over USB the same afternoon).
 
 The swipe-down box moved from `gauge_ui.cpp` into `ui/info_box.*` (pure
 LVGL) so the preview draws it: the info text, and under it Day / Dusk /

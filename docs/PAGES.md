@@ -51,9 +51,10 @@ mode in use lit.
 - **Day**: the classic steel look.
 - **Dusk**: the same pages dimmer and warmer. Every colour still reads as
   itself: a yellow zone stays yellow, a red one red.
-- **Night**: red on black, for eyes used to the dark. The bezel is dark and
-  the LCDs show lit digits on a dark window, so the brightest things on
-  the screen are the markings, the needle and the digits. Zones are a
+- **Night**: red on black, for eyes used to the dark. The bezel is dark,
+  the LCDs show lit digits on a dark window and the sea horizon's sky is
+  dim over a black sea, so the brightest things on the screen are the
+  markings, the needle, the horizon line and the digits. Zones are a
   brighter red band, not colours: in an alarm zone, read where the needle
   is.
 

@@ -45,6 +45,14 @@ constexpr uint32_t kSkyHorizon = 0x9CCBEA;
 constexpr uint32_t kSeaTop = 0x1E5E72;
 constexpr uint32_t kSeaBottom = 0x0A2630;
 constexpr uint32_t kBoatSymbol = 0xFF8C1A;
+// At night (before ink() makes them red): a dim sky, brightest at the
+// horizon, over a sea close to black. Day's light blue sky would be the
+// largest bright area on the screen; the horizon line, the ladder and the
+// boat carry the reading, and the two halves stay apart.
+constexpr uint32_t kNightSkyTop = 0x34343A;
+constexpr uint32_t kNightSkyHorizon = 0x707078;
+constexpr uint32_t kNightSeaTop = 0x303036;
+constexpr uint32_t kNightSeaBottom = 0x101014;
 
 constexpr float kHeelLcdY = 0.42f;
 constexpr float kHeelLcdW = 0.66f;
@@ -176,10 +184,14 @@ void AttitudeGaugePage::draw_window(lv_layer_t* layer) const {
   const float hy = g_.cy + g_.pxf(kDiscY);
   const float rd = g_.pxf(kDiscRadius);
   const float px_per_deg = g_.pxf(kPitchPxPerDeg);
+  const bool night = colour_mode() == ColourMode::kNight;
+  const uint32_t sea_top = night ? kNightSeaTop : kSeaTop;
+  const uint32_t sea_bottom = night ? kNightSeaBottom : kSeaBottom;
 
   // Sky: the whole disc.
   {
-    const uint32_t c[] = {kSkyTop, kSkyHorizon};
+    const uint32_t c[] = {night ? kNightSkyTop : kSkyTop,
+                          night ? kNightSkyHorizon : kSkyHorizon};
     const uint8_t f[] = {0, 255};
     draw_circle_grad(layer, (int32_t)hx, (int32_t)hy, (int32_t)rd, c, f, 2);
   }
@@ -192,7 +204,7 @@ void AttitudeGaugePage::draw_window(lv_layer_t* layer) const {
     const float dy = (float)y + 0.5f - hy;
     const float half = sqrtf(fmaxf(0.0f, rd * rd - dy * dy));
     if (half < 0.5f) continue;
-    row.bg_color = lerp_color(kSeaTop, kSeaBottom, dy / rd);
+    row.bg_color = lerp_color(sea_top, sea_bottom, dy / rd);
     lv_area_t a = {(int32_t)lroundf(hx - half), y,
                    (int32_t)lroundf(hx + half) - 1, y};
     lv_draw_rect(layer, &row, &a);

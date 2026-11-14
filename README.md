@@ -5,7 +5,10 @@ displays. Each device shows one page at a time and you swipe between them.
 The pages are yours to define in the web UI, like gauge widgets in SKip: you
 choose how many to swipe through (1–12), and each is a steel dial (rpm, temperature, speed, any number), a compass
 card or a sea-horizon heel/trim indicator, with its own title, Signal K path,
-unit and scale; the coloured zones come from the Signal K server. Data comes
+unit and scale; the coloured zones come from the Signal K server. Every page
+comes in day, dusk and night colours (red on black), chosen on the unit or
+following the sun through Signal K
+([docs/PAGES.md](docs/PAGES.md#day-dusk-and-night)). Data comes
 from a Signal K server through
 [SensESP](https://github.com/SignalK/SensESP); the look follows the
 "Classic Steel" gauges of [SKIP](https://github.com/halos-org/skip).
