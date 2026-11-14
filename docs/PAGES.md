@@ -77,7 +77,8 @@ it is:
 | `nauticalDawn`, `dusk`, `nauticalDusk`, `night` | 6° or more below | Night |
 
 `environment.mode` (in the Signal K specification: `day`, `night` or
-`restricted visibility`) is used alone when the server has no sun phase,
+`restricted visibility`) is used alone when the server has no sun phase
+(from about 10 s after the unit connects, when no phase has come with it),
 and wins over the sun when someone switches it by hand against it (the
 App Dock's day / night button: night in daylight, day in the dark), until
 the sun's next step. `restricted visibility` changes nothing.

@@ -35,6 +35,8 @@ constexpr uint32_t kToastShowMs = 1300;
 // not on every swipe: an NVS commit stalls the loop (and the RGB panel's
 // PSRAM frame buffer reads) for a few to tens of ms.
 constexpr uint32_t kPrefsSaveDelayMs = 3000;
+// A failed write is tried again this many times, kPrefsSaveDelayMs apart.
+constexpr int kPrefsRetries = 3;
 constexpr int kBrightnessLevels[] = {100, 60, 30, 10};
 constexpr int kBrightnessCount =
     sizeof(kBrightnessLevels) / sizeof(kBrightnessLevels[0]);
@@ -77,6 +79,7 @@ struct UiState {
   int saved_mode = -1;
   int sk_answer = -1;  // Signal K's last colour answer, -1 none (NVS "skmode")
   int saved_sk = -1;
+  int prefs_retries = 0;  // Failed writes in a row (write_prefs)
   // The Crew Radio's halo, on units with a radio (crew_view_available()).
   std::unique_ptr<ui::RadioHalo> halo;
   ui::CrewView halo_view;
@@ -91,6 +94,8 @@ constexpr uint32_t kHaloPollMs = 50;
 
 UiState* state = nullptr;
 
+void save_prefs();
+
 void write_prefs(lv_timer_t*) {
   lv_timer_pause(state->prefs_timer);
   const char* page = gauge_config().def(state->pages[state->current]).id;
@@ -100,21 +105,49 @@ void write_prefs(lv_timer_t*) {
       state->saved_mode == mode && state->saved_sk == state->sk_answer) {
     return;
   }
+  // Each value counts as saved only once its write succeeded (put* returns
+  // the bytes written, 0 on failure); a failure is tried again a few times.
+  bool ok = false;
   Preferences prefs;
   if (prefs.begin(kPrefsNamespace, false)) {
-    if (state->saved_page != page) prefs.putString("page", page);
-    if (state->saved_bright != state->brightness_index) {
-      prefs.putInt("bright", state->brightness_index);
+    ok = true;
+    if (state->saved_page != page) {
+      if (prefs.putString("page", page) > 0) {
+        state->saved_page = page;
+      } else {
+        ok = false;
+      }
     }
-    if (state->saved_mode != mode) prefs.putInt("mode", mode);
+    if (state->saved_bright != state->brightness_index) {
+      if (prefs.putInt("bright", state->brightness_index) > 0) {
+        state->saved_bright = state->brightness_index;
+      } else {
+        ok = false;
+      }
+    }
+    if (state->saved_mode != mode) {
+      if (prefs.putInt("mode", mode) > 0) {
+        state->saved_mode = mode;
+      } else {
+        ok = false;
+      }
+    }
     if (state->saved_sk != state->sk_answer) {
-      prefs.putInt("skmode", state->sk_answer);
+      if (prefs.putInt("skmode", state->sk_answer) > 0) {
+        state->saved_sk = state->sk_answer;
+      } else {
+        ok = false;
+      }
     }
     prefs.end();
-    state->saved_page = page;
-    state->saved_bright = state->brightness_index;
-    state->saved_mode = mode;
-    state->saved_sk = state->sk_answer;
+  }
+  if (ok) {
+    state->prefs_retries = 0;
+  } else if (++state->prefs_retries <= kPrefsRetries) {
+    save_prefs();  // Again after the save delay
+  } else {
+    ESP_LOGW("gauge_ui", "Could not save the page, brightness or colour mode");
+    state->prefs_retries = 0;  // The next change tries again
   }
 }
 

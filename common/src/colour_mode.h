@@ -124,6 +124,14 @@ inline bool colour_mode_from_sk_sun(const char* value, ColourMode* mode) {
 // first values (at boot, in either order) override nothing: who set them is
 // unknown by then. A value that means nothing here (null, "restricted
 // visibility", unknown) changes nothing.
+//
+// The first environment.mode decides nothing by itself until a sun phase has
+// come or the caller calls settle() (a few seconds after it): the server
+// sends both paths' values when the unit subscribes, in no fixed order, and
+// a mode taken before the sun's phase arrives would switch twice (night,
+// then dusk) and undo a mode chosen on the buttons that the saved answer
+// (seed()) kept. A server with environment.mode alone is followed from
+// settle() on, at once on each change.
 class SkColourMode {
  public:
   // A value of environment.mode / environment.sun. True, with *switch_to,
@@ -136,6 +144,18 @@ class SkColourMode {
     }
     mode_ = m;
     have_mode_ = true;
+    if (!have_sun_ && !settled_) return false;  // The sun may be on its way
+    return decide(switch_to);
+  }
+  // True while an environment.mode waits for settle().
+  bool waiting() const { return have_mode_ && !have_sun_ && !settled_; }
+  // The first values have had time to arrive: a server without a sun phase
+  // is followed on environment.mode from now on. True, with *switch_to,
+  // when the unit should switch.
+  bool settle(ColourMode* switch_to) {
+    if (settled_) return false;
+    settled_ = true;
+    if (!have_mode_ && !have_sun_) return false;
     return decide(switch_to);
   }
   // The answer given before a restart (saved by the caller): the first
@@ -160,6 +180,7 @@ class SkColourMode {
     }
     sun_ = m;
     have_sun_ = true;
+    settled_ = true;
     return decide(switch_to);
   }
 
@@ -184,6 +205,7 @@ class SkColourMode {
   bool have_sun_ = false;
   bool have_wanted_ = false;
   bool by_hand_ = false;  // environment.mode changed against the sun
+  bool settled_ = false;  // A sun phase came, or settle() was called
 };
 
 // `rgb` (0xRRGGBB, a day colour) as it is drawn in `mode`.

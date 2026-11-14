@@ -1734,4 +1734,11 @@ while Signal K said day was lost on a restart, the server's first day
 looking new to a fresh `SkColourMode`. The unit now keeps Signal K's last
 answer in NVS (`skmode`, with the page, brightness and mode) and seeds the
 rule with it at boot (`SkColourMode::seed()`): the same first values switch
-nothing, a change while it was off does.
+nothing, a change while it was off does. Its third round: with that saved
+answer, a first environment.mode arriving before the sun's phase still
+switched twice (night, then dusk) and undid it; a first environment.mode
+now waits for the phase, or 10 s (`SkColourMode::settle()`, scheduled by
+`SkData`), and a server with environment.mode alone is followed from then
+on. And a failed NVS write was marked saved and never tried again: each
+value of the page, brightness, mode and Signal K answer now counts as saved
+only once `put*` succeeded, retried three times 3 s apart.

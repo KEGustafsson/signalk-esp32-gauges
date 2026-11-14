@@ -57,6 +57,7 @@ class SkData {
   uint32_t conn_epoch_ = 0;
   std::vector<std::shared_ptr<sensesp::SKListener>> listeners_;
   SkColourMode sk_colour_mode_;
+  bool settle_scheduled_ = false;
   std::function<void(ColourMode)> colour_mode_handler_;
 };
 

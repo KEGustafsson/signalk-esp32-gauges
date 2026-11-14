@@ -114,7 +114,11 @@ TEST(colour_sk_sun_phases_by_how_dark_it_is) {
 TEST(colour_sk_mode_alone_switches_on_each_change_only) {
   SkColourMode sk;
   ColourMode to = ColourMode::kDusk;
-  CHECK(sk.on_mode("night", &to) && to == ColourMode::kNight);  // First value
+  CHECK(!sk.on_mode("night", &to));     // First value: a sun phase may follow
+  CHECK(sk.waiting());
+  CHECK(sk.settle(&to) && to == ColourMode::kNight);  // None came
+  CHECK(!sk.waiting());
+  CHECK(!sk.settle(&to));               // Once
   CHECK(!sk.on_mode("night", &to));    // Replayed on a reconnect: no switch
   CHECK(!sk.on_mode("restricted visibility", &to));
   CHECK(!sk.on_mode(nullptr, &to));     // A null from a lost source
@@ -142,9 +146,9 @@ TEST(colour_sk_derived_datas_own_mode_switch_follows_the_sun) {
   // At sunset derived-data sets environment.mode to night while the sun's
   // phase is sunset (dusk here): the sun decides, no jump to night and back.
   SkColourMode sk;
-  ColourMode to = ColourMode::kDay;
-  CHECK(sk.on_mode("day", &to) && to == ColourMode::kDay);
-  CHECK(!sk.on_sun("day", &to));
+  ColourMode to = ColourMode::kNight;
+  CHECK(!sk.on_mode("day", &to));
+  CHECK(sk.on_sun("day", &to) && to == ColourMode::kDay);
   CHECK(sk.on_sun("sunset", &to) && to == ColourMode::kDusk);
   CHECK(!sk.on_mode("night", &to));
   CHECK(sk.on_sun("dusk", &to) && to == ColourMode::kNight);
@@ -157,8 +161,8 @@ TEST(colour_sk_derived_datas_own_mode_switch_follows_the_sun) {
 TEST(colour_sk_mode_set_by_hand_against_the_sun_wins_until_its_next_step) {
   SkColourMode sk;
   ColourMode to = ColourMode::kNight;
-  CHECK(sk.on_mode("day", &to) && to == ColourMode::kDay);
-  CHECK(!sk.on_sun("day", &to));
+  CHECK(!sk.on_mode("day", &to));
+  CHECK(sk.on_sun("day", &to) && to == ColourMode::kDay);
   CHECK(sk.on_mode("night", &to) && to == ColourMode::kNight);  // App Dock
   CHECK(!sk.on_sun("day", &to));   // The sun restated: night holds
   CHECK(!sk.on_mode("night", &to));
@@ -178,8 +182,8 @@ TEST(colour_sk_mode_left_at_night_does_not_hold_back_the_morning) {
   // writes day in the same minute as the phase sunrise, or a minute later.
   SkColourMode sk;
   ColourMode to = ColourMode::kDay;
-  CHECK(sk.on_mode("night", &to) && to == ColourMode::kNight);
-  CHECK(!sk.on_sun("night", &to));
+  CHECK(!sk.on_mode("night", &to));
+  CHECK(sk.on_sun("night", &to) && to == ColourMode::kNight);
   CHECK(!sk.on_sun("nauticalDawn", &to));
   CHECK(sk.on_sun("dawn", &to) && to == ColourMode::kDusk);
   CHECK(sk.on_sun("sunrise", &to) && to == ColourMode::kDay);
@@ -232,4 +236,33 @@ TEST(colour_sk_seeded_answer_keeps_a_tap_across_a_restart) {
   SkColourMode fresh;
   CHECK(!fresh.answer(&saved));
   CHECK(fresh.on_sun("day", &to) && to == ColourMode::kDay);
+}
+
+TEST(colour_sk_seeded_answer_holds_whichever_path_comes_first) {
+  // Saved answer dusk (a Night chosen on the buttons since), then a restart:
+  // environment.mode still says night, the sun's phase dawn (dusk). Neither
+  // order may switch, not even to night and back.
+  for (int order = 0; order < 2; order++) {
+    SkColourMode sk;
+    sk.seed(ColourMode::kDusk);
+    ColourMode to = ColourMode::kDay;
+    int switches = 0;
+    if (order == 0) {
+      if (sk.on_mode("night", &to)) switches++;
+      if (sk.on_sun("dawn", &to)) switches++;
+    } else {
+      if (sk.on_sun("dawn", &to)) switches++;
+      if (sk.on_mode("night", &to)) switches++;
+    }
+    if (sk.settle(&to)) switches++;
+    CHECK(switches == 0);
+  }
+  // A server with environment.mode alone, seeded: settle() decides, and only
+  // switches if the answer is new.
+  SkColourMode only_mode;
+  only_mode.seed(ColourMode::kNight);
+  ColourMode to = ColourMode::kDay;
+  CHECK(!only_mode.on_mode("night", &to));
+  CHECK(!only_mode.settle(&to));
+  CHECK(only_mode.on_mode("day", &to) && to == ColourMode::kDay);
 }
