@@ -1742,3 +1742,23 @@ now waits for the phase, or 10 s (`SkColourMode::settle()`, scheduled by
 on. And a failed NVS write was marked saved and never tried again: each
 value of the page, brightness, mode and Signal K answer now counts as saved
 only once `put*` succeeded, retried three times 3 s apart.
+
+### The modes switching at sunset (2026-11-14, live)
+
+All four units on `173951a` (#18), derived-data's Sun calculation on, the
+serial logs of all four running:
+
+- The sun's phase went from `day` to `sunset` at about 13:57 UTC (the
+  sun's lower edge on the horizon, -0.3 degrees, computed for the boat's
+  position): while the logger was off for the last flash, so that switch
+  to Dusk was not seen in the logs; after the flash the units came up with
+  Dusk as Signal K's saved answer and the unchanged `sunset` switched
+  nothing, as it should.
+- At 14:51:59 UTC derived-data published `dusk` (civil twilight over, the
+  sun 6 degrees down). Within 7 s all four logged `Colour mode Night
+  (Signal K)` (16:52:05-06 local), rebuilt the page on screen in 277-291 ms
+  and the rest in the background (277-350 ms each). No restart on any unit.
+
+Still to see: the morning (`dawn` Dusk, `sunrise` Day) and a whole night
+in Night mode on the 2.1" panels.
+
