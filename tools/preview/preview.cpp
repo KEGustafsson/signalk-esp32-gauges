@@ -1,6 +1,9 @@
 // Host preview: renders every gauge page to a PPM using the firmware's UI code,
 // once with a live sample (out/<size>_<n>_<id>.ppm) and once after the sample
-// has gone stale (out/stale<size>_<n>_<id>.ppm).
+// has gone stale (out/stale<size>_<n>_<id>.ppm). With "dusk" or "night" the
+// same in that colour mode, each name starting with the mode
+// (out/night<size>_..., out/nightstale<size>_...); and the swipe-down info
+// box with its mode buttons (out/<mode>info<size>.ppm, "day" for the day).
 #include <lvgl.h>
 #include <math.h>
 #include <stdio.h>
@@ -17,6 +20,7 @@
 #include "ui/crew_page.h"
 #include "ui/crew_view.h"
 #include "ui/gauge_page.h"
+#include "ui/info_box.h"
 #include "ui/radio_halo.h"
 
 static std::vector<uint16_t> fb;
@@ -137,6 +141,40 @@ static std::vector<PreviewPage> preview_pages() {
                         zone(true, 15.0f, false, 0, "alarm")};
   pages.push_back(battery);
   return pages;
+}
+
+// The colour mode's prefix in every output name ("" for the day).
+static const char* MODE = "";
+
+// The swipe-down info box over the first page, with its mode buttons (the
+// current mode lit), as gauge_ui.cpp shows it (sample text).
+static bool render_info_box(lv_display_t* d, lv_obj_t* scr,
+                            const std::vector<PreviewPage>& pages) {
+  skgauges::ui::Geometry g{W / 2, H / 2, W / 2};
+  const PreviewPage& p = pages[0];
+  const skgauges::GaugeDef def =
+      skgauges::resolve_gauge(p.base, p.options, p.meta);
+  auto page = skgauges::ui::create_page(scr, def, g);
+  skgauges::GaugeValue v;
+  v.value = p.sample;
+  v.seen = true;
+  skgauges::ui::InfoBox box(lv_layer_top(), g, nullptr);
+  box.show("4\" STBD  gauge-stbd\nIP 192.168.0.33\nSignal K: connected\n"
+           "Firmware 0.1.0\nRadio: on channel, 3 crew\n"
+           "Speed: navigation.speedThroughWater\n" LV_SYMBOL_LEFT
+           " " LV_SYMBOL_RIGHT " pages   " LV_SYMBOL_UP
+           " close\nhold: brightness",
+           true);
+  for (int k = 0; k < 30; k++) {
+    v.updated_ms = now_ms();
+    page->update(v, now_ms());
+    lv_refr_now(d);
+  }
+  char path[64];
+  snprintf(path, sizeof(path), "out/%sinfo%d.ppm", *MODE ? MODE : "day", W);
+  if (!save(path)) return false;
+  printf("saved %s\n", path);
+  return true;
 }
 
 // ---- Crew Radio mock-ups (out/radio<size>_<n>_<id>.ppm) ----
@@ -341,7 +379,8 @@ static bool render_radio_mockups(lv_display_t* d, lv_obj_t* scr,
       lv_refr_now(d);
     }
     char path[80];
-    snprintf(path, sizeof(path), "out/radio%d_%zu_%s.ppm", W, i, sc.id);
+    snprintf(path, sizeof(path), "out/%sradio%d_%zu_%s.ppm", MODE, W, i,
+             sc.id);
     if (!save(path)) return false;
     printf("saved %s\n", path);
     lv_obj_delete(dot);
@@ -351,9 +390,24 @@ static bool render_radio_mockups(lv_display_t* d, lv_obj_t* scr,
 
 int main(int argc, char** argv) {
   W = H = argc > 1 ? atoi(argv[1]) : 480;
-  const bool bench = argc > 2 && strcmp(argv[2], "bench") == 0;
+  bool bench = false;
+  for (int a = 2; a < argc; a++) {
+    if (strcmp(argv[a], "bench") == 0) {
+      bench = true;
+    } else if (strcmp(argv[a], "dusk") == 0) {
+      skgauges::ui::set_colour_mode(skgauges::ColourMode::kDusk);
+      MODE = "dusk";
+    } else if (strcmp(argv[a], "night") == 0) {
+      skgauges::ui::set_colour_mode(skgauges::ColourMode::kNight);
+      MODE = "night";
+    } else if (strcmp(argv[a], "day") != 0) {
+      W = 0;  // Not an argument we know: the usage below
+    }
+  }
   if (W < 64 || W > 4096) {
-    fprintf(stderr, "usage: %s [size in px, 64..4096; default 480] [bench]\n",
+    fprintf(stderr,
+            "usage: %s [size in px, 64..4096; default 480] [day|dusk|night] "
+            "[bench]\n",
             argv[0]);
     return 2;
   }
@@ -389,7 +443,7 @@ int main(int argc, char** argv) {
       lv_refr_now(d);
     }
     char path[64];
-    snprintf(path, sizeof(path), "out/%d_%zu_%s.ppm", W, i, p.id);
+    snprintf(path, sizeof(path), "out/%s%d_%zu_%s.ppm", MODE, W, i, p.id);
     if (!save(path)) {
       fprintf(stderr, "could not write %s (does out/ exist?)\n", path);
       return 1;
@@ -442,12 +496,13 @@ int main(int argc, char** argv) {
       page->update(v, v.updated_ms + skgauges::kStaleAfterMs);
       lv_refr_now(d);
     }
-    snprintf(path, sizeof(path), "out/stale%d_%zu_%s.ppm", W, i, p.id);
+    snprintf(path, sizeof(path), "out/%sstale%d_%zu_%s.ppm", MODE, W, i, p.id);
     if (!save(path)) {
       fprintf(stderr, "could not write %s\n", path);
       return 1;
     }
     printf("saved %s\n", path);
   }
+  if (!render_info_box(d, scr, pages)) return 1;
   return render_radio_mockups(d, scr, pages) ? 0 : 1;
 }

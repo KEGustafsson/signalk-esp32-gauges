@@ -27,7 +27,13 @@ combines them into one PNG. Each page is rendered twice: live
 (`out/<size>_*.ppm`) and after its sample has gone stale
 (`out/stale<size>_*.ppm`, e.g. `contact_sheet.py out/stale480 ...`), which
 must show dashes, a parked needle, a dimmed compass card or a dimmed, level
-boat symbol.
+boat symbol. It also renders the swipe-down info box with its colour
+buttons over the first page (`out/dayinfo<size>.ppm`).
+
+`dusk` or `night` after the size renders everything in that colour mode
+(`build/preview/preview 720 night`), each name starting with the mode:
+`out/night720_*`, `out/nightstale720_*`, `out/nightradio720_*`,
+`out/nightinfo720.ppm`. Look at all three after a colour or drawing change.
 
 It also renders the Crew Radio's screens from sample crews (`out/radio<size>_*.ppm`; sheet with
 `contact_sheet.py out/radio720 ...`): the radio halo over gauge pages

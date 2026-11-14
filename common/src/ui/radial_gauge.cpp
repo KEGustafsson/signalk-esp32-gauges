@@ -93,7 +93,7 @@ void RadialGaugePage::draw_face() {
     arc.center.y = g_.cy;
     arc.radius = (uint16_t)g_.px(kTickOuter);
     arc.width = g_.px(kZoneWidth);
-    arc.color = lv_color_hex(z.color);
+    arc.color = ink(z.color);
     arc.start_angle = to_lv_arc_angle(value_to_angle(z.from));
     arc.end_angle = to_lv_arc_angle(value_to_angle(z.to));
     lv_draw_arc(&layer, &arc);
@@ -110,7 +110,7 @@ void RadialGaugePage::draw_face() {
     const float angle = value_to_angle(value);
     lv_draw_line_dsc_t line;
     lv_draw_line_dsc_init(&line);
-    line.color = lv_color_hex(color::kMarking);
+    line.color = ink(color::kMarking);
     line.width = major ? LV_MAX(2, g_.px(0.016f)) : LV_MAX(1, g_.px(0.007f));
     line.p1 = polar(g_, angle, g_.pxf(kTickOuter));
     line.p2 = polar(g_, angle,
@@ -200,7 +200,7 @@ void RadialGaugePage::draw_needle(lv_layer_t* layer, float angle) const {
     dsc.p[0] = {a.x + dx, a.y + dy};
     dsc.p[1] = {b.x + dx, b.y + dy};
     dsc.p[2] = {c.x + dx, c.y + dy};
-    dsc.color = lv_color_hex(color);
+    dsc.color = ink(color);
     dsc.opa = opa;
     lv_draw_triangle(layer, &dsc);
   };

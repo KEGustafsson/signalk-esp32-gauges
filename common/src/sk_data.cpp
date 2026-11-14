@@ -14,6 +14,13 @@ namespace skgauges {
 
 namespace {
 
+// environment.mode and environment.sun change a few times a day
+// (derived-data restates the sun's phase once a minute).
+constexpr int kColourListenDelayMs = 5000;
+// How long a first environment.mode waits for the sun's phase: the server
+// sends both when the unit subscribes, within one listen delay.
+constexpr uint32_t kColourSettleMs = 2 * kColourListenDelayMs;
+
 float wrap360(float deg) {
   deg = fmodf(deg, 360.0f);
   if (deg < 0.0f) deg += 360.0f;
@@ -43,6 +50,32 @@ void SkData::begin() {
       gate_sweep(&slot, now);
     }
   });
+
+  // The colour mode from the server's environment.mode and environment.sun
+  // (colour_mode.h), when it has them; otherwise the unit's buttons alone.
+  const auto colour_listener = [this](const char* path, bool sun) {
+    auto listener = std::make_shared<TextListener>(
+        path, kColourListenDelayMs, [this, sun](const char* value) {
+          ColourMode mode;
+          const bool change = sun ? sk_colour_mode_.on_sun(value, &mode)
+                                  : sk_colour_mode_.on_mode(value, &mode);
+          if (change && colour_mode_handler_) colour_mode_handler_(mode);
+          // A first environment.mode waits for the sun's phase, which the
+          // server sends with it; without one by then, the mode decides.
+          if (sk_colour_mode_.waiting() && !settle_scheduled_) {
+            settle_scheduled_ = true;
+            sensesp::event_loop()->onDelay(kColourSettleMs, [this]() {
+              ColourMode settled;
+              if (sk_colour_mode_.settle(&settled) && colour_mode_handler_) {
+                colour_mode_handler_(settled);
+              }
+            });
+          }
+        });
+    listeners_.push_back(listener);
+  };
+  colour_listener("environment.mode", false);
+  colour_listener("environment.sun", true);
 
   // The pages gauge_ui shows, each with its path, display unit and data
   // timeout from its settings card. Metadata for the path (zones,

@@ -37,6 +37,8 @@ RadioHalo::RadioHalo(lv_obj_t* parent, const Geometry& geometry)
 
 RadioHalo::~RadioHalo() { lv_obj_delete(obj_); }
 
+void RadioHalo::move_to_back() { lv_obj_move_to_index(obj_, 0); }
+
 // Takes a new view and redraws the halo only when what it shows changed: who
 // talks, transmitting, busy, muted.
 void RadioHalo::set(const CrewView& view) {

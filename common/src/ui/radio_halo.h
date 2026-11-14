@@ -25,6 +25,9 @@ class RadioHalo {
   RadioHalo& operator=(const RadioHalo&) = delete;
 
   void set(const CrewView& view);
+  // Below everything else on its parent: a halo made again after the
+  // others (a new colour mode) goes back under the status dot and the box.
+  void move_to_back();
 
  private:
   static void draw_cb(lv_event_t* e);

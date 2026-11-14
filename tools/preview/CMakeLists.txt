@@ -37,5 +37,6 @@ add_executable(preview preview.cpp
   ${COMMON}/ui/attitude_gauge.cpp
   ${COMMON}/ui/crew_draw.cpp
   ${COMMON}/ui/crew_page.cpp
-  ${COMMON}/ui/radio_halo.cpp)
+  ${COMMON}/ui/radio_halo.cpp
+  ${COMMON}/ui/info_box.cpp)
 target_link_libraries(preview lvgl m)

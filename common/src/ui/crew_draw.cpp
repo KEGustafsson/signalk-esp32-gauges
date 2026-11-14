@@ -106,7 +106,7 @@ void draw_bars(lv_layer_t* layer, float cx, float cy, float h, uint8_t level,
   for (int i = 0; i < 4; i++) {
     lv_draw_rect_dsc_t dsc;
     lv_draw_rect_dsc_init(&dsc);
-    dsc.bg_color = lv_color_hex(i < level ? lit : crew_color::kUnlit);
+    dsc.bg_color = ink(i < level ? lit : crew_color::kUnlit);
     dsc.bg_opa = opa;
     dsc.radius = 1;
     const float bh = h * (0.3f + 0.7f * i / 3.0f);
@@ -196,7 +196,7 @@ void draw_radio_pip(lv_layer_t* layer, const Geometry& g,
   if (view.muted) {
     lv_draw_line_dsc_t line;
     lv_draw_line_dsc_init(&line);
-    line.color = lv_color_hex(color::kNeedle);
+    line.color = ink(color::kNeedle);
     line.width = LV_MAX(2, r / 2);
     line.round_start = line.round_end = 1;
     line.p1 = {(float)(cx - r * 1.4f), (float)(cy - r * 1.4f)};
@@ -261,7 +261,7 @@ void draw_arc_band(lv_layer_t* layer, const Geometry& g, float r_out_frac,
   arc.center.y = g.cy;
   arc.radius = (uint16_t)radius;
   arc.width = width;
-  arc.color = lv_color_hex(color);
+  arc.color = ink(color);
   arc.opa = opa;
   if (to_deg - from_deg >= 360.0f) {
     arc.start_angle = 0;

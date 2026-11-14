@@ -33,6 +33,7 @@ add_executable(gauge_tests
   test_text_fold.cpp
   test_unit_identity.cpp
   test_crew_tap.cpp
+  test_colour_mode.cpp
   ${COMMON}/card_store.cpp
   ${COMMON}/gauge_defs.cpp
   ${COMMON}/gauge_resolve.cpp

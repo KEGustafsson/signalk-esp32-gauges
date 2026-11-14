@@ -54,7 +54,20 @@ constexpr uint8_t kBayer[4][4] = {
 
 namespace {
 const lv_draw_buf_handlers_t* g_glyph_handlers = nullptr;
+ColourMode g_colour_mode = ColourMode::kDay;
 }  // namespace
+
+void set_colour_mode(ColourMode mode) { g_colour_mode = mode; }
+ColourMode colour_mode() { return g_colour_mode; }
+uint32_t tone(uint32_t rgb) { return tone_colour(rgb, g_colour_mode); }
+lv_color_t ink(uint32_t rgb) { return lv_color_hex(tone(rgb)); }
+
+LcdColours lcd_colours() {
+  if (g_colour_mode == ColourMode::kNight) {
+    return {0x202022, 0x141416, 0xFFFFFF, 0x3A3A3C};
+  }
+  return {color::kLcdTop, color::kLcdBottom, color::kLcdInk, 0x2C3028};
+}
 
 void set_glyph_handlers(const lv_draw_buf_handlers_t* handlers) {
   g_glyph_handlers = handlers;
@@ -100,7 +113,7 @@ lv_obj_t* create_canvas(lv_obj_t* parent, int32_t w, int32_t h) {
   LV_ASSERT_MALLOC(buf);
   lv_obj_t* canvas = lv_canvas_create(parent);
   lv_canvas_set_draw_buf(canvas, buf);
-  lv_canvas_fill_bg(canvas, lv_color_hex(color::kBackground), LV_OPA_COVER);
+  lv_canvas_fill_bg(canvas, ink(color::kBackground), LV_OPA_COVER);
   lv_obj_remove_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(canvas, canvas_delete_cb, LV_EVENT_DELETE, nullptr);
   return canvas;
@@ -148,7 +161,7 @@ void draw_circle_grad(lv_layer_t* layer, int32_t cx, int32_t cy, int32_t r,
   dsc.bg_grad.dir = LV_GRAD_DIR_VER;
   dsc.bg_grad.stops_count = (uint8_t)stops;
   for (int i = 0; i < stops; i++) {
-    dsc.bg_grad.stops[i].color = lv_color_hex(colors[i]);
+    dsc.bg_grad.stops[i].color = ink(colors[i]);
     dsc.bg_grad.stops[i].opa = LV_OPA_COVER;
     dsc.bg_grad.stops[i].frac = fracs[i];
   }
@@ -162,24 +175,31 @@ void draw_circle(lv_layer_t* layer, int32_t cx, int32_t cy, int32_t r,
   lv_draw_rect_dsc_init(&dsc);
   dsc.radius = LV_RADIUS_CIRCLE;
   dsc.bg_opa = opa;
-  dsc.bg_color = lv_color_hex(color);
+  dsc.bg_color = ink(color);
   lv_area_t area = {cx - r, cy - r, cx + r - 1, cy + r - 1};
   lv_draw_rect(layer, &dsc, &area);
 }
 
 void draw_steel_bezel(lv_layer_t* layer, const Geometry& g, float face_frac) {
+  // At night the steel is dark: polished chrome would be the brightest,
+  // largest thing on the screen, brighter than the markings.
+  const bool night = g_colour_mode == ColourMode::kNight;
   // Outer chrome: bright top, dark band below the middle, bright again at
   // the bottom -- the reflection of a polished steel ring.
   {
-    const uint32_t c[] = {0xF4F4F4, 0x9C9CA0, 0x34343A, 0xC4C4C8};
+    const uint32_t day[] = {0xF4F4F4, 0x9C9CA0, 0x34343A, 0xC4C4C8};
+    const uint32_t dark[] = {0x707074, 0x48484C, 0x1C1C20, 0x5C5C60};
     const uint8_t f[] = {0, 80, 170, 255};
-    draw_circle_grad(layer, g.cx, g.cy, g.px(0.995f), c, f, 4);
+    draw_circle_grad(layer, g.cx, g.cy, g.px(0.995f), night ? dark : day, f,
+                     4);
   }
   // Inner bevel: reversed gradient so the ring reads as a raised lip.
   {
-    const uint32_t c[] = {0x26262A, 0x707074, 0xE8E8E8};
+    const uint32_t day[] = {0x26262A, 0x707074, 0xE8E8E8};
+    const uint32_t dark[] = {0x1A1A1E, 0x404044, 0x707074};
     const uint8_t f[] = {0, 128, 255};
-    draw_circle_grad(layer, g.cx, g.cy, g.px(face_frac + 0.06f), c, f, 3);
+    draw_circle_grad(layer, g.cx, g.cy, g.px(face_frac + 0.06f),
+                     night ? dark : day, f, 3);
   }
   draw_circle(layer, g.cx, g.cy, g.px(face_frac + 0.018f), 0x0C0C0E);
   // Face: lighter upper half with a soft glass reflection edge.
@@ -211,7 +231,7 @@ void draw_text(lv_layer_t* layer, const char* text, const lv_font_t* font,
   // callers may pass short-lived buffers.
   dsc.text_local = 1;
   dsc.font = font;
-  dsc.color = lv_color_hex(color);
+  dsc.color = ink(color);
   dsc.opa = opa;
   dsc.align = LV_TEXT_ALIGN_CENTER;
   lv_area_t area = {cx - size.x / 2, cy - size.y / 2,
@@ -284,7 +304,7 @@ TextImage::TextImage(const char* text, const lv_font_t* font, uint32_t color,
       dsc.text = one;
       dsc.text_local = 1;  // Copied: drawn when the layer is finished
       dsc.font = font;
-      dsc.color = lv_color_hex(color);
+      dsc.color = ink(color);
       lv_area_t area = {pad + glyphs[g].x, pad,
                         pad + glyphs[g].x + glyphs[g].w + 1, pad + h};
       lv_draw_label(&layer, &dsc, &area);
@@ -312,7 +332,7 @@ TextImage::TextImage(const char* text, const lv_font_t* font, uint32_t color,
   lv_draw_label_dsc_init(&dsc);
   dsc.text = text;
   dsc.font = font;
-  dsc.color = lv_color_hex(color);
+  dsc.color = ink(color);
   lv_area_t area = {pad, pad, pad + size.x, pad + size.y};
   lv_draw_label(&layer, &dsc, &area);
   finish_offscreen_layer(&layer);

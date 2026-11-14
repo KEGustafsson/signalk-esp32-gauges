@@ -45,6 +45,14 @@ constexpr uint32_t kSkyHorizon = 0x9CCBEA;
 constexpr uint32_t kSeaTop = 0x1E5E72;
 constexpr uint32_t kSeaBottom = 0x0A2630;
 constexpr uint32_t kBoatSymbol = 0xFF8C1A;
+// At night (before ink() makes them red): a dim sky, brightest at the
+// horizon, over a sea close to black. Day's light blue sky would be the
+// largest bright area on the screen; the horizon line, the ladder and the
+// boat carry the reading, and the two halves stay apart.
+constexpr uint32_t kNightSkyTop = 0x34343A;
+constexpr uint32_t kNightSkyHorizon = 0x707078;
+constexpr uint32_t kNightSeaTop = 0x303036;
+constexpr uint32_t kNightSeaBottom = 0x101014;
 
 constexpr float kHeelLcdY = 0.42f;
 constexpr float kHeelLcdW = 0.66f;
@@ -56,7 +64,7 @@ constexpr float kTrimLcdH = 0.105f;
 lv_color_t lerp_color(uint32_t a, uint32_t b, float t) {
   if (t < 0.0f) t = 0.0f;
   if (t > 1.0f) t = 1.0f;
-  return lv_color_mix(lv_color_hex(b), lv_color_hex(a),
+  return lv_color_mix(ink(b), ink(a),
                       (lv_opa_t)lroundf(t * 255.0f));
 }
 
@@ -67,7 +75,7 @@ void draw_line(lv_layer_t* layer, float x1, float y1, float x2, float y2,
   dsc.p1 = {x1, y1};
   dsc.p2 = {x2, y2};
   dsc.width = width;
-  dsc.color = lv_color_hex(color);
+  dsc.color = ink(color);
   dsc.opa = opa;
   dsc.round_start = 1;
   dsc.round_end = 1;
@@ -122,7 +130,7 @@ void AttitudeGaugePage::draw_face() {
       arc.center.y = g_.cy;
       arc.radius = (uint16_t)g_.px(kTickOuter);
       arc.width = g_.px(kZoneWidth);
-      arc.color = lv_color_hex(z.color);
+      arc.color = ink(z.color);
       arc.start_angle = to_lv_arc_angle(heel_to_angle(from));
       arc.end_angle = to_lv_arc_angle(heel_to_angle(to));
       lv_draw_arc(&layer, &arc);
@@ -176,10 +184,14 @@ void AttitudeGaugePage::draw_window(lv_layer_t* layer) const {
   const float hy = g_.cy + g_.pxf(kDiscY);
   const float rd = g_.pxf(kDiscRadius);
   const float px_per_deg = g_.pxf(kPitchPxPerDeg);
+  const bool night = colour_mode() == ColourMode::kNight;
+  const uint32_t sea_top = night ? kNightSeaTop : kSeaTop;
+  const uint32_t sea_bottom = night ? kNightSeaBottom : kSeaBottom;
 
   // Sky: the whole disc.
   {
-    const uint32_t c[] = {kSkyTop, kSkyHorizon};
+    const uint32_t c[] = {night ? kNightSkyTop : kSkyTop,
+                          night ? kNightSkyHorizon : kSkyHorizon};
     const uint8_t f[] = {0, 255};
     draw_circle_grad(layer, (int32_t)hx, (int32_t)hy, (int32_t)rd, c, f, 2);
   }
@@ -192,7 +204,7 @@ void AttitudeGaugePage::draw_window(lv_layer_t* layer) const {
     const float dy = (float)y + 0.5f - hy;
     const float half = sqrtf(fmaxf(0.0f, rd * rd - dy * dy));
     if (half < 0.5f) continue;
-    row.bg_color = lerp_color(kSeaTop, kSeaBottom, dy / rd);
+    row.bg_color = lerp_color(sea_top, sea_bottom, dy / rd);
     lv_area_t a = {(int32_t)lroundf(hx - half), y,
                    (int32_t)lroundf(hx + half) - 1, y};
     lv_draw_rect(layer, &row, &a);
@@ -227,11 +239,11 @@ void AttitudeGaugePage::draw_window(lv_layer_t* layer) const {
   rim.width = g_.px(kRimWidth) + 1;
   rim.start_angle = 0;
   rim.end_angle = 360;
-  rim.color = lv_color_hex(0x141416);
+  rim.color = ink(0x141416);
   lv_draw_arc(layer, &rim);
   rim.radius = (uint16_t)(rd + g_.pxf(kRimWidth));
   rim.width = LV_MAX(2, g_.px(0.008f));
-  rim.color = lv_color_hex(0x9A9AA0);
+  rim.color = ink(0x9A9AA0);
   lv_draw_arc(layer, &rim);
 }
 
@@ -265,7 +277,7 @@ void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
   const lv_point_precise_t keel_r = at(kHullHalfBottom, kDraft);
   lv_draw_triangle_dsc_t tri;
   lv_draw_triangle_dsc_init(&tri);
-  tri.color = lv_color_hex(kBoatSymbol);
+  tri.color = ink(kBoatSymbol);
   tri.p[0] = deck_l;
   tri.p[1] = deck_r;
   tri.p[2] = keel_r;
@@ -301,7 +313,7 @@ void AttitudeGaugePage::draw_dynamic(lv_layer_t* layer) const {
   const float half_deg = (kPointerHalf / kPointerBase) * 57.2958f;
   tri.p[1] = polar(g_, angle - half_deg, g_.pxf(kPointerBase));
   tri.p[2] = polar(g_, angle + half_deg, g_.pxf(kPointerBase));
-  tri.color = lv_color_hex(color::kNeedle);
+  tri.color = ink(color::kNeedle);
   lv_draw_triangle(layer, &tri);
 }
 
