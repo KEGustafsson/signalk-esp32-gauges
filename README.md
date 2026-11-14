@@ -173,12 +173,13 @@ The gauges never show a number nobody vouches for:
 
 - **Swipe left / right**: next / previous gauge (wraps around).
 - **Swipe down**: info box with the device, its IP address, the Signal K
-  connection and the Signal K path the current page listens to. Swipe up or
-  tap to close it (a tap alone opens nothing: a short sideways swipe is
-  easily read as one).
+  connection and the Signal K path the current page listens to, with
+  **Day / Dusk / Night** buttons for the colours ([docs/PAGES.md](docs/PAGES.md#day-dusk-and-night)).
+  Swipe up or tap to close it (a tap alone opens nothing: a short sideways
+  swipe is easily read as one).
 - **Long press**: backlight 100 → 60 → 30 → 10 %.
 
-The page and brightness are remembered across restarts. If the touch
+The page, brightness and colour mode are remembered across restarts. If the touch
 controller does not start, the device restarts and tries again (on the 4" with
 the GT911's other address), and after that runs without touch rather than
 not at all, showing the remembered page. Every restart tries touch again.

@@ -12,6 +12,7 @@
 
 #include "sensesp_app.h"
 #include "sensesp_base_app.h"
+#include "colour_mode.h"
 #include "gauge_settings.h"
 #include "gauge_version.h"
 #include "lvgl_port.h"
@@ -19,6 +20,7 @@
 #include "ui/crew_draw.h"
 #include "ui/crew_view.h"
 #include "ui/gauge_page.h"
+#include "ui/info_box.h"
 #include "ui/radio_halo.h"
 
 namespace skgauges {
@@ -26,9 +28,10 @@ namespace skgauges {
 namespace {
 
 constexpr uint32_t kUiPeriodMs = 30;
-constexpr uint32_t kInfoShowMs = 5000;
+// Long enough to find the colour buttons; each tap on one starts it again.
+constexpr uint32_t kInfoShowMs = 8000;
 constexpr uint32_t kToastShowMs = 1300;
-// Page and brightness are written to flash this long after the last change,
+// Page, brightness and colour mode are written to flash this long after the last change,
 // not on every swipe: an NVS commit stalls the loop (and the RGB panel's
 // PSRAM frame buffer reads) for a few to tens of ms.
 constexpr uint32_t kPrefsSaveDelayMs = 3000;
@@ -64,14 +67,14 @@ struct UiState {
   int brightness_index = 0;
   lv_obj_t* status_dot = nullptr;
   uint32_t status_color = 0xFFFFFFFF;
-  lv_obj_t* overlay = nullptr;  // Info / toast box on the top layer
-  lv_obj_t* overlay_label = nullptr;
+  std::unique_ptr<ui::InfoBox> overlay;  // Info / toast box, top layer
   lv_timer_t* overlay_timer = nullptr;
   bool info_visible = false;
   lv_point_t press_point = {0, 0};
   lv_timer_t* prefs_timer = nullptr;
   String saved_page;      // What NVS holds, to skip writes that change nothing
   int saved_bright = -1;
+  int saved_mode = -1;
   // The Crew Radio's halo, on units with a radio (crew_view_available()).
   std::unique_ptr<ui::RadioHalo> halo;
   ui::CrewView halo_view;
@@ -89,8 +92,10 @@ UiState* state = nullptr;
 void write_prefs(lv_timer_t*) {
   lv_timer_pause(state->prefs_timer);
   const char* page = gauge_config().def(state->pages[state->current]).id;
+  const int mode = (int)ui::colour_mode();
   if (state->saved_page == page &&
-      state->saved_bright == state->brightness_index) {
+      state->saved_bright == state->brightness_index &&
+      state->saved_mode == mode) {
     return;
   }
   Preferences prefs;
@@ -99,13 +104,16 @@ void write_prefs(lv_timer_t*) {
     if (state->saved_bright != state->brightness_index) {
       prefs.putInt("bright", state->brightness_index);
     }
+    if (state->saved_mode != mode) prefs.putInt("mode", mode);
     prefs.end();
     state->saved_page = page;
     state->saved_bright = state->brightness_index;
+    state->saved_mode = mode;
   }
 }
 
-// Schedules a write of the current page and brightness (debounced).
+// Schedules a write of the current page, brightness and colour mode
+// (debounced).
 void save_prefs() {
   lv_timer_reset(state->prefs_timer);
   lv_timer_resume(state->prefs_timer);
@@ -118,9 +126,12 @@ void load_prefs() {
   }
   String id = prefs.isKey("page") ? prefs.getString("page") : String();
   int bright = prefs.isKey("bright") ? prefs.getInt("bright") : 0;
+  const int mode = prefs.isKey("mode") ? prefs.getInt("mode") : 0;
   prefs.end();
   state->saved_page = id;
   state->saved_bright = bright;
+  state->saved_mode = mode;
+  ui::set_colour_mode(colour_mode_from_int(mode));
   for (size_t i = 0; i < state->pages.size(); i++) {
     if (id == gauge_config().def(state->pages[i]).id) {
       state->current = i;
@@ -132,14 +143,14 @@ void load_prefs() {
 }
 
 void hide_overlay(lv_timer_t*) {
-  lv_obj_add_flag(state->overlay, LV_OBJ_FLAG_HIDDEN);
+  state->overlay->hide();
   lv_timer_pause(state->overlay_timer);
   state->info_visible = false;
 }
 
 void show_overlay(const char* text, uint32_t duration_ms, bool info) {
-  lv_label_set_text(state->overlay_label, text);
-  lv_obj_remove_flag(state->overlay, LV_OBJ_FLAG_HIDDEN);
+  // The info box (a swipe down) has the colour buttons; a note has not.
+  state->overlay->show(text, info);
   lv_timer_set_period(state->overlay_timer, duration_ms);
   lv_timer_reset(state->overlay_timer);
   lv_timer_resume(state->overlay_timer);
@@ -375,6 +386,14 @@ void ui_timer_cb(lv_timer_t*) {
   }
 }
 
+// The status dot in the current colour mode: SensESP's colour, or unlit.
+void style_status_dot() {
+  const uint32_t rgb =
+      state->status_color == 0xFFFFFFFF ? 0x303030 : state->status_color;
+  lv_obj_set_style_bg_color(state->status_dot, ui::ink(rgb), 0);
+  lv_obj_set_style_border_color(state->status_dot, ui::ink(0x101010), 0);
+}
+
 void create_status_dot() {
   const ui::Geometry& g = state->geometry;
   const int32_t size = LV_MAX(8, g.px(0.035f));
@@ -385,37 +404,44 @@ void create_status_dot() {
   lv_obj_set_pos(dot, g.cx - size / 2, g.cy + g.px(0.925f) - size / 2);
   lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(dot, lv_color_hex(0x303030), 0);
   lv_obj_set_style_border_width(dot, 1, 0);
-  lv_obj_set_style_border_color(dot, lv_color_hex(0x101010), 0);
   state->status_dot = dot;
+  style_status_dot();
+}
+
+// A colour button in the info box was tapped. Everything drawn so far is in
+// the old colours: the visible page is drawn again at once (one page build,
+// a few hundred ms), the others are dropped and built again in the
+// background as after boot, and the halo, the dot and the box restyled.
+void choose_mode(ColourMode mode) {
+  lv_timer_reset(state->overlay_timer);  // The box stays its full time
+  if (mode == ui::colour_mode()) {
+    return;
+  }
+  ui::set_colour_mode(mode);
+  state->overlay->restyle();
+  style_status_dot();
+  if (state->halo) {
+    state->halo.reset(new ui::RadioHalo(lv_layer_top(), state->geometry));
+    state->halo->move_to_back();  // Under the dot and the box, as at boot
+    state->halo->set(state->halo_view);
+  }
+  if (state->page != nullptr) {
+    state->page->set_visible(false);
+    state->page = nullptr;
+  }
+  for (auto& page : state->built) page.reset();
+  show_page(state->current, false);
+  if (state->prebuild_timer == nullptr) {
+    state->prebuild_timer =
+        lv_timer_create(prebuild_cb, kPrebuildPeriodMs, nullptr);
+  }
+  save_prefs();
 }
 
 void create_overlay() {
-  const ui::Geometry& g = state->geometry;
-  lv_obj_t* box = lv_obj_create(lv_layer_top());
-  lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_size(box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_style_max_width(box, g.px(1.5f), 0);
-  lv_obj_set_style_bg_color(box, lv_color_hex(0x000000), 0);
-  lv_obj_set_style_bg_opa(box, LV_OPA_80, 0);
-  lv_obj_set_style_border_color(box, lv_color_hex(0x9A9AA0), 0);
-  lv_obj_set_style_border_width(box, 2, 0);
-  lv_obj_set_style_radius(box, g.px(0.05f), 0);
-  lv_obj_set_style_pad_all(box, g.px(0.05f), 0);
-  lv_obj_center(box);
-
-  lv_obj_t* label = lv_label_create(box);
-  lv_obj_set_style_text_color(label, lv_color_hex(0xF0F0F0), 0);
-  lv_obj_set_style_text_font(label, ui::font_for_px(g.px(0.07f)), 0);
-  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_max_width(label, g.px(1.4f), 0);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
-
-  lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
-  state->overlay = box;
-  state->overlay_label = label;
+  state->overlay.reset(
+      new ui::InfoBox(lv_layer_top(), state->geometry, choose_mode));
   state->overlay_timer = lv_timer_create(hide_overlay, kInfoShowMs, nullptr);
   lv_timer_pause(state->overlay_timer);
 }
@@ -439,7 +465,7 @@ void ui_begin(const UiConfig& config) {
 
   lv_obj_t* screen = lv_screen_active();
   lv_obj_remove_style_all(screen);
-  lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_color(screen, ui::ink(0x000000), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(screen, LV_OBJ_FLAG_CLICKABLE);
@@ -448,6 +474,12 @@ void ui_begin(const UiConfig& config) {
   lv_obj_add_event_cb(screen, screen_event_cb, LV_EVENT_SHORT_CLICKED,
                       nullptr);
   lv_obj_add_event_cb(screen, screen_event_cb, LV_EVENT_LONG_PRESSED,
+                      nullptr);
+  // A swipe that starts on one of the info box's colour buttons climbs to
+  // the top layer and, without this, no further (the screen is not its
+  // parent): the top layer takes it and handles it as the screen would.
+  lv_obj_remove_flag(lv_layer_top(), LV_OBJ_FLAG_GESTURE_BUBBLE);
+  lv_obj_add_event_cb(lv_layer_top(), screen_event_cb, LV_EVENT_GESTURE,
                       nullptr);
 
   // Under the status dot, above every page: the radio never takes a page.
@@ -497,7 +529,7 @@ void ui_set_status_color(uint8_t r, uint8_t g, uint8_t b) {
     return;
   }
   state->status_color = rgb;
-  lv_obj_set_style_bg_color(state->status_dot, lv_color_hex(rgb), 0);
+  lv_obj_set_style_bg_color(state->status_dot, ui::ink(rgb), 0);
 }
 
 }  // namespace skgauges

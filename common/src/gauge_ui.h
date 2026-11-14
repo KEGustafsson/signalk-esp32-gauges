@@ -4,10 +4,11 @@
 //
 //  - Swipe left / right: next / previous gauge (wraps around).
 //  - Swipe down: info overlay (unit, IP, Signal K connection) for a few
-//    seconds; swipe up or tap closes it (a tap alone opens nothing).
+//    seconds, with Day / Dusk / Night buttons for the colour mode
+//    (colour_mode.h); swipe up or tap closes it (a tap alone opens nothing).
 //  - Long press: cycle backlight brightness 100 / 60 / 30 / 10 %.
 //
-// The current page and brightness survive a reboot (NVS).
+// The current page, brightness and colour mode survive a reboot (NVS).
 
 #include <stdint.h>
 

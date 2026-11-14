@@ -43,6 +43,27 @@ gain (a tap on its label). Middle: muted (volume 0), a full crew, no
 network. Bottom: the halo over gauge pages: one talker, two talkers, this
 unit transmitting.*
 
+## Day, dusk and night
+
+Swipe down on a unit: under the info box are three buttons, the colour
+mode in use lit.
+
+- **Day**: the classic steel look.
+- **Dusk**: the same pages dimmer and warmer. Every colour still reads as
+  itself: a yellow zone stays yellow, a red one red.
+- **Night**: red on black, for eyes used to the dark. The bezel is dark and
+  the LCDs show lit digits on a dark window, so the brightest things on
+  the screen are the markings, the needle and the digits. Zones are a
+  brighter red band, not colours: in an alarm zone, read where the needle
+  is.
+
+Each unit is set on its own and keeps its mode across restarts. A tap
+redraws the page on screen at once (a moment's pause); the other pages
+follow in the background, or when you swipe to them. The backlight is
+separate: hold a finger on the screen to step it down to 30 or 10 %.
+
+![The same pages in day, dusk and night, rendered at 4" resolution](colour-modes-4in.png)
+
 ## Opening the web UI
 
 1. Make sure your phone or computer is on the same network as the device.

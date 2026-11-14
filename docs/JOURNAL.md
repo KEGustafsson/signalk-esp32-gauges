@@ -1636,3 +1636,52 @@ as its WLAN copy would have (`Forwarder::audio_route`'s
 `talker_local_direct`), never back on the talker's link; the WLAN copy is
 then the duplicate. The plugin's relay also sent a frame to the LAN or to
 Reticulum, never both; it sends to both when both are due.
+
+## 2026-11-14 — Day, dusk and night colours
+
+Asked for: day, dusk and night colours on the gauges, chosen with buttons in
+the swipe-down box.
+
+How: every colour the pages draw is written for the day and now reaches
+LVGL through `ink()` (`ui/draw_utils.h`), which maps it by the mode in
+`colour_mode.h` (host-tested, `tests/test_colour_mode.cpp`): one rule per
+mode over about a hundred colours, not three palettes to keep in step.
+
+- Day: as written; nothing in the day look changed.
+- Dusk: each channel dimmed, the blue the most (72 / 62 / 50 %): softer and
+  warmer, hues kept (a yellow zone stays yellow).
+- Night: red only, the colour's brightest channel squared (peak 220 of
+  255). The face goes close to black, the markings, the needle and the
+  digits stay bright; luminance would have made the red needle darker than
+  the face. The first render showed the chrome bezel and the LCD windows as
+  the brightest areas on the screen, so at night those two take their own
+  colours: a dark steel bezel (`draw_steel_bezel()`) and lit digits on a
+  dark window (`lcd_colours()`). Zones lose their hues at night (a brighter
+  red band); the sea horizon's sky is still a large red area.
+
+The swipe-down box moved from `gauge_ui.cpp` into `ui/info_box.*` (pure
+LVGL) so the preview draws it: the info text, and under it Day / Dusk /
+Night buttons, the current one lit. It stays 8 s now (was 5), each tap
+starting that again. A tap drops every built page and rebuilds the one on
+screen (one build, 276-362 ms on the 4"), the others in the background as
+after boot; the halo is made again under the status dot and the box
+(`RadioHalo::move_to_back()`), the dot and the box restyled. The mode is in
+NVS with the page and brightness. A swipe that starts on a button stops at
+the top layer (the screen is not its parent): the top layer now takes
+gestures and hands them to the same handler.
+
+The preview takes `dusk` or `night` after the size (`out/night720_*`) and
+renders the info box (`out/<mode>info<size>.ppm`).
+
+Hardware: both boards built (4" 40.2 % of flash, 2.1" 44.0 %), all four
+units flashed over USB (COM3 / COM6 the 4", COM4 / COM9 the 2.1"). The 4"
+port unit's log shows the modes switched by hand repeatedly: each tap a
+rebuild of the page on screen, the rest after it, no restart. Its memory
+guard shed Reticulum once for a second during the first round of builds;
+the logs of 2026-11-07 have 81 and 53 such events on the two 4" units, so
+it is not new.
+
+Signal K could switch the mode by itself later: `environment.mode`
+(day / night, as used by signalk-bandg-displaydaynight) or a sun phase
+(`environment.sun`: dawn, sunrise, day, sunset, dusk, night). Not done:
+the buttons are the only way for now.

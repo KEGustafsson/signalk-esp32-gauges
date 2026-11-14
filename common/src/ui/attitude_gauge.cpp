@@ -56,7 +56,7 @@ constexpr float kTrimLcdH = 0.105f;
 lv_color_t lerp_color(uint32_t a, uint32_t b, float t) {
   if (t < 0.0f) t = 0.0f;
   if (t > 1.0f) t = 1.0f;
-  return lv_color_mix(lv_color_hex(b), lv_color_hex(a),
+  return lv_color_mix(ink(b), ink(a),
                       (lv_opa_t)lroundf(t * 255.0f));
 }
 
@@ -67,7 +67,7 @@ void draw_line(lv_layer_t* layer, float x1, float y1, float x2, float y2,
   dsc.p1 = {x1, y1};
   dsc.p2 = {x2, y2};
   dsc.width = width;
-  dsc.color = lv_color_hex(color);
+  dsc.color = ink(color);
   dsc.opa = opa;
   dsc.round_start = 1;
   dsc.round_end = 1;
@@ -122,7 +122,7 @@ void AttitudeGaugePage::draw_face() {
       arc.center.y = g_.cy;
       arc.radius = (uint16_t)g_.px(kTickOuter);
       arc.width = g_.px(kZoneWidth);
-      arc.color = lv_color_hex(z.color);
+      arc.color = ink(z.color);
       arc.start_angle = to_lv_arc_angle(heel_to_angle(from));
       arc.end_angle = to_lv_arc_angle(heel_to_angle(to));
       lv_draw_arc(&layer, &arc);
@@ -227,11 +227,11 @@ void AttitudeGaugePage::draw_window(lv_layer_t* layer) const {
   rim.width = g_.px(kRimWidth) + 1;
   rim.start_angle = 0;
   rim.end_angle = 360;
-  rim.color = lv_color_hex(0x141416);
+  rim.color = ink(0x141416);
   lv_draw_arc(layer, &rim);
   rim.radius = (uint16_t)(rd + g_.pxf(kRimWidth));
   rim.width = LV_MAX(2, g_.px(0.008f));
-  rim.color = lv_color_hex(0x9A9AA0);
+  rim.color = ink(0x9A9AA0);
   lv_draw_arc(layer, &rim);
 }
 
@@ -265,7 +265,7 @@ void AttitudeGaugePage::draw_boat(lv_layer_t* layer) const {
   const lv_point_precise_t keel_r = at(kHullHalfBottom, kDraft);
   lv_draw_triangle_dsc_t tri;
   lv_draw_triangle_dsc_init(&tri);
-  tri.color = lv_color_hex(kBoatSymbol);
+  tri.color = ink(kBoatSymbol);
   tri.p[0] = deck_l;
   tri.p[1] = deck_r;
   tri.p[2] = keel_r;
@@ -301,7 +301,7 @@ void AttitudeGaugePage::draw_dynamic(lv_layer_t* layer) const {
   const float half_deg = (kPointerHalf / kPointerBase) * 57.2958f;
   tri.p[1] = polar(g_, angle - half_deg, g_.pxf(kPointerBase));
   tri.p[2] = polar(g_, angle + half_deg, g_.pxf(kPointerBase));
-  tri.color = lv_color_hex(color::kNeedle);
+  tri.color = ink(color::kNeedle);
   lv_draw_triangle(layer, &tri);
 }
 

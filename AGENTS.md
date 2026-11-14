@@ -79,10 +79,16 @@ If a task would require breaking one of these, stop and flag it.
     one that was done is kept), `link_policy.h` (when a dead link restarts
     the unit), `arc_fit.h` (how much of a name fits along an arc),
     `text_fold.h` (names in the fonts' ASCII: Mäkelä as Makela), `crew_tap.h`
-    (where a tap on the Crew page lands). Put new logic of this kind there, with a test, rather than in
+    (where a tap on the Crew page lands), `colour_mode.h` (day, dusk and
+    night: one rule each over the day colours). Put new logic of this kind there, with a test, rather than in
     the Arduino glue.
   - `ui/` -- pure LVGL drawing. No Arduino, no SensESP: it must keep compiling
-    on the host for `tools/preview`, which CI runs.
+    on the host for `tools/preview`, which CI runs. Colours are written for
+    the day and reach LVGL through `ink()` (`draw_utils.h`), never
+    `lv_color_hex()`, or they ignore the colour mode; at night the bezel
+    and the LCDs take their own colours (`draw_steel_bezel()`,
+    `lcd_colours()`). `info_box.*` is the swipe-down box with its mode
+    buttons.
   - `sk_data.*`, `sk_listeners.h`, `status_led.h`, `gauge_app.*`, `gauge_ui.*`,
     `link_watch.*`, `lvgl_port.*` -- SensESP / Arduino / ESP32_Display_Panel
     glue.

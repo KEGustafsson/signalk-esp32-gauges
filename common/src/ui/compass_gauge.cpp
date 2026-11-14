@@ -144,7 +144,7 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
                  line.width + 1.0f)) {
       continue;
     }
-    line.color = lv_color_hex(color::kMarking);
+    line.color = ink(color::kMarking);
     line.opa = opa;
     lv_draw_line(layer, &line);
   }
@@ -167,7 +167,7 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
   ring.width = LV_MAX(2, g_.px(0.008f));
   ring.start_angle = 0;
   ring.end_angle = 360;
-  ring.color = lv_color_hex(0xCFCFCF);
+  ring.color = ink(0xCFCFCF);
   ring.opa = opa;
   lv_draw_arc(layer, &ring);
 
@@ -180,7 +180,7 @@ void CompassGaugePage::draw_card(lv_layer_t* layer) const {
                  (lv_value_precise_t)(g_.cy - g_.pxf(kLubberBase))};
   lubber.p[2] = {g_.cx + g_.pxf(kLubberHalf),
                  (lv_value_precise_t)(g_.cy - g_.pxf(kLubberBase))};
-  lubber.color = lv_color_hex(kNorthRed);
+  lubber.color = ink(kNorthRed);
   lubber.opa = LV_OPA_COVER;
   lv_draw_triangle(layer, &lubber);
 }

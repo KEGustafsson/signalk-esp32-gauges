@@ -13,6 +13,8 @@
 
 #include <vector>
 
+#include "../colour_mode.h"
+
 namespace skgauges {
 namespace ui {
 
@@ -40,6 +42,28 @@ constexpr uint32_t kLcdTop = 0xC9D1B9;
 constexpr uint32_t kLcdBottom = 0x9EA891;
 constexpr uint32_t kLcdInk = 0x161A14;
 }  // namespace color
+
+// The colour mode every page draws in (colour_mode.h). Changing it changes
+// what is drawn from then on, not what is drawn already: pages, the halo
+// and the overlays are rebuilt or restyled by their owner (gauge_ui.cpp).
+void set_colour_mode(ColourMode mode);
+ColourMode colour_mode();
+// A day colour (0xRRGGBB, the `color` constants and every other one) as it
+// is drawn now. Every colour handed to LVGL goes through here, never
+// lv_color_hex() directly.
+uint32_t tone(uint32_t rgb);
+lv_color_t ink(uint32_t rgb);
+
+// The LCD windows' day colours for the current mode, to pass through ink()
+// like any other. At night the window is dark and the digits light, as on
+// a backlit LCD: a light window would be the brightest thing on the screen.
+struct LcdColours {
+  uint32_t top;
+  uint32_t bottom;
+  uint32_t ink;
+  uint32_t border;
+};
+LcdColours lcd_colours();
 
 lv_point_precise_t polar(const Geometry& g, float dial_angle_deg,
                          float radius_px);
