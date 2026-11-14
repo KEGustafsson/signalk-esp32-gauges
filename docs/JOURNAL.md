@@ -1636,3 +1636,102 @@ as its WLAN copy would have (`Forwarder::audio_route`'s
 `talker_local_direct`), never back on the talker's link; the WLAN copy is
 then the duplicate. The plugin's relay also sent a frame to the LAN or to
 Reticulum, never both; it sends to both when both are due.
+
+## 2026-11-14 — Day, dusk and night colours
+
+Asked for: day, dusk and night colours on the gauges, chosen with buttons in
+the swipe-down box.
+
+How: every colour the pages draw is written for the day and now reaches
+LVGL through `ink()` (`ui/draw_utils.h`), which maps it by the mode in
+`colour_mode.h` (host-tested, `tests/test_colour_mode.cpp`): one rule per
+mode over about a hundred colours, not three palettes to keep in step.
+
+- Day: as written; nothing in the day look changed.
+- Dusk: each channel dimmed, the blue the most (72 / 62 / 50 %): softer and
+  warmer, hues kept (a yellow zone stays yellow).
+- Night: red only, the colour's brightest channel squared (peak 220 of
+  255). The face goes close to black, the markings, the needle and the
+  digits stay bright; luminance would have made the red needle darker than
+  the face. The first render showed the chrome bezel and the LCD windows as
+  the brightest areas on the screen, so at night those two take their own
+  colours: a dark steel bezel (`draw_steel_bezel()`) and lit digits on a
+  dark window (`lcd_colours()`). Zones lose their hues at night (a brighter
+  red band). The sea horizon's light blue sky came out as a large bright
+  red disc in which the horizon line and the boat were lost; of three
+  renders (as it was, a dim sky, lines only) the dim one was chosen: at
+  night the sky is dark, brightest at the horizon, over a sea close to
+  black (`attitude_gauge.cpp`), so the line, the ladder and the boat carry
+  the reading and sky and sea still stay apart. All four units run it
+  (flashed over USB the same afternoon).
+
+The swipe-down box moved from `gauge_ui.cpp` into `ui/info_box.*` (pure
+LVGL) so the preview draws it: the info text, and under it Day / Dusk /
+Night buttons, the current one lit. It stays 8 s now (was 5), each tap
+starting that again. A tap drops every built page and rebuilds the one on
+screen (one build, 276-362 ms on the 4"), the others in the background as
+after boot; the halo is made again under the status dot and the box
+(`RadioHalo::move_to_back()`), the dot and the box restyled. The mode is in
+NVS with the page and brightness. A swipe that starts on a button stops at
+the top layer (the screen is not its parent): the top layer now takes
+gestures and hands them to the same handler.
+
+The preview takes `dusk` or `night` after the size (`out/night720_*`) and
+renders the info box (`out/<mode>info<size>.ppm`).
+
+Hardware: both boards built (4" 40.2 % of flash, 2.1" 44.0 %), all four
+units flashed over USB (COM3 / COM6 the 4", COM4 / COM9 the 2.1"). The 4"
+port unit's log shows the modes switched by hand repeatedly: each tap a
+rebuild of the page on screen, the rest after it, no restart. Its memory
+guard shed Reticulum once for a second during the first round of builds;
+the logs of 2026-11-07 have 81 and 53 such events on the two 4" units, so
+it is not new.
+
+### The mode from Signal K
+
+What the server can say, from the sources:
+
+- `environment.mode` is in the specification (`schemas/groups/environment.json`):
+  "Mode of the vessel based on the current conditions", one of `day`,
+  `night`, `restricted visibility`. SignalK/signalk-derived-data's Sun
+  calculation writes it at sunrise and sunset only (so a switch by hand
+  holds until then); the App Dock's day / night button writes it by hand;
+  the Instrument Panel and Freeboard-SK read it.
+- `environment.sun` is not in the specification: derived-data writes it
+  every minute from `navigation.position` and `navigation.datetime`, one of
+  `nauticalDawn`, `dawn`, `sunrise`, `day`, `sunset`, `dusk`,
+  `nauticalDusk`, `night` (suncalc's times: `dawn` starts civil twilight,
+  `dusk` ends it, `night` ends astronomical twilight; `sunriseEnd` gives
+  `day`). Freeboard-SK reads it.
+
+`SkColourMode` (`colour_mode.h`, host-tested) turns them into a mode: the
+sun's phase by how dark it is (sun up Day, civil twilight Dusk, nautical
+twilight and darker Night), `environment.mode` alone without a phase, and
+`environment.mode` over the sun only when it changes to contradict it
+(night in daylight, day in the dark: a hand on the App Dock), until the
+sun's mode next changes. The first test run caught the rule this replaced
+(any contradiction wins): `environment.mode` stays `night` from sunset to
+sunrise while the phase moves on, and would have held the morning in Night
+for up to a minute. The unit switches only when the answer changes: the
+phase restated every minute and the values replayed on each reconnect leave
+a mode chosen on the buttons alone. `TextListener` (`sk_listeners.h`) passes
+only JSON strings (a null from a lost source says nothing).
+`SkData` subscribes to both (5 s), `gauge_ui`'s `ui_follow_signalk_colour()`
+switches, and the log says why (`Colour mode Night (Signal K)` or
+`(button)`).
+
+The boat's server (2.37.0) had `navigation.position` and
+`navigation.datetime` but neither path; with derived-data's Sun
+calculation switched on it publishes both (`day` / `day` at 13:54). All
+four units flashed over USB; the 2.1" port unit's log shows both
+subscriptions (5 s) and no switch, being in Day already.
+
+CodeRabbit on #18: a second finger landing on a colour button ended the
+first finger's press as a click and changed the mode at the start of a
+two-finger talk; the buttons now ignore a click while two fingers are down,
+as the screen's tap does. Its second round: Night chosen on the buttons
+while Signal K said day was lost on a restart, the server's first day
+looking new to a fresh `SkColourMode`. The unit now keeps Signal K's last
+answer in NVS (`skmode`, with the page, brightness and mode) and seeds the
+rule with it at boot (`SkColourMode::seed()`): the same first values switch
+nothing, a change while it was off does.

@@ -46,11 +46,11 @@ LcdReadout::LcdReadout(lv_obj_t* parent, int32_t cx, int32_t cy, int32_t w,
   area_ = {cx - w / 2, cy - h / 2, cx - w / 2 + w - 1, cy - h / 2 + h - 1};
   lv_obj_set_style_radius(obj_, h / 8, 0);
   lv_obj_set_style_bg_opa(obj_, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(obj_, lv_color_hex(color::kLcdTop), 0);
-  lv_obj_set_style_bg_grad_color(obj_, lv_color_hex(color::kLcdBottom), 0);
+  lv_obj_set_style_bg_color(obj_, ink(lcd_colours().top), 0);
+  lv_obj_set_style_bg_grad_color(obj_, ink(lcd_colours().bottom), 0);
   lv_obj_set_style_bg_grad_dir(obj_, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_border_width(obj_, h / 28 > 1 ? h / 28 : 1, 0);
-  lv_obj_set_style_border_color(obj_, lv_color_hex(0x2C3028), 0);
+  lv_obj_set_style_border_color(obj_, ink(lcd_colours().border), 0);
   lv_obj_set_style_border_opa(obj_, LV_OPA_80, 0);
   lv_obj_add_event_cb(obj_, draw_cb, LV_EVENT_DRAW_MAIN_END, this);
   set_dashes();
@@ -81,7 +81,7 @@ void LcdReadout::set_text(const char* text, bool with_unit) {
   if (digit_scale_ > 1.0f) {
     digits_.reset();  // Drawn from the characters (made if they do not fit)
   } else {
-    digits_.reset(new TextImage(text_, digit_font_, color::kLcdInk, true));
+    digits_.reset(new TextImage(text_, digit_font_, lcd_colours().ink, true));
   }
   lv_obj_invalidate(obj_);
 }
@@ -150,7 +150,7 @@ const LcdReadout::Glyph* LcdReadout::glyph(uint32_t cp) const {
   Glyph g;
   g.cp = cp;
   g.w = lv_font_get_glyph_width(digit_font_, cp, 0);
-  g.image.reset(new TextImage(one, digit_font_, color::kLcdInk, false,
+  g.image.reset(new TextImage(one, digit_font_, lcd_colours().ink, false,
                               glyph_handlers()));
   if (g.image->valid() && !g.image->bake_scale(digit_scale_)) {
     g.image.reset();  // No memory: the whole text is drawn instead
@@ -194,17 +194,17 @@ void LcdReadout::move_background_into(lv_layer_t* face) {
   // As the object's own style draws it (the constructor).
   dsc.radius = h / 8;
   dsc.bg_opa = LV_OPA_COVER;
-  dsc.bg_color = lv_color_hex(color::kLcdTop);
+  dsc.bg_color = ink(lcd_colours().top);
   dsc.bg_grad.dir = LV_GRAD_DIR_VER;
   dsc.bg_grad.stops_count = 2;
-  dsc.bg_grad.stops[0].color = lv_color_hex(color::kLcdTop);
+  dsc.bg_grad.stops[0].color = ink(lcd_colours().top);
   dsc.bg_grad.stops[0].opa = LV_OPA_COVER;
   dsc.bg_grad.stops[0].frac = 0;
-  dsc.bg_grad.stops[1].color = lv_color_hex(color::kLcdBottom);
+  dsc.bg_grad.stops[1].color = ink(lcd_colours().bottom);
   dsc.bg_grad.stops[1].opa = LV_OPA_COVER;
   dsc.bg_grad.stops[1].frac = 255;
   dsc.border_width = h / 28 > 1 ? h / 28 : 1;
-  dsc.border_color = lv_color_hex(0x2C3028);
+  dsc.border_color = ink(lcd_colours().border);
   dsc.border_opa = LV_OPA_80;
   lv_draw_rect(face, &dsc, &area_);
   lv_obj_set_style_bg_opa(obj_, LV_OPA_TRANSP, 0);
@@ -228,7 +228,7 @@ void LcdReadout::draw(lv_layer_t* layer, const lv_area_t& coords) const {
     lv_point_t size;
     lv_text_get_size(&size, suffix_, small_font_, 0, 0, LV_COORD_MAX,
                      LV_TEXT_FLAG_NONE);
-    draw_text(layer, suffix_, small_font_, color::kLcdInk,
+    draw_text(layer, suffix_, small_font_, lcd_colours().ink,
               (int32_t)(right - size.x / 2.0f),
               (int32_t)(coords.y1 + h * 0.62f));
     right -= size.x + pad * 0.5f;
@@ -238,7 +238,7 @@ void LcdReadout::draw(lv_layer_t* layer, const lv_area_t& coords) const {
     lv_point_t size;
     lv_text_get_size(&size, prefix_, small_font_, 0, 0, LV_COORD_MAX,
                      LV_TEXT_FLAG_NONE);
-    draw_text(layer, prefix_, small_font_, color::kLcdInk,
+    draw_text(layer, prefix_, small_font_, lcd_colours().ink,
               (int32_t)(coords.x1 + pad + size.x / 2.0f),
               (int32_t)(coords.y1 + h * 0.36f));
     left += size.x + pad * 0.5f;
@@ -254,7 +254,7 @@ void LcdReadout::draw(lv_layer_t* layer, const lv_area_t& coords) const {
     return;
   }
   if (!digits_) {
-    digits_.reset(new TextImage(text_, digit_font_, color::kLcdInk, true));
+    digits_.reset(new TextImage(text_, digit_font_, lcd_colours().ink, true));
   }
   if (!digits_->valid()) {
     return;

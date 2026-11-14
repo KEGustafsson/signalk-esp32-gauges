@@ -176,6 +176,9 @@ jobs:
           # An LVGL assert halts (spins) on the host: cap it.
           timeout 120 build/preview/preview 480
           timeout 120 build/preview/preview 720
+          # The colour modes: every page again, night on the 2.1", dusk on the 4".
+          timeout 120 build/preview/preview 480 night
+          timeout 120 build/preview/preview 720 dusk
 
       - name: Contact sheets
         run: |
@@ -185,6 +188,8 @@ jobs:
           python tools/preview/contact_sheet.py out/stale480 out/preview-stale-480.png
           python tools/preview/contact_sheet.py out/radio480 out/preview-radio-480.png
           python tools/preview/contact_sheet.py out/radio720 out/preview-radio-720.png
+          python tools/preview/contact_sheet.py out/night480 out/preview-night-480.png
+          python tools/preview/contact_sheet.py out/dusk720 out/preview-dusk-720.png
 
       - name: Upload renders
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

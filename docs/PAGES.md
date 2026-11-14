@@ -43,6 +43,54 @@ gain (a tap on its label). Middle: muted (volume 0), a full crew, no
 network. Bottom: the halo over gauge pages: one talker, two talkers, this
 unit transmitting.*
 
+## Day, dusk and night
+
+Swipe down on a unit: under the info box are three buttons, the colour
+mode in use lit.
+
+- **Day**: the classic steel look.
+- **Dusk**: the same pages dimmer and warmer. Every colour still reads as
+  itself: a yellow zone stays yellow, a red one red.
+- **Night**: red on black, for eyes used to the dark. The bezel is dark,
+  the LCDs show lit digits on a dark window and the sea horizon's sky is
+  dim over a black sea, so the brightest things on the screen are the
+  markings, the needle, the horizon line and the digits. Zones are a
+  brighter red band, not colours: in an alarm zone, read where the needle
+  is.
+
+Each unit is set on its own and keeps its mode across restarts. A tap
+redraws the page on screen at once (a moment's pause); the other pages
+follow in the background, or when you swipe to them. The backlight is
+separate: hold a finger on the screen to step it down to 30 or 10 %.
+
+**From Signal K.** When the server publishes them, every unit follows
+`environment.sun` and `environment.mode` by itself. Both come from the
+server's **signalk-derived-data** plugin: turn on its **Sun** calculation
+(Server → Plugin Config → Derived Data); it needs `navigation.position` and
+`navigation.datetime` (a GNSS). The sun's phase sets the mode by how dark
+it is:
+
+| `environment.sun` | Sun | Mode |
+|---|---|---|
+| `day`, `sunrise` | up | Day |
+| `dawn`, `sunset` | up to 6° below the horizon (civil twilight) | Dusk |
+| `nauticalDawn`, `dusk`, `nauticalDusk`, `night` | 6° or more below | Night |
+
+`environment.mode` (in the Signal K specification: `day`, `night` or
+`restricted visibility`) is used alone when the server has no sun phase,
+and wins over the sun when someone switches it by hand against it (the
+App Dock's day / night button: night in daylight, day in the dark), until
+the sun's next step. `restricted visibility` changes nothing.
+
+A unit switches only when that answer changes. A button on the unit still
+works at any time and holds until the next change: the server restating
+the same phase every minute, or replaying it on a reconnect, does not undo
+it, and nor does a restart (the unit remembers Signal K's last answer)
+unless the light has changed while it was off. Without either path the
+buttons are the only way, as before.
+
+![The same pages in day, dusk and night, rendered at 4" resolution](colour-modes-4in.png)
+
 ## Opening the web UI
 
 1. Make sure your phone or computer is on the same network as the device.
