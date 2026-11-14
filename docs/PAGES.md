@@ -85,7 +85,9 @@ the sun's next step. `restricted visibility` changes nothing.
 A unit switches only when that answer changes. A button on the unit still
 works at any time and holds until the next change: the server restating
 the same phase every minute, or replaying it on a reconnect, does not undo
-it. Without either path the buttons are the only way, as before.
+it, and nor does a restart (the unit remembers Signal K's last answer)
+unless the light has changed while it was off. Without either path the
+buttons are the only way, as before.
 
 ![The same pages in day, dusk and night, rendered at 4" resolution](colour-modes-4in.png)
 

@@ -49,11 +49,13 @@ If an OTA upload fails:
 
 ## Phase 3: Monitor and Configure
 
-1. `pio device monitor` from the project folder, on whichever USB port is
-   plugged in: each board has both the chip's own USB Serial/JTAG
-   (VID 303A) and a CH343 UART (VID 1A86). `pio device list` tells them
-   apart; on 2026-11-14 the 4" units were on their CH343, the 2.1" on USB
-   Serial/JTAG. An upload checks the chip type before writing anything.
+1. `pio device monitor -p COMn` from the project folder, naming the port:
+   without `-p` it picks one itself, which with several units connected
+   may be another unit's. Each board has both the chip's own USB
+   Serial/JTAG (VID 303A) and a CH343 UART (VID 1A86); `pio device list`
+   tells them apart (on 2026-11-14 the 4" units were on their CH343, the
+   2.1" on USB Serial/JTAG). An upload checks the chip type before writing
+   anything.
 2. Interpret the output: display init, WiFi, Signal K connection, crashes
    (`esp32_exception_decoder` symbolises backtraces).
 3. On the screen: the gauge appears with dashes; a swipe down shows the IP,

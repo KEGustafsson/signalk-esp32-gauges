@@ -1716,7 +1716,7 @@ for up to a minute. The unit switches only when the answer changes: the
 phase restated every minute and the values replayed on each reconnect leave
 a mode chosen on the buttons alone. `TextListener` (`sk_listeners.h`) passes
 only JSON strings (a null from a lost source says nothing).
-`SkData` subscribes to both (5 s), `gauge_ui`'s `ui_set_colour_mode()`
+`SkData` subscribes to both (5 s), `gauge_ui`'s `ui_follow_signalk_colour()`
 switches, and the log says why (`Colour mode Night (Signal K)` or
 `(button)`).
 
@@ -1729,4 +1729,9 @@ subscriptions (5 s) and no switch, being in Day already.
 CodeRabbit on #18: a second finger landing on a colour button ended the
 first finger's press as a click and changed the mode at the start of a
 two-finger talk; the buttons now ignore a click while two fingers are down,
-as the screen's tap does.
+as the screen's tap does. Its second round: Night chosen on the buttons
+while Signal K said day was lost on a restart, the server's first day
+looking new to a fresh `SkColourMode`. The unit now keeps Signal K's last
+answer in NVS (`skmode`, with the page, brightness and mode) and seeds the
+rule with it at boot (`SkColourMode::seed()`): the same first values switch
+nothing, a change while it was off does.

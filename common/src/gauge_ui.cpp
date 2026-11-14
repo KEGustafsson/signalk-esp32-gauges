@@ -75,6 +75,8 @@ struct UiState {
   String saved_page;      // What NVS holds, to skip writes that change nothing
   int saved_bright = -1;
   int saved_mode = -1;
+  int sk_answer = -1;  // Signal K's last colour answer, -1 none (NVS "skmode")
+  int saved_sk = -1;
   // The Crew Radio's halo, on units with a radio (crew_view_available()).
   std::unique_ptr<ui::RadioHalo> halo;
   ui::CrewView halo_view;
@@ -95,7 +97,7 @@ void write_prefs(lv_timer_t*) {
   const int mode = (int)ui::colour_mode();
   if (state->saved_page == page &&
       state->saved_bright == state->brightness_index &&
-      state->saved_mode == mode) {
+      state->saved_mode == mode && state->saved_sk == state->sk_answer) {
     return;
   }
   Preferences prefs;
@@ -105,10 +107,14 @@ void write_prefs(lv_timer_t*) {
       prefs.putInt("bright", state->brightness_index);
     }
     if (state->saved_mode != mode) prefs.putInt("mode", mode);
+    if (state->saved_sk != state->sk_answer) {
+      prefs.putInt("skmode", state->sk_answer);
+    }
     prefs.end();
     state->saved_page = page;
     state->saved_bright = state->brightness_index;
     state->saved_mode = mode;
+    state->saved_sk = state->sk_answer;
   }
 }
 
@@ -127,7 +133,10 @@ void load_prefs() {
   String id = prefs.isKey("page") ? prefs.getString("page") : String();
   int bright = prefs.isKey("bright") ? prefs.getInt("bright") : 0;
   const int mode = prefs.isKey("mode") ? prefs.getInt("mode") : 0;
+  const int sk = prefs.isKey("skmode") ? prefs.getInt("skmode") : -1;
   prefs.end();
+  state->sk_answer = sk >= 0 && sk < kColourModeCount ? sk : -1;
+  state->saved_sk = state->sk_answer;
   state->saved_page = id;
   state->saved_bright = bright;
   state->saved_mode = mode;
@@ -526,11 +535,23 @@ void ui_show_notice(const char* text) {
   lv_refr_now(nullptr);
 }
 
-void ui_set_colour_mode(ColourMode mode, const char* why) {
+void ui_follow_signalk_colour(ColourMode mode) {
   if (state == nullptr) {
     return;
   }
-  apply_mode(mode, why);
+  if (state->sk_answer != (int)mode) {
+    state->sk_answer = (int)mode;
+    save_prefs();
+  }
+  apply_mode(mode, "Signal K");
+}
+
+bool ui_saved_signalk_colour(ColourMode* mode) {
+  if (state == nullptr || state->sk_answer < 0) {
+    return false;
+  }
+  *mode = (ColourMode)state->sk_answer;
+  return true;
 }
 
 void ui_set_status_color(uint8_t r, uint8_t g, uint8_t b) {

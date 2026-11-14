@@ -35,6 +35,10 @@ class SkData {
   void set_colour_mode_handler(std::function<void(ColourMode)> handler) {
     colour_mode_handler_ = std::move(handler);
   }
+  // The answer Signal K gave before this boot (SkColourMode::seed()).
+  void seed_colour_mode(ColourMode last_answer) {
+    sk_colour_mode_.seed(last_answer);
+  }
 
   const GaugeValue& get(size_t index) const { return values_[index]; }
 

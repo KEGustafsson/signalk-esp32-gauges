@@ -8,7 +8,8 @@
 //    (colour_mode.h); swipe up or tap closes it (a tap alone opens nothing).
 //  - Long press: cycle backlight brightness 100 / 60 / 30 / 10 %.
 //
-// The current page, brightness and colour mode survive a reboot (NVS).
+// The current page, brightness and colour mode survive a reboot (NVS), with
+// the last colour mode Signal K asked for.
 
 #include <stdint.h>
 
@@ -31,10 +32,14 @@ void ui_begin(const UiConfig& config);
 // (used while an OTA upload blocks the loop).
 void ui_show_notice(const char* text);
 
-// Switches the colour mode (as a tap on its button does) and logs `why`;
-// nothing when it is the mode already. Used for Signal K's environment.mode
-// and environment.sun (sk_data.h).
-void ui_set_colour_mode(ColourMode mode, const char* why);
+// Signal K's environment.mode / environment.sun asked for `mode`
+// (sk_data.h): switches to it, as a tap on its button does, and saves it as
+// the last answer from Signal K.
+void ui_follow_signalk_colour(ColourMode mode);
+// The last answer from Signal K before this boot (NVS); false if none. The
+// caller seeds SkColourMode with it, so a mode chosen on the buttons
+// survives a restart unless the light changed meanwhile.
+bool ui_saved_signalk_colour(ColourMode* mode);
 
 // SensESP's system status "LED" colour, mirrored as a small dot at the
 // bottom of the bezel (see status_led.h).

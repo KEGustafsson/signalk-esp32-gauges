@@ -210,3 +210,26 @@ TEST(colour_sk_first_values_agree_in_either_order) {
     CHECK(last_a == last_b);
   }
 }
+
+TEST(colour_sk_seeded_answer_keeps_a_tap_across_a_restart) {
+  // Night chosen on the buttons while Signal K says day, then a restart:
+  // the server's first values answer day again, which is no change.
+  SkColourMode before;
+  ColourMode to = ColourMode::kNight;
+  CHECK(before.on_sun("day", &to) && to == ColourMode::kDay);
+  ColourMode saved = ColourMode::kNight;
+  CHECK(before.answer(&saved) && saved == ColourMode::kDay);
+
+  SkColourMode after;
+  after.seed(saved);
+  CHECK(!after.on_mode("day", &to));
+  CHECK(!after.on_sun("day", &to));
+  // The light changed while it was off: the first values switch.
+  SkColourMode later;
+  later.seed(ColourMode::kDay);
+  CHECK(later.on_sun("dusk", &to) && to == ColourMode::kNight);
+  // No answer saved: the first values switch, as before.
+  SkColourMode fresh;
+  CHECK(!fresh.answer(&saved));
+  CHECK(fresh.on_sun("day", &to) && to == ColourMode::kDay);
+}

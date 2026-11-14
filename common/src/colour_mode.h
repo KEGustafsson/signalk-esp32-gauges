@@ -138,6 +138,20 @@ class SkColourMode {
     have_mode_ = true;
     return decide(switch_to);
   }
+  // The answer given before a restart (saved by the caller): the first
+  // values after it then switch nothing unless they answer otherwise, so a
+  // mode chosen on the buttons survives a restart as long as the light has
+  // not changed meanwhile.
+  void seed(ColourMode last_answer) {
+    wanted_ = last_answer;
+    have_wanted_ = true;
+  }
+  // The last answer given (for the caller to save); false before any.
+  bool answer(ColourMode* last) const {
+    if (have_wanted_) *last = wanted_;
+    return have_wanted_;
+  }
+
   bool on_sun(const char* value, ColourMode* switch_to) {
     ColourMode m;
     if (!colour_mode_from_sk_sun(value, &m)) return false;
